@@ -1,21 +1,21 @@
 // src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  FileText, Briefcase, TrendingUp, Download, Search, MapPin,
+  FileText, Briefcase, TrendingUp, Search, MapPin,
   Award, BookOpen, Sparkles, ExternalLink, Filter, ChevronLeft, ChevronRight, RefreshCw, X
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
 import {
-  startHHOAuth,
-  searchJobsSmart,            // ← умный поиск (auto areaId + дефолтный host)
+  searchJobsSmart,            // умный поиск (auto areaId + дефолтный host)
   isHttpError,
   fetchAreas,
-  inferSearchFromProfile,    // ← AI-инференс из резюме (через BFF)
-  getDefaultHost,            // ← дефолтный host (обычно 'hh.kz')
+  inferSearchFromProfile,     // AI-инференс из резюме (через BFF)
+  getDefaultHost,             // дефолтный host (обычно 'hh.kz')
+  fetchRecommendations,       // реальные рекомендации из бэкенда
 } from '../services/bff';
 
-const ALLOWED_PAGES = new Set(['home', 'import', 'builder', 'recommendations', 'vacancies']);
-const HOST = getDefaultHost(); // гарантируем поиск по нужному сайту (по умолчанию Казахстан)
+const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies']);
+const HOST = getDefaultHost(); // поиск по нужному сайту (по умолчанию Казахстан)
 
 /* ========================== Вспомогательные хелперы ========================== */
 
@@ -108,9 +108,8 @@ function roleFromEducation(eduItem) {
 
 // Текст роли из профиля (опыт → цель → образование → скиллы → summary)
 function deriveDesiredRole(profile) {
-  // 0) Явно заданная цель (включая поле из конструктора резюме)
   const explicit =
-    profile?.position ||                      // ← Желаемая должность
+    profile?.position ||
     profile?.desiredRole ||
     profile?.desiredPosition ||
     profile?.targetRole ||
@@ -118,12 +117,10 @@ function deriveDesiredRole(profile) {
     '';
   if (explicit) return String(explicit).trim();
 
-  // 1) Последняя должность из опыта
   const latest = pickLatestExperience(profile);
   const role = latest?.position || latest?.title || latest?.role || '';
   if (role) return String(role).trim();
 
-  // 2) Если опыта нет — роль по последнему образованию
   const edus = Array.isArray(profile?.education) ? profile.education : [];
   if (edus.length) {
     const scored = edus.map((e, i) => {
@@ -137,11 +134,9 @@ function deriveDesiredRole(profile) {
     if (eduRole) return eduRole;
   }
 
-  // 3) Скиллы
   const skills = (profile?.skills || []).map(String).filter(Boolean);
   if (skills.length) return skills.slice(0, 3).join(' ');
 
-  // 4) Резерв — кусок summary
   const sum = String(profile?.summary || '').trim();
   if (sum) return sum.split(/\s+/).slice(0, 3).join(' ');
 
@@ -176,6 +171,30 @@ function prettyExp(aiExp) {
   return 'любой';
 }
 
+// Проверка «резюме достаточно заполнено, чтобы делать персональные рекомендации»
+function normalizeText(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim();
+}
+function hasProfileForRecs(p = {}) {
+  const summaryOk = normalizeText(p.summary).length >= 20;
+  const skillsOk  = Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3;
+  const expOk     = Array.isArray(p.experience) && p.experience.some(
+    e => normalizeText(e?.title || e?.position || e?.company || e?.description).length >= 5
+  );
+  const eduOk     = Array.isArray(p.education) && p.education.some(
+    e => normalizeText(e?.degree || e?.major || e?.institution).length >= 3
+  );
+  return summaryOk || skillsOk || expOk || eduOk;
+}
+function missingProfileSections(p = {}) {
+  const miss = [];
+  if (!(Array.isArray(p.experience) && p.experience.length)) miss.push('Опыт работы');
+  if (!(Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3)) miss.push('Навыки');
+  if (!(Array.isArray(p.education) && p.education.length)) miss.push('Образование');
+  if (!(normalizeText(p.summary).length >= 20)) miss.push('О себе');
+  return miss;
+}
+
 /* ========================== Компонент поиска города (только KZ) ========================== */
 
 function CitySelect({ value, onChange }) {
@@ -192,7 +211,7 @@ function CitySelect({ value, onChange }) {
     setLoading(true);
     (async () => {
       try {
-        const areas = await fetchAreas(HOST); // ← используем текущий host (Казахстан)
+        const areas = await fetchAreas(HOST); // используем текущий host (Казахстан)
         if (cancelled) return;
 
         // Фильтруем только Казахстан
@@ -302,11 +321,11 @@ const AIResumeBuilder = () => {
   const [vacancies, setVacancies] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // рекомендации
+  // рекомендации (реальные)
   const [recommendations, setRecommendations] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Санитизируем ?page=... (например, после OAuth-редиректа)
+  // Санитизируем ?page=... (если вдруг прилипло в URL)
   useEffect(() => {
     const url = new URL(window.location.href);
     const p = url.searchParams.get('page');
@@ -321,14 +340,48 @@ const AIResumeBuilder = () => {
     { id: 3, title: 'Data Analyst', company: 'Analytics Pro', salary: '220,000 – 280,000 ₸', location: 'Алматы', experience: 'Junior', description: 'Анализ данных и подготовка отчётов', skills: ['Python', 'SQL', 'Excel', 'Power BI'] }
   ];
 
-  // Простая «AI»-генерация рекомендаций (заглушка)
-  const generateRecommendations = () => {
+  // Реальная генерация рекомендаций с привязкой к резюме
+  const generateRecommendations = async () => {
+    // Если профиль пустой — ничего не генерируем, пусть UI покажет подсказку
+    if (!hasProfileForRecs(profile)) {
+      setRecommendations(null);
+      setIsGenerating(false);
+      return;
+    }
+
     setIsGenerating(true);
-    const t = setTimeout(() => {
+    try {
+      const city = (profile?.location || '').trim();
+      const rec = await fetchRecommendations(profile, { city });
+
+      const professions = (rec?.roles || rec?.professions || [])
+        .map(r => (typeof r === 'string' ? r : (r?.title || '')))
+        .filter(Boolean);
+
+      const skillsToLearn = (rec?.growSkills || rec?.skillsToGrow || [])
+        .map(s => (typeof s === 'string' ? s : (s?.name || '')))
+        .filter(Boolean);
+
+      const courses = (rec?.courses || []).map(c => ({
+        name: [c?.provider, c?.title].filter(Boolean).join(' — '),
+        duration: c?.duration || '',
+        url: c?.url || c?.link || ''
+      }));
+
+      const matchScore = Number(rec?.marketFitScore ?? rec?.marketScore ?? 0);
+
+      setRecommendations({
+        professions: professions.slice(0, 6),
+        skillsToLearn: skillsToLearn.slice(0, 10),
+        courses: courses.slice(0, 10),
+        matchScore: isNaN(matchScore) ? 0 : Math.max(0, Math.min(100, matchScore)),
+        debug: rec?.debug || null,
+      });
+    } catch (e) {
+      // Если профиль непустой, но бэкенд не ответил — лёгкий фолбэк
       const userSkills = (profile.skills || []).map(s => String(s).toLowerCase());
       const hasDev = userSkills.some(s => ['react', 'javascript', 'python', 'java'].includes(s));
       const hasDesign = userSkills.some(s => ['figma', 'photoshop', 'design'].includes(s));
-
       setRecommendations({
         professions: hasDev
           ? ['Frontend Developer', 'Full-Stack Developer', 'Software Engineer']
@@ -341,20 +394,20 @@ const AIResumeBuilder = () => {
           ? ['User Research', 'Interaction Design', 'Design Systems']
           : ['Agile', 'Data Analysis', 'Digital Marketing'],
         courses: [
-          { name: 'Coursera — React Специализация', duration: '3 месяца' },
-          { name: 'Udemy — Complete Web Development', duration: '2 месяца' },
-          { name: 'Stepik — Python для начинающих', duration: '1 месяц' }
+          { name: 'Coursera — React Специализация', duration: '3 месяца', url: '' },
+          { name: 'Udemy — Complete Web Development', duration: '2 месяца', url: '' },
+          { name: 'Stepik — Python для начинающих', duration: '1 месяц', url: '' }
         ],
-        matchScore: 75
+        matchScore: 62
       });
+    } finally {
       setIsGenerating(false);
-    }, 600);
-    return () => clearTimeout(t);
+    }
   };
 
   return (
     <div className="font-sans">
-      {/* Глобальное меню (единственное) */}
+      {/* Глобальное меню */}
       <nav className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
@@ -399,12 +452,8 @@ const AIResumeBuilder = () => {
       {currentPage === 'home' && (
         <HomePage
           onCreate={() => setCurrentPage('builder')}
-          onImport={() => setCurrentPage('import')}
+          onFindJobs={() => setCurrentPage('vacancies')}
         />
-      )}
-
-      {currentPage === 'import' && (
-        <ImportPage onBack={() => setCurrentPage('home')} />
       )}
 
       {currentPage === 'builder' && (
@@ -426,6 +475,7 @@ const AIResumeBuilder = () => {
           onFindVacancies={() => setCurrentPage('vacancies')}
           onImproveResume={() => setCurrentPage('builder')}
           setSearchQuery={setSearchQuery}
+          profile={profile}
         />
       )}
 
@@ -437,7 +487,7 @@ const AIResumeBuilder = () => {
           vacancies={vacancies}
           setVacancies={setVacancies}
           mockVacancies={mockVacancies}
-          profile={profile}                // <-- привязали профиль
+          profile={profile}
         />
       )}
 
@@ -485,7 +535,7 @@ const AIResumeBuilder = () => {
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
             <p>© 2025 AI Resume Builder. Все права защищены.</p>
-            <p className="mt-2">Интеграция с HeadHunter API</p>
+            <p className="mt-2">Интеграция с HeadHunter для поиска вакансий и отклика через сайт HH</p>
           </div>
         </div>
       </footer>
@@ -497,7 +547,7 @@ export default AIResumeBuilder;
 
 /* ========================== Вспомогательные страницы ========================== */
 
-function HomePage({ onCreate, onImport }) {
+function HomePage({ onCreate, onFindJobs }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="max-w-6xl mx-auto px-4 py-12">
@@ -524,11 +574,11 @@ function HomePage({ onCreate, onImport }) {
               Создать резюме
             </button>
             <button
-              onClick={onImport}
+              onClick={onFindJobs}
               className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
             >
-              <Download size={20} />
-              Импорт из HH
+              <Briefcase size={20} />
+              Найти вакансии
             </button>
           </div>
         </div>
@@ -550,7 +600,7 @@ function HomePage({ onCreate, onImport }) {
             </div>
             <h3 className="text-xl font-bold mb-2">Поиск вакансий</h3>
             <p className="text-gray-600">
-              Интеграция с HeadHunter для поиска подходящих вакансий на основе вашего профиля
+              Интеграция с HeadHunter для поиска подходящих вакансий. Отклик — на странице HH.
             </p>
           </div>
 
@@ -569,46 +619,6 @@ function HomePage({ onCreate, onImport }) {
   );
 }
 
-function ImportPage({ onBack }) {
-  return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-4xl mx-auto px-4">
-        <button
-          onClick={onBack}
-          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
-        >
-          ← Назад
-        </button>
-
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h2 className="text-3xl font-bold mb-6">Импорт резюме из HeadHunter</h2>
-
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center mb-6">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Download className="text-blue-600" size={32} />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Подключите HeadHunter</h3>
-            <p className="text-gray-600 mb-6">
-              Авторизуйтесь через HeadHunter, чтобы импортировать ваше существующее резюме
-            </p>
-            <button
-              onClick={() => startHHOAuth(HOST)}
-              className="px-6 py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
-            >
-              Войти через HeadHunter
-            </button>
-          </div>
-
-          <div className="text-sm text-gray-500">
-            <p className="mb-2">🔒 Ваши данные в безопасности</p>
-            <p>Мы используем OAuth 2.0 и не храним ваш пароль от HeadHunter</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function RecommendationsPage({
   onBack,
   recommendations,
@@ -616,14 +626,16 @@ function RecommendationsPage({
   generateRecommendations,
   onFindVacancies,
   onImproveResume,
-  setSearchQuery
+  setSearchQuery,
+  profile
 }) {
+  const profileOk = hasProfileForRecs(profile);
+  const missing = profileOk ? [] : missingProfileSections(profile);
+
   useEffect(() => {
-    if (!recommendations) {
-      const cleanup = generateRecommendations();
-      return cleanup;
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!recommendations && profileOk) generateRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileOk]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -646,98 +658,140 @@ function RecommendationsPage({
             </div>
           </div>
 
-          {isGenerating ? (
-            <div className="text-center py-12">
-              <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-gray-600">Анализируем ваш профиль...</p>
-            </div>
-          ) : recommendations && (
-            <div className="space-y-8">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold">Оценка соответствия рынку</h3>
-                  <div className="text-3xl font-bold text-blue-600">{recommendations.matchScore}%</div>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-4">
-                  <div
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 h-4 rounded-full transition-all"
-                    style={{ width: `${recommendations.matchScore}%` }}
-                  />
-                </div>
+          {/* Если профиль пустой — аккуратная подсказка вместо рекомендаций */}
+          {!profileOk && (
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50 p-6">
+              <div className="text-lg font-semibold mb-2">
+                Рекомендации появятся после анализа вашего резюме
               </div>
-
-              <div>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Briefcase className="text-blue-600" />
-                  Рекомендуемые профессии
-                </h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {recommendations.professions.map((profession, idx) => (
-                    <div key={idx} className="border rounded-lg p-4 hover:shadow-md transition">
-                      <h4 className="font-semibold mb-2">{profession}</h4>
-                      <button
-                        onClick={() => {
-                          setSearchQuery(profession);
-                          onFindVacancies();
-                        }}
-                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        Найти вакансии <ExternalLink size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              <p className="text-gray-700 mb-4">
+                Заполните основные разделы резюме — и мы подберём подходящие профессии,
+                навыки для развития и курсы. Рекомендуем начать с разделов:
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                {missing.map((m) => (
+                  <span key={m} className="px-3 py-1 rounded-full bg-white/70 border text-sm">{m}</span>
+                ))}
               </div>
-
-              <div>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <TrendingUp className="text-green-600" />
-                  Навыки для развития
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {recommendations.skillsToLearn.map((skill, idx) => (
-                    <span key={idx} className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <BookOpen className="text-purple-600" />
-                  Рекомендуемые курсы
-                </h3>
-                <div className="space-y-3">
-                  {recommendations.courses.map((course, idx) => (
-                    <div key={idx} className="border rounded-lg p-4 flex justify-between items-center hover:shadow-md transition">
-                      <div>
-                        <h4 className="font-semibold">{course.name}</h4>
-                        <p className="text-sm text-gray-600">Длительность: {course.duration}</p>
-                      </div>
-                      <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">
-                        Подробнее
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <button
-                  onClick={onFindVacancies}
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
-                >
-                  Найти вакансии
-                </button>
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={onImproveResume}
-                  className="flex-1 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
                 >
-                  Улучшить резюме
+                  Заполнить резюме
+                </button>
+                <button
+                  onClick={onFindVacancies}
+                  className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                >
+                  Посмотреть вакансии
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Иначе — нормальный экран рекомендаций */}
+          {profileOk && (
+            <>
+              {isGenerating ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-600">Анализируем ваш профиль...</p>
+                </div>
+              ) : recommendations && (
+                <div className="space-y-8">
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-bold">Оценка соответствия рынку</h3>
+                      <div className="text-3xl font-bold text-blue-600">{recommendations.matchScore}%</div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-4">
+                      <div
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 h-4 rounded-full transition-all"
+                        style={{ width: `${recommendations.matchScore}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Briefcase className="text-blue-600" />
+                      Рекомендуемые профессии
+                    </h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {recommendations.professions.map((profession, idx) => (
+                        <div key={idx} className="border rounded-lg p-4 hover:shadow-md transition">
+                          <h4 className="font-semibold mb-2">{profession}</h4>
+                          <button
+                            onClick={() => {
+                              setSearchQuery(profession);
+                              onFindVacancies();
+                            }}
+                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            Найти вакансии <ExternalLink size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <TrendingUp className="text-green-600" />
+                      Навыки для развития
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {recommendations.skillsToLearn.map((skill, idx) => (
+                        <span key={idx} className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <BookOpen className="text-purple-600" />
+                      Рекомендуемые курсы
+                    </h3>
+                    <div className="space-y-3">
+                      {recommendations.courses.map((course, idx) => (
+                        <div key={idx} className="border rounded-lg p-4 flex justify-between items-center hover:shadow-md transition">
+                          <div>
+                            <h4 className="font-semibold">{course.name}</h4>
+                            {course.duration ? (
+                              <p className="text-sm text-gray-600">Длительность: {course.duration}</p>
+                            ) : null}
+                          </div>
+                          <button
+                            onClick={() => course.url && window.open(course.url, '_blank')}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+                          >
+                            Подробнее
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={onFindVacancies}
+                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                    >
+                      Найти вакансии
+                    </button>
+                    <button
+                      onClick={onImproveResume}
+                      className="flex-1 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                    >
+                      Улучшить резюме
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -752,7 +806,7 @@ function VacanciesPage({
   vacancies,
   setVacancies,
   mockVacancies,
-  profile, // <-- получили профиль
+  profile, // получили профиль
 }) {
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -764,7 +818,7 @@ function VacanciesPage({
   const [aiError, setAiError] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const aiAskedRef = useRef(false);
-  const aiAutoAppliedRef = useRef(false); // ← чтобы автоприменить только один раз
+  const aiAutoAppliedRef = useRef(false); // чтобы автоприменить только один раз
 
   // Пагинация
   const [page, setPage] = useState(0);
@@ -795,21 +849,18 @@ function VacanciesPage({
     const next = { ...filters };
     let changed = false;
 
-    // Город -> profile.location
     const city = (profile?.location || '').trim();
     if (city && city !== next.location) {
       next.location = city;
       changed = true;
     }
 
-    // Опыт HH-код
     const cat = calcExperienceCategory(profile);
     if (cat && cat !== next.experience) {
       next.experience = cat;
       changed = true;
     }
 
-    // Текст запроса: должность из опыта/образования/скиллов
     const q = deriveQueryFromProfile(profile);
     if (q && q !== searchQuery) {
       setSearchQuery(q);
@@ -842,7 +893,6 @@ function VacanciesPage({
     (async () => {
       try {
         const s = await inferSearchFromProfile(profile, { lang: 'ru' });
-        // ожидаем структуру: { role, city, skills:[], experience, confidence, search:{...} }
         if (s && (s.role || s.city || (s.skills || []).length)) {
           setAiSuggestion(s);
         }
@@ -854,7 +904,7 @@ function VacanciesPage({
     })();
   }, [useProfile, profile]);
 
-  // Автоприменение ИИ-подсказки, если пользователь сам ещё не вводил запрос
+  // Автоприменение ИИ-подсказки
   useEffect(() => {
     if (!useProfile) return;
     if (aiAutoAppliedRef.current) return;
@@ -863,7 +913,6 @@ function VacanciesPage({
     const userTyped = Boolean((searchQuery || '').trim());
     const conf = typeof aiSuggestion.confidence === 'number' ? aiSuggestion.confidence : 0;
     if (!userTyped && conf >= 0.5) {
-      // применим и больше не будем авто-переопределять
       if (aiSuggestion.role) setSearchQuery(aiSuggestion.role);
       setFilters((f) => ({
         ...f,
@@ -904,7 +953,7 @@ function VacanciesPage({
   const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
 
   useEffect(() => {
-    if (blocked) return;           // только что словили 429 — подождём
+    if (blocked) return;
     if (inFlightRef.current) return;
 
     const myId = ++reqIdRef.current;
@@ -912,26 +961,24 @@ function VacanciesPage({
     setLoading(true);
     setError('');
 
-    // Нормализуем параметры и собираем запрос
     const exp = (filters.experience === 'none') ? 'noExperience' : (filters.experience || '');
     const salaryNum = filters.salary ? String(filters.salary).replace(/\D/g, '') : undefined;
 
     const params = {
       text: (debouncedSearch || '').trim(),
-      experience: exp,                  // HH ждёт noExperience | between1And3 | between3And6 | moreThan6
+      experience: exp,
       salary: salaryNum,
-      city: filters.location || undefined, // BFF превратит строку в area
-      host: HOST,                       // ← только выбранный сайт (по умолчанию hh.kz)
+      city: filters.location || undefined,
+      host: HOST,
       page,
       per_page: perPage,
     };
 
     (async () => {
       try {
-        // используем «умный» поиск (авто areaId по городу, KZ-хост)
         const data = await searchJobsSmart(params);
 
-        if (reqIdRef.current !== myId) return; // устаревший ответ
+        if (reqIdRef.current !== myId) return;
 
         const mapped = (data?.items || []).map((v) => ({
           id: v.id,
@@ -960,7 +1007,7 @@ function VacanciesPage({
         if (isHttpError(e)) {
           const status = e.status || 0;
           if (status === 429) {
-            const serverRetry = Number(e?.body?.retry_after || 0); // если BFF пробросил
+            const serverRetry = Number(e?.body?.retry_after || 0);
             const retryMs = serverRetry ? serverRetry * 1000 : 3000;
             setRetryAfter(Date.now() + retryMs);
             setError(`HeadHunter ограничил частоту запросов. Повтор через ~${Math.ceil(retryMs / 1000)} сек.`);
@@ -1014,7 +1061,6 @@ function VacanciesPage({
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <h2 className="text-3xl font-bold mb-6">Поиск вакансий</h2>
 
-          {/* ===== Баннер подсказки ИИ из резюме ===== */}
           {(aiLoading || aiSuggestion || aiError) && (
             <div className="mb-6 rounded-xl p-5 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
               <div className="flex items-start justify-between gap-4">
@@ -1101,7 +1147,6 @@ function VacanciesPage({
             </div>
           )}
 
-          {/* Баннер про блокировку после 429 */}
           {blocked && (
             <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
               HeadHunter временно ограничил частоту запросов. Подождите, пожалуйста,&nbsp;
@@ -1238,16 +1283,13 @@ function VacanciesPage({
                   ))}
                 </div>
 
+                {/* Оставляем только одну кнопку «Откликнуться на HH» */}
                 <div className="flex gap-3">
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                    Откликнуться
-                  </button>
                   <button
                     onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank')}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                   >
-                    <ExternalLink size={16} />
-                    Открыть на HH
+                    Откликнуться на HH
                   </button>
                 </div>
               </div>
@@ -1262,8 +1304,6 @@ function VacanciesPage({
             </div>
           )}
         </div>
-
-        {/* ❌ Баннер подписки на алерты полностью удалён по вашему запросу */}
       </div>
     </div>
   );

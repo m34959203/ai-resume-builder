@@ -1,5 +1,5 @@
 // src/services/bff.js
-// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс).
+// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
 // ✓ Казахстан по умолчанию (VITE_FORCE_KZ=1): host=hh.kz, area=корень "Казахстан", подсказки только по КЗ.
 // ✓ Связка "резюме → поиск": авто areaId по городу, дефолт на корень КЗ при отсутствии города/area.
 // ✓ GET-dedupe, таймауты, кэш areas с TTL, корректная сериализация JSON в POST.
@@ -562,6 +562,54 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: { texts, lang, mode },
+    noDedupe: true,
+  });
+}
+
+/* -------------------- AI: рекомендации (анализ профиля) -------------------- */
+
+/**
+ * Новый плоский контракт: /api/recommendations/analyze
+ * Возвращает:
+ *  { marketFitScore:number, roles:[{title,vacancies,hhQuery,topSkills[]}], growSkills:[{name,demand}], courses:[...], debug? }
+ * opts: { areaId?: string|number, city?: string } — если указан city и нет areaId, будет авто-резолв в areaId
+ */
+export async function fetchRecommendations(profile, opts = {}) {
+  let areaId = opts.areaId ?? null;
+
+  // Удобный бонус: если передали город — попробуем найти areaId
+  if (!areaId && opts.city) {
+    const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
+    if (resolved?.id) areaId = resolved.id;
+  }
+
+  return safeFetchJSON('/recommendations/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { profile, areaId: areaId ?? null },
+    noDedupe: true,
+  });
+}
+
+/**
+ * Старый контракт (совместимость): /api/recommendations/generate -> { ok, data }
+ * data содержит marketScore, professions, skillsToGrow, courses, debug и т.п.
+ */
+export async function generateRecommendations(profile, opts = {}) {
+  return safeFetchJSON('/recommendations/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { profile, areaId: opts.areaId ?? null },
+    noDedupe: true,
+  });
+}
+
+/** Улучшение профиля: /api/recommendations/improve -> { ok, updated, changes } */
+export async function improveProfileAI(profile) {
+  return safeFetchJSON('/recommendations/improve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { profile },
     noDedupe: true,
   });
 }

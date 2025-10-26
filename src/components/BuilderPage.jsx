@@ -858,7 +858,7 @@ function BuilderPage({
                       label="Учебное заведение *"
                       value={newEducation.institution}
                       onChange={(e) => setNewEducation((p) => ({ ...p, institution: e.target.value }))}
-                      placeholder="КазНУ им. аль-Фараби"
+                      placeholder="Жезказганский университет имени О.А. Байконурова"
                     />
                   </div>
 

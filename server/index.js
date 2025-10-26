@@ -4,10 +4,9 @@
 /*
  * HeadHunter BFF / Proxy (Express)
  * - CORS и redirect из ENV
- * - OAuth (login/callback/refresh/logout) через безопасные cookie
  * - Поиск вакансий (host=hh.kz|hh.ru, area по городу/areaId, опыт, salary=KZT)
  * - Кеш справочников, rate-limit, helmet, morgan, compression
- * - Дополнительно: /api/hh/me, passthrough(+auth)
+ * - Дополнительно: passthrough к HH
  * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
  * - /api/ai/infer-search — эвристика/LLM
  * - /api/recommendations — AI рекомендации и улучшение резюме
@@ -40,13 +39,8 @@ const {
   NODE_ENV = 'development',
 
   FRONT_ORIGINS,
-  FRONT_REDIRECT_URL,
 
-  HH_CLIENT_ID,
-  HH_CLIENT_SECRET,
-  HH_REDIRECT_URI,
-
-  HH_OAUTH_HOST = 'https://hh.kz',
+  HH_OAUTH_HOST = 'https://hh.kz', // больше не используется, но оставим для совместимости
   HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
   HH_HOST = 'hh.kz',
 
@@ -300,14 +294,13 @@ function salaryToText(sal) {
   return 'по договорённости';
 }
 
-// Нормализация вакансии под фронт (без <highlighttext>)
+// Нормализация вакансии под фронт
 function normalizeVacancy(v) {
   const parts = [];
   if (v?.snippet?.responsibility) parts.push(stripTags(v.snippet.responsibility));
   if (v?.snippet?.requirement)   parts.push(stripTags(v.snippet.requirement));
   const desc = parts.join('\n').trim();
 
-  // простые ключевые слова
   const kw = new Set();
   const sourceText = `${v?.name || ''} ${v?.snippet?.requirement || ''} ${v?.snippet?.responsibility || ''}`;
   const tokens = sourceText
@@ -383,7 +376,7 @@ function putCache(key, value) {
 
 /* -------- RateLimit -------- */
 app.use(
-  ['/api/hh', '/api/auth', '/api/polish', '/api/ai', '/api/recommendations'],
+  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations'],
   rateLimit({
     windowMs: 60 * 1000,
     max: 60,
@@ -391,104 +384,6 @@ app.use(
     legacyHeaders: false,
   })
 );
-
-/* -------- OAuth ---------- */
-app.get('/api/auth/hh/login', (req, res) => {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: HH_CLIENT_ID || '',
-    redirect_uri: HH_REDIRECT_URI || '',
-  });
-  res.redirect(`${HH_OAUTH_HOST}/oauth/authorize?${params.toString()}`);
-});
-
-app.get('/api/auth/hh/callback', async (req, res) => {
-  try {
-    const code = req.query.code;
-    if (!code) return res.status(400).send('Missing authorization code');
-
-    const body = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: HH_CLIENT_ID || '',
-      client_secret: HH_CLIENT_SECRET || '',
-      code,
-      redirect_uri: HH_REDIRECT_URI || '',
-    });
-
-    const r = await fetchWithTimeout(`${HH_OAUTH_HOST}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (!r.ok) return res.status(r.status).send(await r.text());
-    const tokens = await r.json();
-
-    res.cookie('hh_access', tokens.access_token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 1000 });
-    if (tokens.refresh_token) {
-      res.cookie('hh_refresh', tokens.refresh_token, {
-        ...COOKIE_OPTS,
-        maxAge: 30 * 24 * 3600 * 1000,
-      });
-    }
-
-    const redirect = FRONT_REDIRECT_URL || 'http://localhost:5173/?auth=ok';
-    res.redirect(redirect);
-  } catch (err) {
-    console.error('[oauth callback]', err);
-    res.status(500).send('OAuth exchange failed');
-  }
-});
-
-app.post('/api/auth/hh/refresh', async (req, res) => {
-  try {
-    const refresh = req.cookies.hh_refresh;
-    if (!refresh) return res.status(401).json({ error: 'no_refresh_cookie' });
-
-    const body = new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: HH_CLIENT_ID || '',
-      client_secret: HH_CLIENT_SECRET || '',
-      refresh_token: refresh,
-    });
-
-    const r = await fetchWithTimeout(`${HH_OAUTH_HOST}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (!r.ok) return res.status(r.status).send(await r.text());
-    const data = await r.json();
-
-    res.cookie('hh_access', data.access_token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 1000 });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[oauth refresh]', err);
-    res.status(500).json({ error: 'refresh_failed' });
-  }
-});
-
-app.post('/api/auth/hh/logout', (req, res) => {
-  res.clearCookie('hh_access', COOKIE_OPTS);
-  res.clearCookie('hh_refresh', COOKIE_OPTS);
-  res.json({ ok: true });
-});
-
-/* -------- Вспомог.: /me ---------- */
-app.get('/api/hh/me', async (req, res) => {
-  try {
-    const access = req.cookies.hh_access;
-    if (!access) return res.status(401).json({ error: 'no_access_cookie' });
-
-    const { ok, status, data } = await fetchJSON(`${HH_API}/me`, {
-      headers: { Authorization: `Bearer ${access}` },
-    });
-    if (!ok) return res.status(status).json({ error: 'hh_me_failed', details: data });
-    res.json(data);
-  } catch (e) {
-    console.error('[me]', e);
-    res.status(500).json({ error: 'me_failed', message: String(e.message || e) });
-  }
-});
 
 /* -------- Бизнес-роуты ---------- */
 app.get('/api/hh/jobs/search', async (req, res) => {
@@ -651,14 +546,6 @@ app.get('/api/hh/dictionaries', async (req, res) => {
   const params = new URLSearchParams(req.query);
   const url = `${HH_API}/dictionaries?${params.toString()}`;
   return passthrough(url, req, res);
-});
-
-app.get('/api/hh/my/vacancies', async (req, res) => {
-  const access = req.cookies.hh_access;
-  if (!access) return res.status(401).json({ error: 'no_access_cookie' });
-  const params = new URLSearchParams({ only_my: 'true' });
-  const url = `${HH_API}/vacancies?${params.toString()}`;
-  await passthrough(url, req, res, { Authorization: `Bearer ${access}` });
 });
 
 /* -------- AI: мягкая посадка -------- */
@@ -833,14 +720,11 @@ app.get('/', (req, res) => {
       ' - /api/version',
       ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5',
       ' - /api/hh/areas?host=hh.kz',
-      ' - /api/hh/me',
       ' - /api/polish   (POST {text, lang, mode})',
       ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
       ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
       ' - /api/recommendations/generate   (POST {profile})',
       ' - /api/recommendations/improve    (POST {profile})',
-      'OAuth:',
-      ' - /api/auth/hh/login',
     ].join('\n')
   );
 });
