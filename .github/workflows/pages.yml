@@ -30,20 +30,35 @@ jobs:
             package-lock.json
             **/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      # Обход бага npm с optional deps для Rollup на Linux
-      - name: Work around npm optional-deps bug (Rollup)
+      # 1) Генерируем lock под Linux (не ставит node_modules)
+      - name: Regenerate lockfile for Linux
         if: runner.os == 'Linux'
-        run: npm i -D @rollup/rollup-linux-x64-gnu@^4 --no-save
+        run: |
+          rm -f package-lock.json
+          npm i --package-lock-only --no-audit --no-fund
 
+      # 2) Чистая установка строго по linux-lock'у
+      - name: Clean install (npm ci)
+        run: |
+          rm -rf node_modules
+          npm ci
+
+      # 3) Подстраховка: убедимся, что подтянулся бинарник Rollup для Linux
+      - name: Ensure Rollup Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          npm ls @rollup/rollup-linux-x64-gnu || npm i -D @rollup/rollup-linux-x64-gnu@^4 --no-save
+          npm ls @rollup/rollup-linux-x64-gnu
+
+      # 4) Сборка
       - name: Build
         run: npm run build
 
+      # SPA-роутинг: копируем index.html → 404.html
       - name: Create 404.html for SPA routing
         run: cp dist/index.html dist/404.html
 
+      # Настройка Pages и загрузка артефакта
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
