@@ -30,15 +30,37 @@ jobs:
             package-lock.json
             **/package-lock.json
 
-      # Критично: пересобираем зависимости под Linux (исправляем баг npm/rollup)
-      - name: Clean install for Linux (fix Rollup optional deps)
+      # 1) Ставим зависимости: сначала пробуем детерминированно (ci),
+      #    если вдруг падает — делаем чистую установку.
+      - name: Install deps (prefer ci, fallback to install)
         run: |
-          rm -rf node_modules package-lock.json
-          npm i --no-audit --no-fund
+          set -e
+          npm config set optional true
+          if npm ci; then
+            echo "npm ci OK"
+          else
+            echo "npm ci failed -> cleaning and running npm i"
+            rm -rf node_modules package-lock.json
+            npm i --no-audit --no-fund
+          fi
 
+      # 2) Гарантируем наличие нативного бинарника Rollup для Linux.
+      - name: Ensure Rollup Linux native binary
+        if: runner.os == 'Linux'
+        run: |
+          if npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1; then
+            echo "Rollup native binary is present."
+          else
+            echo "Installing @rollup/rollup-linux-x64-gnu..."
+            npm i -D @rollup/rollup-linux-x64-gnu@^4 --no-save
+            npm ls @rollup/rollup-linux-x64-gnu
+          fi
+
+      # 3) Билдим
       - name: Build
         run: npm run build
 
+      # 4) SPA-роутинг для GitHub Pages
       - name: Create 404.html for SPA routing
         run: cp dist/index.html dist/404.html
 
