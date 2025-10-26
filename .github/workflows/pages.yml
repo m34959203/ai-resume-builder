@@ -30,37 +30,27 @@ jobs:
             package-lock.json
             **/package-lock.json
 
-      # 1) Ставим зависимости: сначала пробуем детерминированно (ci),
-      #    если вдруг падает — делаем чистую установку.
-      - name: Install deps (prefer ci, fallback to install)
+      # Устанавливаем зависимости так, чтобы optional deps точно подтянулись
+      - name: Install deps (include optional)
         run: |
-          set -e
-          npm config set optional true
-          if npm ci; then
-            echo "npm ci OK"
+          rm -rf node_modules
+          if [ -f package-lock.json ]; then
+            # пробуем детерминированно
+            npm ci --include=optional || (rm -f package-lock.json && npm i --include=optional --no-audit --no-fund)
           else
-            echo "npm ci failed -> cleaning and running npm i"
-            rm -rf node_modules package-lock.json
-            npm i --no-audit --no-fund
+            npm i --include=optional --no-audit --no-fund
           fi
 
-      # 2) Гарантируем наличие нативного бинарника Rollup для Linux.
+      # Гарантируем наличие нативного бинарника Rollup для Linux
       - name: Ensure Rollup Linux native binary
         if: runner.os == 'Linux'
         run: |
-          if npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1; then
-            echo "Rollup native binary is present."
-          else
-            echo "Installing @rollup/rollup-linux-x64-gnu..."
-            npm i -D @rollup/rollup-linux-x64-gnu@^4 --no-save
-            npm ls @rollup/rollup-linux-x64-gnu
-          fi
+          npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1 || npm i -D @rollup/rollup-linux-x64-gnu@^4 --no-save
+          npm ls @rollup/rollup-linux-x64-gnu
 
-      # 3) Билдим
       - name: Build
         run: npm run build
 
-      # 4) SPA-роутинг для GitHub Pages
       - name: Create 404.html for SPA routing
         run: cp dist/index.html dist/404.html
 
