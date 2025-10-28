@@ -654,7 +654,7 @@ function RecommendationsPage({
             </div>
             <div>
               <h2 className="text-3xl font-bold">AI Рекомендации</h2>
-              <p className="text-gray-600">Персональные советы на основе вашего профиля</p>
+              <p className="text-gray-600">Персональные советы на основе вашего резюме</p>
             </div>
           </div>
 
@@ -961,14 +961,26 @@ function VacanciesPage({
     setLoading(true);
     setError('');
 
-    const exp = (filters.experience === 'none') ? 'noExperience' : (filters.experience || '');
+    // 👇 ФОЛЛБЭКИ: никогда не отправляем пустой запрос в BFF
+    const inferredRole   = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
+    const inferredCity   = aiSuggestion?.city || (profile?.location || '');
+    const inferredExp    = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
+
+    const typedText      = (debouncedSearch || '').trim();
+    const chosenCity     = (filters.location || '').trim();
+    const chosenExp      = (filters.experience || '').trim();
+
+    const effectiveText  = typedText || inferredRole || 'разработчик';
+    const effectiveCity  = chosenCity || inferredCity || undefined;
+    const effectiveExp   = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
+
     const salaryNum = filters.salary ? String(filters.salary).replace(/\D/g, '') : undefined;
 
     const params = {
-      text: (debouncedSearch || '').trim(),
-      experience: exp,
+      text: effectiveText,
+      experience: effectiveExp || undefined,
       salary: salaryNum,
-      city: filters.location || undefined,
+      city: effectiveCity,
       host: HOST,
       page,
       per_page: perPage,
@@ -1043,7 +1055,7 @@ function VacanciesPage({
     })();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked]);
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // 👈 учитываем aiSuggestion
 
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
