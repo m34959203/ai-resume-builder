@@ -8,12 +8,8 @@ const router = express.Router();
 let buildRecommendationsExt = null;
 let improveProfileExt = null;
 let getCoursesExt = null;
-try {
-  ({ buildRecommendations: buildRecommendationsExt, improveProfile: improveProfileExt } = require('../services/recommender'));
-} catch {}
-try {
-  ({ getCourses: getCoursesExt } = require('../services/courseAggregator'));
-} catch {}
+try { ({ buildRecommendations: buildRecommendationsExt, improveProfile: improveProfileExt } = require('../services/recommender')); } catch {}
+try { ({ getCourses: getCoursesExt } = require('../services/courseAggregator')); } catch {}
 
 /* ================================== ENV & CONSTANTS ==================================== */
 const HH_HOST = (process.env.HH_HOST || 'hh.kz').trim();
@@ -28,7 +24,7 @@ const DETAIL_CONCURRENCY = Math.max(2, Number(process.env.RECS_DETAIL_CONCURRENC
 const FETCH_TIMEOUT_MS = Math.max(3000, Number(process.env.RECS_FETCH_TIMEOUT_MS || 15000));
 
 /* ==================================== SMALL CACHE ======================================= */
-const _cache = new Map(); // key -> { exp, data }
+const _cache = new Map();
 function cacheGet(key) {
   const it = _cache.get(key);
   if (!it) return null;
@@ -56,15 +52,13 @@ function withTimeout(promiseFactory, ms = FETCH_TIMEOUT_MS) {
   return promiseFactory(ctrl.signal).finally(() => clearTimeout(t));
 }
 
-/** JSON fetch с ретраями (429/5xx) и Retry-After */
+/** JSON fetch с ретраями и поддержкой Retry-After */
 async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 } = {}) {
   const doFetch = async (signal) => {
     const res = await fetch(url, { method, headers: hhHeaders(headers), body, signal });
     const text = await res.text();
     let data = text;
-    try {
-      if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null;
-    } catch {}
+    try { if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null; } catch {}
     return { ok: res.ok, status: res.status, data, headers: res.headers };
   };
 
@@ -287,7 +281,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const userBucket = expBucket(userYears);
   const roles = guessRoles(profile);
 
-  // 1) Поиск вакансий по ролям
   const roleStats = [];
   const allVacancyIds = [];
 
@@ -309,7 +302,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     roleStats.push({ role, count: ids.length, ids: ids.slice(0, VACANCY_SAMPLE_PER_ROLE) });
   }
 
-  // 2) Детали вакансий (ограничим конкурентность)
   const skillFreq = new Map();
   const expScores = [];
   const rolesAgg = [];
@@ -349,7 +341,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     });
   }
 
-  // 3) Общий спрос + GAP
   const topDemand = [...skillFreq.entries()]
     .sort((a,b)=>b[1]-a[1]).slice(0,20)
     .map(([name,freq])=>({ name, freq }));
@@ -362,7 +353,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     gaps = adv.map(n => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
   }
 
-  // 4) Курсы
   let courses = gaps.slice(0,3).flatMap(g => courseLinks(g.name));
   if (typeof getCoursesExt === 'function') {
     try {
@@ -371,7 +361,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     } catch (e) { console.warn('[courses/ext]', e?.message || e); }
   }
 
-  // 5) Оценка соответствия
   const demandSet = new Set(topDemand.map(s=>s.name));
   const overlap = mySkills.filter(s => demandSet.has(s)).length;
   const fitSkills = topDemand.length ? (overlap / topDemand.length) : 0;
@@ -461,8 +450,6 @@ function fallbackImprove(profile = {}) {
 }
 
 /* ========================================== ROUTES ====================================== */
-
-// POST /api/recommendations/generate
 router.post('/generate', async (req, res) => {
   try {
     const profile = req.body?.profile || {};
@@ -488,7 +475,6 @@ router.post('/generate', async (req, res) => {
   }
 });
 
-// POST /api/recommendations/analyze
 router.post('/analyze', async (req, res) => {
   try {
     const profile = req.body?.profile || {};
@@ -504,7 +490,6 @@ router.post('/analyze', async (req, res) => {
   }
 });
 
-// POST /api/recommendations/improve
 router.post('/improve', async (req, res) => {
   try {
     const profile = req.body?.profile || {};
