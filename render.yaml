@@ -1,4 +1,4 @@
-# render.yaml — положи в корень репозитория
+# render.yaml — корень репозитория
 services:
   - type: web
     name: ai-resume-bff
@@ -55,9 +55,8 @@ services:
       - key: OPENROUTER_TITLE
         value: "AI Resume Builder"
 
-  - type: static
+  - type: static_site
     name: ai-resume-frontend
-    # фронт — в корне репозитория
     rootDir: .
     buildCommand: "npm ci && npm run build"
     staticPublishPath: "dist"
@@ -77,3 +76,8 @@ services:
         value: "12000"
       - key: VITE_AREAS_TTL_MS
         value: "21600000"
+    # SPA-роутинг сразу в blueprint
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"
