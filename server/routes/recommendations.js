@@ -19,40 +19,33 @@ const USER_AGENT = process.env.HH_USER_AGENT || 'AI-Resume-Builder/1.0 (+github.
 const SAMPLE_PAGES = Math.max(1, Number(process.env.RECS_SAMPLE_PAGES || 2));
 const PER_PAGE = Math.max(1, Number(process.env.RECS_PER_PAGE || 50));
 const VACANCY_SAMPLE_PER_ROLE = Math.max(1, Number(process.env.RECS_VACANCY_SAMPLE_PER_ROLE || 30));
-const CACHE_TTL_MS = Number(process.env.RECS_CACHE_TTL_MS || 3 * 60 * 1000);
+const CACHE_TTL_MS = Number(process.env.RECS_CACHE_TTL_MS || 180000);
 const DETAIL_CONCURRENCY = Math.max(2, Number(process.env.RECS_DETAIL_CONCURRENCY || 6));
 const FETCH_TIMEOUT_MS = Math.max(3000, Number(process.env.RECS_FETCH_TIMEOUT_MS || 15000));
 
 /* ==================================== SMALL CACHE ======================================= */
 const _cache = new Map();
-function cacheGet(key) {
-  const it = _cache.get(key);
+const cacheGet = (k) => {
+  const it = _cache.get(k);
   if (!it) return null;
-  if (it.exp < Date.now()) { _cache.delete(key); return null; }
+  if (it.exp < Date.now()) { _cache.delete(k); return null; }
   return it.data;
-}
-function cacheSet(key, data, ttl = CACHE_TTL_MS) {
-  _cache.set(key, { exp: Date.now() + ttl, data });
-}
+};
+const cacheSet = (k, v, ttl = CACHE_TTL_MS) => _cache.set(k, { exp: Date.now() + ttl, data: v });
 
 /* ===================================== FETCH HELPERS ==================================== */
-function hhHeaders(extra = {}) {
-  return {
-    'User-Agent': USER_AGENT,
-    'HH-User-Agent': USER_AGENT,
-    'Accept': 'application/json',
-    'Accept-Language': 'ru',
-    ...extra,
-  };
-}
-
-function withTimeout(promiseFactory, ms = FETCH_TIMEOUT_MS) {
+const hhHeaders = (extra = {}) => ({
+  'User-Agent': USER_AGENT,
+  'HH-User-Agent': USER_AGENT,
+  'Accept': 'application/json',
+  'Accept-Language': 'ru',
+  ...extra,
+});
+function withTimeout(pf, ms = FETCH_TIMEOUT_MS) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error('timeout')), ms);
-  return promiseFactory(ctrl.signal).finally(() => clearTimeout(t));
+  return pf(ctrl.signal).finally(() => clearTimeout(t));
 }
-
-/** JSON fetch с ретраями и поддержкой Retry-After */
 async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 } = {}) {
   const doFetch = async (signal) => {
     const res = await fetch(url, { method, headers: hhHeaders(headers), body, signal });
@@ -61,20 +54,15 @@ async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 
     try { if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null; } catch {}
     return { ok: res.ok, status: res.status, data, headers: res.headers };
   };
-
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       const r = await withTimeout((signal) => doFetch(signal), FETCH_TIMEOUT_MS);
       if (r.ok) return r;
-
-      const status = r.status;
       const retryAfter = Number(r.headers?.get?.('Retry-After') || 0);
-      const shouldRetry = (status === 429 || (status >= 500 && status < 600)) && attempt < retries;
-
+      const shouldRetry = (r.status === 429 || (r.status >= 500 && r.status < 600)) && attempt < retries;
       if (!shouldRetry) return r;
-
       const delay = retryAfter > 0 ? retryAfter * 1000 : Math.min(3000, 400 * Math.pow(2, attempt));
       await new Promise((res) => setTimeout(res, delay));
       attempt += 1;
@@ -85,7 +73,6 @@ async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 
     }
   }
 }
-
 async function getJsonCached(url) {
   const hit = cacheGet(url);
   if (hit) return hit;
@@ -94,7 +81,6 @@ async function getJsonCached(url) {
   cacheSet(url, data);
   return data;
 }
-
 async function hhSearchVacancies({ text, area, page = 0, per_page = PER_PAGE, host = HH_HOST }) {
   const u = new URL(`${HH_API}/vacancies`);
   if (text) u.searchParams.set('text', text);
@@ -104,10 +90,8 @@ async function hhSearchVacancies({ text, area, page = 0, per_page = PER_PAGE, ho
   if (host) u.searchParams.set('host', host);
   return getJsonCached(u.toString());
 }
-
 async function hhGetVacancy(id) {
-  const url = `${HH_API}/vacancies/${encodeURIComponent(id)}`;
-  return getJsonCached(url);
+  return getJsonCached(`${HH_API}/vacancies/${encodeURIComponent(id)}`);
 }
 
 /* ============================== NORMALIZATION & HEURISTICS ============================== */
@@ -118,7 +102,6 @@ const SKILL_LEXICON = [
   'JavaScript','TypeScript','HTML','CSS','Sass','React','Redux','Node.js','Express','Git','REST','GraphQL','Testing','Webpack','Vite',
   'Figma','UI/UX','Digital Marketing','SEO','SMM','Google Analytics','Copywriting',
 ];
-
 const CANON = {
   js: 'javascript', javascript: 'javascript',
   'react.js': 'react', react: 'react',
@@ -128,8 +111,7 @@ const CANON = {
   redux: 'redux', webpack: 'webpack', vite: 'vite',
   python: 'python', pandas: 'pandas', numpy: 'numpy',
   powerbi: 'power bi', 'power bi': 'power bi', tableau: 'tableau', excel: 'excel',
-  sql: 'sql',
-  jira: 'jira', confluence: 'confluence',
+  sql: 'sql', jira: 'jira', confluence: 'confluence',
   graphql: 'graphql', rest: 'rest',
   'ui/ux': 'ui/ux', 'ux/ui': 'ui/ux',
   'a/b testing': 'a/b testing', testing: 'testing',
@@ -139,7 +121,6 @@ const CANON = {
   'risk management': 'risk management', 'stakeholder management': 'stakeholder management',
   'digital marketing': 'digital marketing', seo: 'seo', smm: 'smm',
 };
-
 const ROLE_PATTERNS = [
   { title: 'Project Manager',      rx: /(project\s*manager|руководитель\s*проектов|менеджер\s*проекта|pm)/i },
   { title: 'Business Analyst',     rx: /(business\s*analyst|бизнес[-\s]?аналитик)/i },
@@ -148,7 +129,7 @@ const ROLE_PATTERNS = [
   { title: 'Frontend Developer',   rx: /(frontend|react|javascript\s*developer)/i },
   { title: 'Product Manager',      rx: /(product\s*manager|продакт)/i },
   { title: 'QA Engineer',          rx: /(qa|тестировщик|quality\s*assurance)/i },
-};
+]; // ← ВАЖНО: массив закрыт
 
 const ADVANCED_BY_ROLE = {
   'Frontend Developer': ['Accessibility', 'Performance', 'GraphQL', 'Testing'],
@@ -161,10 +142,7 @@ const ADVANCED_BY_ROLE = {
 function normalizeSkills(profile) {
   const base = (Array.isArray(profile?.skills) ? profile.skills : [])
     .flatMap((s) => String(s || '').split(/[,/;|]+/))
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => s.toLowerCase());
-
+    .map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase());
   const text = [
     String(profile.summary || ''),
     ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) =>
@@ -174,28 +152,20 @@ function normalizeSkills(profile) {
       [e.degree, e.major, e.specialization].map((x) => String(x || '')).join(' ')
     ),
   ].join(' ').toLowerCase();
-
   const extra = SKILL_LEXICON.map((s) => s.toLowerCase()).filter((sk) => text.includes(sk));
-  const canon = new Set();
-  [...base, ...extra].forEach((raw) => {
-    const k = CANON[raw] || raw;
-    if (k) canon.add(k);
-  });
-  return Array.from(canon);
+  const out = new Set();
+  [...base, ...extra].forEach((raw) => { const k = CANON[raw] || raw; if (k) out.add(k); });
+  return Array.from(out);
 }
 
 function guessRoles(profile) {
   const hay = [
-    String(profile.targetTitle || ''),
-    String(profile.desiredRole || ''),
-    String(profile.position || ''),
+    String(profile.targetTitle || ''), String(profile.desiredRole || ''), String(profile.position || ''),
     String(profile.summary || ''),
     ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) => String(e.title || '')),
   ].join(' ');
-
   const roles = [];
   for (const r of ROLE_PATTERNS) if (r.rx.test(hay)) roles.push(r.title);
-
   const skills = normalizeSkills(profile);
   if (!roles.length) {
     if (skills.some((s) => ['react','javascript','typescript','html','css'].includes(s))) roles.push('Frontend Developer');
@@ -220,62 +190,45 @@ function yearsOfExperience(profile) {
   const years = ms / (1000 * 60 * 60 * 24 * 365);
   return Math.max(0, Math.round(years * 10) / 10);
 }
-
-function expBucket(years) {
-  if (years < 1) return 'noExperience';
-  if (years < 3) return 'between1And3';
-  if (years < 6) return 'between3And6';
-  return 'moreThan6';
-}
-
-function expMatchScore(userBucket, vacBucket) {
-  if (!vacBucket) return 0.5;
-  if (userBucket === vacBucket) return 1;
+const expBucket = (y) => (y < 1 ? 'noExperience' : y < 3 ? 'between1And3' : y < 6 ? 'between3And6' : 'moreThan6');
+const expMatchScore = (u, v) => {
+  if (!v) return 0.5;
+  if (u === v) return 1;
   const order = ['noExperience','between1And3','between3And6','moreThan6'];
-  const du = order.indexOf(userBucket);
-  const dv = order.indexOf(vacBucket);
-  const d = Math.abs(du - dv);
+  const d = Math.abs(order.indexOf(u) - order.indexOf(v));
   return d === 1 ? 0.7 : d === 2 ? 0.4 : 0.1;
-}
+};
 
-function extractSkillsFromVacancy(vac) {
+function extractSkillsFromVacancy(v) {
   const pool = [];
-  const ks = Array.isArray(vac.key_skills) ? vac.key_skills.map(k => k.name) : [];
+  const ks = Array.isArray(v.key_skills) ? v.key_skills.map(k => k.name) : [];
   pool.push(...ks);
-  const txt = [vac.name, vac.snippet?.requirement, vac.snippet?.responsibility, vac.description]
-    .map(x => String(x||'').toLowerCase()).join(' ');
+  const txt = [v.name, v.snippet?.requirement, v.snippet?.responsibility, v.description].map(x => String(x||'').toLowerCase()).join(' ');
   for (const s of SKILL_LEXICON) if (txt.includes(s.toLowerCase())) pool.push(s);
-
   const out = new Set();
-  pool.map(s => String(s||'').toLowerCase()).forEach(raw => {
-    const k = CANON[raw] || raw;
-    if (k) out.add(k);
-  });
+  pool.map(s => String(s||'').toLowerCase()).forEach(raw => { const k = CANON[raw] || raw; if (k) out.add(k); });
   return Array.from(out);
 }
 
 const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-function hhSearchUrl(role, areaId, host = HH_HOST) {
+const hhSearchUrl = (role, areaId, host = HH_HOST) => {
   const u = new URL(`https://${host}/search/vacancy`);
   u.searchParams.set('text', role);
   if (areaId) u.searchParams.set('area', String(areaId));
   return u.toString();
-}
-
-function courseLinks(skill) {
+};
+const courseLinks = (skill) => {
   const q = encodeURIComponent(skill);
   return [
     { provider: 'Coursera', title: `${capital(skill)} — специализации`, duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
     { provider: 'Udemy',    title: `${capital(skill)} — практические курсы`, duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
     { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,     duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
   ];
-}
+};
 
 /* =============================== CORE RECOMMENDATIONS ENGINE ============================ */
 async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const areaId = opts.areaId ?? null;
-
   const mySkills = normalizeSkills(profile);
   const userYears = yearsOfExperience(profile);
   const userBucket = expBucket(userYears);
@@ -309,7 +262,6 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   for (const r of roleStats) {
     const target = r.ids.slice();
     const details = [];
-
     const workers = Array.from({ length: Math.min(DETAIL_CONCURRENCY, target.length) }, async () => {
       while (target.length) {
         const id = target.shift();
@@ -328,23 +280,11 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
       const vb = v.experience?.id || null;
       expScores.push(expMatchScore(userBucket, vb));
     }
-    const topLocal = [...localSkills.entries()]
-      .sort((a,b)=>b[1]-a[1]).slice(0,5)
-      .map(([name,freq])=>({ name, freq }));
-
-    rolesAgg.push({
-      title: r.role,
-      vacancies: r.count,
-      hhQuery: r.role,
-      topSkills: topLocal,
-      url: hhSearchUrl(r.role, areaId, HH_HOST),
-    });
+    const topLocal = [...localSkills.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,freq])=>({ name, freq }));
+    rolesAgg.push({ title: r.role, vacancies: r.count, hhQuery: r.role, topSkills: topLocal, url: hhSearchUrl(r.role, areaId, HH_HOST) });
   }
 
-  const topDemand = [...skillFreq.entries()]
-    .sort((a,b)=>b[1]-a[1]).slice(0,20)
-    .map(([name,freq])=>({ name, freq }));
-
+  const topDemand = [...skillFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).map(([name,freq])=>({ name, freq }));
   const mySet = new Set(mySkills);
   let gaps = topDemand.filter(s => !mySet.has(s.name)).slice(0, 8);
   if (!gaps.length && rolesAgg.length) {
@@ -365,9 +305,7 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const overlap = mySkills.filter(s => demandSet.has(s)).length;
   const fitSkills = topDemand.length ? (overlap / topDemand.length) : 0;
   const fitExp = expScores.length ? (expScores.reduce((a,b)=>a+b,0)/expScores.length) : 0.5;
-  const roleHit = rolesAgg.some(r => r.vacancies > 50) ? 1
-                : rolesAgg.some(r => r.vacancies > 20) ? 0.7
-                : rolesAgg.some(r => r.vacancies > 5)  ? 0.4 : 0.2;
+  const roleHit = rolesAgg.some(r => r.vacancies > 50) ? 1 : rolesAgg.some(r => r.vacancies > 20) ? 0.7 : rolesAgg.some(r => r.vacancies > 5) ? 0.4 : 0.2;
 
   const scoreRaw = (fitSkills * 0.60 + fitExp * 0.25 + roleHit * 0.15) * 100;
   const marketFitScore = Math.max(10, Math.min(95, Math.round(scoreRaw)));
@@ -377,16 +315,12 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     marketScore: marketFitScore,
     roles: rolesAgg,
     professions: rolesAgg,
-    growSkills: (gaps.map(g => ({ name: g.name, demand: g.freq, gap: true }))),
+    growSkills: gaps.map(g => ({ name: g.name, demand: g.freq, gap: true })),
     skillsToGrow: gaps.map(g => capital(g.name)),
     courses,
     debug: {
-      skillsDetected: mySkills,
-      rolesGuessed: roles,
-      areaUsed: areaId,
-      sampleVacancies: Array.from(new Set(allVacancyIds)).length,
-      userYears,
-      host: HH_HOST,
+      skillsDetected: mySkills, rolesGuessed: roles, areaUsed: areaId,
+      sampleVacancies: Array.from(new Set(allVacancyIds)).length, userYears, host: HH_HOST,
     }
   };
 }
@@ -395,34 +329,22 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
 async function fallbackRecommendations(profile = {}) {
   const skills = normalizeSkills(profile);
   const professions = [];
-
-  if (skills.some(s => /react|javascript|typescript|html|css/.test(s))) {
-    professions.push({ title: 'Frontend Developer', vacancies: 0, hhQuery: 'Frontend Developer', topSkills: [], url: hhSearchUrl('Frontend Developer', null) });
-  }
-  if (skills.some(s => /python|django|flask|fastapi/.test(s))) {
-    professions.push({ title: 'Python Developer', vacancies: 0, hhQuery: 'Python Developer', topSkills: [], url: hhSearchUrl('Python Developer', null) });
-  }
-  if (skills.some(s => /sql|postgres|mysql|excel|data|pandas/.test(s))) {
-    professions.push({ title: 'Data Analyst', vacancies: 0, hhQuery: 'Data Analyst', topSkills: [], url: hhSearchUrl('Data Analyst', null) });
-  }
+  if (skills.some(s => /react|javascript|typescript|html|css/.test(s))) professions.push({ title: 'Frontend Developer', vacancies: 0, hhQuery: 'Frontend Developer', topSkills: [], url: hhSearchUrl('Frontend Developer', null) });
+  if (skills.some(s => /python|django|flask|fastapi/.test(s)))  professions.push({ title: 'Python Developer', vacancies: 0, hhQuery: 'Python Developer', topSkills: [], url: hhSearchUrl('Python Developer', null) });
+  if (skills.some(s => /sql|postgres|mysql|excel|data|pandas/.test(s))) professions.push({ title: 'Data Analyst', vacancies: 0, hhQuery: 'Data Analyst', topSkills: [], url: hhSearchUrl('Data Analyst', null) });
   if (!professions.length) {
     professions.push({ title: 'Business Analyst', vacancies: 0, hhQuery: 'Business Analyst', topSkills: [], url: hhSearchUrl('Business Analyst', null) });
     professions.push({ title: 'Project Manager',  vacancies: 0, hhQuery: 'Project Manager',  topSkills: [], url: hhSearchUrl('Project Manager',  null) });
   }
-
   let courses = [
-    { provider: 'Coursera', title: 'React Specialization',           duration: '3 месяца', url: 'https://www.coursera.org/' },
-    { provider: 'Udemy',    title: 'Complete Web Development',       duration: '2 месяца', url: 'https://www.udemy.com/' },
-    { provider: 'Stepik',   title: 'Python для начинающих',          duration: '1 месяц',  url: 'https://stepik.org/' },
+    { provider: 'Coursera', title: 'React Specialization', duration: '3 месяца', url: 'https://www.coursera.org/' },
+    { provider: 'Udemy', title: 'Complete Web Development', duration: '2 месяца', url: 'https://www.udemy.com/' },
+    { provider: 'Stepik', title: 'Python для начинающих', duration: '1 месяц', url: 'https://stepik.org/' },
   ];
   if (typeof getCoursesExt === 'function') {
     try { courses = await getCoursesExt(profile); } catch (e) { console.warn('[courses/fallback]', e?.message || e); }
   }
-
-  const basicGrow = skills.length
-    ? ['Communication','Presentation','Critical thinking']
-    : ['Agile','Data Analysis','Digital Marketing'];
-
+  const basicGrow = skills.length ? ['Communication','Presentation','Critical thinking'] : ['Agile','Data Analysis','Digital Marketing'];
   return {
     marketFitScore: 65,
     marketScore: 65,
@@ -434,17 +356,13 @@ async function fallbackRecommendations(profile = {}) {
     debug: { fallback: true }
   };
 }
-
 function fallbackImprove(profile = {}) {
   const uniq = (arr) => Array.from(new Set((arr || []).map(String).map(s => s.trim()).filter(Boolean)));
   const cap  = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const normalizedSkills = uniq(profile.skills).map(cap);
   const bullets = [];
   const txt = String(profile.summary || '').trim();
-  if (txt) {
-    txt.split(/[\n\.]+/).map(s => s.trim()).filter(Boolean)
-      .forEach(line => bullets.push(`• ${line}`));
-  }
+  if (txt) txt.split(/[\n\.]+/).map(s => s.trim()).filter(Boolean).forEach(line => bullets.push(`• ${line}`));
   const updated = { ...profile, skills: normalizedSkills, bullets, summary: txt || undefined };
   return { ok: true, updated, changes: { skillsCount: normalizedSkills.length, bulletsCount: bullets.length } };
 }
