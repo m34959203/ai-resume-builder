@@ -820,7 +820,9 @@ app.use((err, req, res, _next) => {
 });
 
 /* -------- Start -------- */
-app.listen(Number(PORT), () => {
-  console.log(`HH proxy listening on http://localhost:${PORT} (env: ${NODE_ENV})`);
+const port = Number(process.env.PORT) || Number(PORT) || 10000;
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ BFF running on 0.0.0.0:${port} (env: ${NODE_ENV})`);
   console.log('Allowed CORS:', ALLOWED.join(', '));
 });
