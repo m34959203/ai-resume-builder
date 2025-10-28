@@ -54,15 +54,14 @@ services:
       - key: OPENROUTER_TITLE
         value: AI Resume Builder
 
-  # Статический фронт как service с env: static
+  # Статический фронт как service с env: static (region и plan НЕ указываем)
   - type: web
     name: ai-resume-frontend
     rootDir: .
     env: static
+    autoDeploy: true
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
-    plan: free
-    region: frankfurt
     envVars:
       - key: VITE_APP_NAME
         value: AI Resume Builder
