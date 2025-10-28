@@ -248,6 +248,33 @@ export async function getHHMe(options = {}) {
   return safeFetchJSON('/hh/me', options);
 }
 
+/** Удобная проверка: есть ли авторизация на HH. */
+export async function hhIsAuthed() {
+  try {
+    const me = await getHHMe();
+    return !!(me && me.ok);
+  } catch {
+    return false;
+  }
+}
+
+/** Список резюме пользователя с HH. */
+export async function hhListResumes(options = {}) {
+  return safeFetchJSON('/hh/resumes', { method: 'GET', ...options });
+}
+
+/** Отправить отклик на вакансию. { vacancyId, resumeId?, message? } */
+export async function hhRespond({ vacancyId, resumeId, message = '' }, options = {}) {
+  if (!vacancyId) throw new Error('vacancyId is required');
+  return safeFetchJSON('/hh/respond', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { vacancy_id: vacancyId, resume_id: resumeId, message },
+    noDedupe: true,
+    ...options,
+  });
+}
+
 /* -------------------- СПРАВОЧНИКИ (areas) с кэшем -------------------- */
 
 const _AREAS_CACHE = new Map();    // key: host -> { at:number, data:any }
@@ -533,7 +560,7 @@ export async function inferSearchFromProfile(profile, { lang = 'ru', overrideMod
   const out = await safeFetchJSON(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: payload,               // сериализуется в safeFetchJSON
+    body: { ...payload },               // сериализуется в safeFetchJSON
     noDedupe: true,
   });
 

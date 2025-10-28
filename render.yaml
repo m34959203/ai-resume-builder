@@ -1,0 +1,79 @@
+# render.yaml — положи в корень репозитория
+services:
+  - type: web
+    name: ai-resume-bff
+    rootDir: server
+    env: node
+    buildCommand: "npm ci"
+    startCommand: "node index.js"
+    plan: free
+    region: frankfurt
+    autoDeploy: true
+    healthCheckPath: "/healthz"
+    envVars:
+      # ----- Node / App -----
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+      # ----- CORS / Front redirect -----
+      - key: FRONT_ORIGINS
+        value: "https://ai-resume-frontend.onrender.com"
+      - key: FRONT_REDIRECT_URL
+        value: "https://ai-resume-frontend.onrender.com/?page=home&auth=ok"
+
+      # ----- Cookies -----
+      - key: COOKIE_DOMAIN
+        value: ""
+      - key: COOKIE_SECURE
+        value: "true"
+
+      # ----- HeadHunter -----
+      - key: HH_HOST
+        value: "hh.kz"
+      - key: HH_OAUTH_HOST
+        value: "https://hh.kz"
+      - key: HH_CLIENT_ID
+        value: "RJSMB82V8R4SR7S6PUN9P529JES5D3U44V3QI9JI9KMKA4UB186O6ITOG9C941HQ"
+      - key: HH_CLIENT_SECRET
+        value: "G3KLD3ODB4OR7PQ9ONFOKLEH205V84L36ESL8P2JH9CRMVSC9NINI05EN8J6SFE2"
+      - key: HH_REDIRECT_URI
+        value: "https://ai-resume-bff.onrender.com/api/auth/hh/callback"
+      - key: HH_USER_AGENT
+        value: "AI Resume Builder/1.0 (youremail@domain)"
+
+      # ----- OpenRouter (free) -----
+      - key: OPENROUTER_API_KEY
+        value: "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"
+      - key: OPENROUTER_BASE_URL
+        value: "https://openrouter.ai/api/v1"
+      - key: OPENROUTER_MODEL
+        value: "deepseek/deepseek-r1:free"
+      - key: OPENROUTER_REFERER
+        value: "https://ai-resume-frontend.onrender.com"
+      - key: OPENROUTER_TITLE
+        value: "AI Resume Builder"
+
+  - type: static
+    name: ai-resume-frontend
+    # фронт — в корне репозитория
+    rootDir: .
+    buildCommand: "npm ci && npm run build"
+    staticPublishPath: "dist"
+    plan: free
+    region: frankfurt
+    envVars:
+      # ----- Vite client env -----
+      - key: VITE_APP_NAME
+        value: "AI Resume Builder"
+      - key: VITE_API_URL
+        value: "https://ai-resume-bff.onrender.com"
+      - key: VITE_API_PREFIX
+        value: "/api"
+      - key: VITE_USE_MOCKS
+        value: "false"
+      - key: VITE_API_TIMEOUT_MS
+        value: "12000"
+      - key: VITE_AREAS_TTL_MS
+        value: "21600000"

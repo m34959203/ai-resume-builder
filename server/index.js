@@ -10,6 +10,7 @@
  * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
  * - /api/ai/infer-search — эвристика/LLM
  * - /api/recommendations — AI рекомендации и улучшение резюме
+ * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
  * Требуется Node 18+
  */
 
@@ -37,10 +38,8 @@ const crypto = require('crypto');
 const {
   PORT = 8000,
   NODE_ENV = 'development',
-
   FRONT_ORIGINS,
 
-  HH_OAUTH_HOST = 'https://hh.kz', // больше не используется, но оставим для совместимости
   HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
   HH_HOST = 'hh.kz',
 
@@ -50,6 +49,9 @@ const {
   HH_TIMEOUT_MS = '15000',
   SEARCH_TTL_MS = '90000',
   SEARCH_STALE_MAX_MS = '900000',
+
+  // опционально — дефолтное резюме для /api/hh/respond
+  HH_RESUME_ID,
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
@@ -117,7 +119,6 @@ const COOKIE_OPTS =
     : baseCookieOpts;
 
 /* -------- Utils -------- */
-
 const HH_API = 'https://api.hh.ru';
 
 function bool(v) {
@@ -385,7 +386,7 @@ app.use(
   })
 );
 
-/* -------- Бизнес-роуты ---------- */
+/* -------- Поиск вакансий ---------- */
 app.get('/api/hh/jobs/search', async (req, res) => {
   try {
     const q = req.query;
@@ -548,7 +549,96 @@ app.get('/api/hh/dictionaries', async (req, res) => {
   return passthrough(url, req, res);
 });
 
-/* -------- AI: мягкая посадка -------- */
+/* -------- HH OAuth: me / resumes / respond -------- */
+function getHHAccessToken(req) {
+  const fromCookie = req.cookies?.hh_access_token;
+  const bearer = req.headers?.authorization;
+  if (fromCookie) return String(fromCookie);
+  if (bearer && /^Bearer\s+/i.test(bearer)) return bearer.replace(/^Bearer\s+/i, '').trim();
+  return null;
+}
+
+app.get('/api/hh/me', async (req, res) => {
+  const token = getHHAccessToken(req);
+  if (!token) return res.status(401).json({ ok: false, reason: 'no_token' });
+
+  const r = await fetchWithTimeout(`${HH_API}/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Accept-Language': 'ru',
+      'HH-User-Agent': HH_USER_AGENT,
+      'User-Agent': HH_USER_AGENT,
+    },
+  }).catch((e) => ({ _err: e }));
+
+  if (!r || r._err) return res.status(502).json({ ok: false, error: 'bad_gateway' });
+
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (!r.ok) return res.status(r.status).json({ ok: false, status: r.status, details: data || null });
+
+  res.json({ ok: true, me: { id: data?.id, email: data?.email, first_name: data?.first_name, last_name: data?.last_name } });
+});
+
+app.get('/api/hh/resumes', async (req, res) => {
+  const token = getHHAccessToken(req);
+  if (!token) return res.status(401).json({ error: 'not_authorized' });
+
+  const r = await fetchWithTimeout(`${HH_API}/resumes/mine`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Accept-Language': 'ru',
+      'HH-User-Agent': HH_USER_AGENT,
+      'User-Agent': HH_USER_AGENT,
+    },
+  }).catch((e) => ({ _err: e }));
+
+  if (!r || r._err) return res.status(502).json({ error: 'bad_gateway' });
+
+  const txt = await r.text();
+  let json = null;
+  try { json = txt ? JSON.parse(txt) : null; } catch {}
+  if (!r.ok) return res.status(r.status).json({ error: 'hh_error', details: json || txt || null });
+
+  res.json(json || { items: [] });
+});
+
+app.post('/api/hh/respond', async (req, res) => {
+  const token = getHHAccessToken(req);
+  if (!token) return res.status(401).json({ error: 'not_authorized' });
+
+  const { vacancy_id, resume_id, message = '' } = req.body || {};
+  const usedResumeId = resume_id || HH_RESUME_ID;
+
+  if (!vacancy_id) return res.status(400).json({ error: 'vacancy_id_required' });
+  if (!usedResumeId) return res.status(428).json({ error: 'resume_id_required' });
+
+  const r = await fetchWithTimeout(`${HH_API}/negotiations`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Accept-Language': 'ru',
+      'HH-User-Agent': HH_USER_AGENT,
+      'User-Agent': HH_USER_AGENT,
+    },
+    body: JSON.stringify({ vacancy_id, resume_id: usedResumeId, message }),
+  }).catch((e) => ({ _err: e }));
+
+  if (!r || r._err) return res.status(502).json({ error: 'bad_gateway' });
+
+  const txt = await r.text();
+  let json = null;
+  try { json = txt ? JSON.parse(txt) : null; } catch {}
+  if (!r.ok) return res.status(r.status).json({ error: 'hh_error', details: json || txt || null });
+
+  res.json({ ok: true, data: json });
+});
+
+/* -------- AI: мягкая посадка и рекомендации -------- */
 function calcYearsByExperience(profile = {}) {
   const items = Array.isArray(profile.experience) ? profile.experience : [];
   if (!items.length) return 0;
@@ -574,9 +664,7 @@ function deriveRoleFromProfile(profile = {}) {
   const items = Array.isArray(profile.experience) ? profile.experience : [];
   const latest = items[0] || items[items.length - 1] || null;
   const role = latest?.position || latest?.title || latest?.role || '';
-
   if (role) return String(role).trim();
-
   const skills = (profile.skills || []).map(String).filter(Boolean);
   if (skills.length) return skills.slice(0, 3).join(' ');
   const sum = String(profile?.summary || '').trim();
@@ -592,12 +680,10 @@ function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
   const role = deriveRoleFromProfile(profile);
   const years = calcYearsByExperience(profile);
   const exp = yearsToHHExp(years);
-
   const city =
     (profile.location && String(profile.location).trim()) ||
     (profile.city && String(profile.city).trim()) ||
     '';
-
   const skills = (Array.isArray(profile.skills) ? profile.skills : [])
     .map((s) => String(s).trim())
     .filter(Boolean)
@@ -610,13 +696,7 @@ function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
   c += Math.min(0.2, years / 10);
   const confidence = Math.max(0.3, Math.min(0.95, c));
 
-  return {
-    role,
-    city: normalizeCityName(city),
-    experience: exp,
-    skills,
-    confidence,
-  };
+  return { role, city: normalizeCityName(city), experience: exp, skills, confidence };
 }
 
 app.post('/api/polish', async (req, res) => {
@@ -695,7 +775,7 @@ app.post('/api/ai/infer-search', async (req, res) => {
   }
 });
 
-/* -------- AI Рекомендации / Улучшение резюме -------- */
+/* -------- AI Рекомендации -------- */
 app.use('/api/recommendations', require('./routes/recommendations'));
 
 /* -------- Health + misc -------- */
@@ -720,6 +800,9 @@ app.get('/', (req, res) => {
       ' - /api/version',
       ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5',
       ' - /api/hh/areas?host=hh.kz',
+      ' - /api/hh/me',
+      ' - /api/hh/resumes',
+      ' - POST /api/hh/respond { vacancy_id, resume_id?, message? }',
       ' - /api/polish   (POST {text, lang, mode})',
       ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
       ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
