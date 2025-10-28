@@ -84,4 +84,4 @@ services:
       # Гарантированный прокси всех /api/* на BFF (фикс 404 на фронте)
       - type: rewrite
         source: /api/*
-        destination: https://ai-resume-bff.onrender.com/api/$splat
+        destination: https://ai-resume-bff.onrender.com
