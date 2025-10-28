@@ -55,11 +55,11 @@ services:
       - key: OPENROUTER_TITLE
         value: "AI Resume Builder"
 
-  - type: static_site
-    name: ai-resume-frontend
+staticSites:
+  - name: ai-resume-frontend
     rootDir: .
     buildCommand: "npm ci && npm run build"
-    staticPublishPath: "dist"
+    publishPath: "dist"
     plan: free
     region: frankfurt
     envVars:
@@ -76,7 +76,6 @@ services:
         value: "12000"
       - key: VITE_AREAS_TTL_MS
         value: "21600000"
-    # SPA-роутинг сразу в blueprint
     routes:
       - type: rewrite
         source: "/*"
