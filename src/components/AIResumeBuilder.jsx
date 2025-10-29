@@ -825,7 +825,6 @@ function VacanciesPage({
   const [pages, setPages] = useState(0);
 
   // Блокировка после 429
-  - the:
   const [retryAfter, setRetryAfter] = useState(null);
   const blocked = retryAfter && Date.now() < retryAfter;
 
