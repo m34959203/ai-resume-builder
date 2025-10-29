@@ -382,7 +382,8 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     const q = req.query;
     const host = (q.host && String(q.host)) || HH_HOST;
 
-    const text   = q.text ? String(q.text).trim() : '';
+    // text делаем изменяемым, чтобы можно было подставить значение по умолчанию
+    let text   = q.text ? String(q.text).trim() : '';
     const city   = q.city ? String(q.city).trim() : '';
     const area   = q.area ? String(q.area).trim() : '';
     const exp    = normalizeExperience(q.experience ? String(q.experience) : '');
@@ -392,17 +393,13 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     const per_page = Math.min(Math.max(toInt(q.per_page, 20), 1), 100);
     const page     = Math.max(toInt(q.page, 0), 0);
 
-    const hasAnyFilter =
+    let hasAnyFilter =
       !!(text || city || area || exp || (salary && salary > 0) || only_with_salary);
 
+    // Если фильтры не заданы, делаем запрос со словом «разработчик» вместо возврата пустого списка
     if (!hasAnyFilter) {
-      return res.json({
-        found: 0,
-        page: 0,
-        pages: 0,
-        items: [],
-        debug: { reason: 'empty_query_skipped', host },
-      });
+      text = 'разработчик';
+      hasAnyFilter = true;
     }
 
     let areaId = area;
