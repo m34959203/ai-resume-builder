@@ -342,7 +342,6 @@ const AIResumeBuilder = () => {
 
   // Реальная генерация рекомендаций с привязкой к резюме
   const generateRecommendations = async () => {
-    // Если профиль пустой — ничего не генерируем, пусть UI покажет подсказку
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
       setIsGenerating(false);
@@ -378,7 +377,6 @@ const AIResumeBuilder = () => {
         debug: rec?.debug || null,
       });
     } catch (e) {
-      // Если профиль непустой, но бэкенд не ответил — лёгкий фолбэк
       const userSkills = (profile.skills || []).map(s => String(s).toLowerCase());
       const hasDev = userSkills.some(s => ['react', 'javascript', 'python', 'java'].includes(s));
       const hasDesign = userSkills.some(s => ['figma', 'photoshop', 'design'].includes(s));
@@ -961,7 +959,7 @@ function VacanciesPage({
     setLoading(true);
     setError('');
 
-    // 👇 ФОЛЛБЭКИ: никогда не отправляем пустой запрос в BFF
+    // ФОЛЛБЭКИ: никогда не отправляем пустой запрос в BFF
     const inferredRole   = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
     const inferredCity   = aiSuggestion?.city || (profile?.location || '');
     const inferredExp    = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
@@ -1055,7 +1053,7 @@ function VacanciesPage({
     })();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // 👈 учитываем aiSuggestion
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
 
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
