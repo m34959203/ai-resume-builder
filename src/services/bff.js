@@ -1,5 +1,7 @@
-// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
+// src/services/bff.js
 /* eslint-disable no-console */
+
+// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
 
 import { mockJobs, mockResumes } from './mocks';
 
@@ -38,9 +40,14 @@ function computeApiBase() {
 
 export const API_BASE = computeApiBase();
 
+/* -------------------- Константы -------------------- */
+
 const USE_MOCKS      = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
 const API_TIMEOUT_MS = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
 const HOST_DEFAULT   = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz').toLowerCase();
+console.log('[BFF] API_BASE =', API_BASE);
+console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
+
 const AREAS_TTL_MS   = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
 const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
 
@@ -60,7 +67,7 @@ function makeApiUrl(u) {
   const s = String(u);
 
   // Уже абсолютный?
-  if (/^https?:\/\//i.test(s)) return s;
+  if (/^https?:\/\/+/i.test(s)) return s;
 
   // Срежем дублирующий префикс /api — он уже есть в API_BASE
   let path = s;
@@ -434,7 +441,8 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 /* -------------------- ВАКАНСИИ -------------------- */
 
 export async function searchJobs(params = {}) {
-  const host = normalizeHost(params.host);
+  const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
+
 
   // Если не задано ни city, ни area — для hh.kz ограничим деревом Казахстана
   let area = params.area;
@@ -577,11 +585,13 @@ export async function improveProfileAI(profile) {
 /* -------------------- РЕЗЮМЕ ПОЛЬЗОВАТЕЛЯ -------------------- */
 
 export async function getUserResumes(options = {}) {
-  const data = await safeFetchJSON('/integrations/hh/resumes', options);
+  const data = await safeFetchJSON('/hh/resumes', { method: 'GET', ...options });
   if (data == null && USE_MOCKS) return [...mockResumes];
   return data;
 }
 
+// Этот маршрут может отсутствовать на вашем BFF — оставлен для совместимости, если появится.
+// Сейчас импорт из HH выполняется сервером напрямую после выбора резюме пользователем.
 export async function importResume(hhResumeId, options = {}) {
   return safeFetchJSON(`/profile/import/hh/${encodeURIComponent(hhResumeId)}`, {
     method: 'POST',
