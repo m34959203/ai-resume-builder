@@ -1,5 +1,5 @@
-// src/services/bff.js
 // Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
+/* eslint-disable no-console */
 
 import { mockJobs, mockResumes } from './mocks';
 
@@ -12,40 +12,40 @@ function env(key, def = '') {
 
 /**
  * Строим абсолютный BASE:
- *  - PROD: только VITE_API_URL или window.__API_URL__ (НЕТ фолбэка на localhost)
- *  - DEV (when localhost/127.0.0.1): http://localhost:8000
+ *  - если задан VITE_API_URL / window.__API_URL__ — используем его
+ *  - если фронт локально (localhost/127.0.0.1) — dev-фолбэк http://localhost:8000
+ *  - иначе — текущий origin (прокси/ингресс на одном домене)
  */
 function computeApiBase() {
   const prefixRaw = env('VITE_API_PREFIX', '/api').trim();
   const prefix = prefixRaw.startsWith('/') ? prefixRaw : `/${prefixRaw}`;
 
   const fromEnv = env('VITE_API_URL', '').trim();
-  const fromWindow = (typeof window !== 'undefined' && window.__API_URL__) ? String(window.__API_URL__).trim() : '';
+  const fromWindow =
+    typeof window !== 'undefined' && window.__API_URL__ ? String(window.__API_URL__).trim() : '';
 
-  // Если заданы явные URL — используем
   const chosen = fromEnv || fromWindow;
   if (chosen) return `${chosen.replace(/\/+$/, '')}${prefix}`;
 
-  // Если фронт крутится локально — дадим дев-фолбэк на localhost:8000
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
   if (isLocal) return `http://localhost:8000${prefix}`;
 
-  // В проде без явного API_URL — используем текущий origin (лучше, чем localhost)
-  // Это позволит прокси/ингрессу пробросить трафик, если они на одном домене.
-  const origin = (typeof window !== 'undefined' && window.location && window.location.origin) || '';
+  const origin =
+    (typeof window !== 'undefined' && window.location && window.location.origin) || '';
   return `${String(origin).replace(/\/+$/, '')}${prefix}`;
 }
 
 export const API_BASE = computeApiBase();
 
-const USE_MOCKS       = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
-const API_TIMEOUT_MS  = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
-const HOST_DEFAULT    = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz');
-const AREAS_TTL_MS    = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
-const FORCE_KZ        = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
+const USE_MOCKS      = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
+const API_TIMEOUT_MS = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
+const HOST_DEFAULT   = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz').toLowerCase();
+const AREAS_TTL_MS   = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
+const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
 
-// Склейка путей без двойных слэшей
+/* -------------------- Склейка URL и построение путей -------------------- */
+
 const join = (...parts) =>
   parts
     .map((p) => String(p || '').trim())
@@ -66,7 +66,7 @@ function makeApiUrl(u) {
   let path = s;
   if (path === '/api') path = '';
   else if (path.startsWith('/api/')) path = path.slice(5);
-  else if (path.startsWith('api/'))  path = path.slice(4);
+  else if (path.startsWith('api/')) path = path.slice(4);
 
   const base = API_BASE.replace(/\/$/, '');
   const tail = String(path).replace(/^\//, '');
@@ -92,11 +92,15 @@ const IN_FLIGHT = new Map(); // key: normalizedUrl -> Promise<any>
 
 function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const normalizedUrl = makeApiUrl(url);
+
+  // Если наружный signal уже передан — не навешиваем наш таймер
   if (options.signal) {
     return fetch(normalizedUrl, { credentials: 'include', ...options });
   }
+
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), timeoutMs);
+
   return fetch(normalizedUrl, { credentials: 'include', signal: controller.signal, ...options })
     .finally(() => clearTimeout(id));
 }
@@ -128,12 +132,11 @@ export async function safeFetchJSON(url, options = {}) {
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
 
   let body = options.body;
-  if (
-    body != null &&
-    typeof body === 'object' &&
-    !(body instanceof FormData) &&
-    (headers['Content-Type']?.includes('application/json') || headers['content-type']?.includes('application/json'))
-  ) {
+  const hasJsonHeader =
+    headers['Content-Type']?.includes('application/json') ||
+    headers['content-type']?.includes('application/json');
+
+  if (body != null && typeof body === 'object' && !(body instanceof FormData) && hasJsonHeader) {
     body = JSON.stringify(body);
   }
 
@@ -146,7 +149,9 @@ export async function safeFetchJSON(url, options = {}) {
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('Location');
       if (loc && typeof window !== 'undefined') window.location.href = loc;
-      throw new BFFHttpError(`Redirected ${res.status}`, { status: res.status, url: normalizedUrl, method, body: null });
+      throw new BFFHttpError(`Redirected ${res.status}`, {
+        status: res.status, url: normalizedUrl, method, body: null,
+      });
     }
 
     const payload = await parsePayload(res);
@@ -175,7 +180,7 @@ export async function safeFetchJSON(url, options = {}) {
   try {
     return await doFetch();
   } catch (err) {
-    const isAbort = (err?.name === 'AbortError') || /AbortError/i.test(err?.message || '');
+    const isAbort = err?.name === 'AbortError' || /AbortError/i.test(err?.message || '');
     if (isAbort) console.warn('[BFF] aborted:', normalizedUrl);
     else if (isHttpError(err)) console.warn('[BFF] http error:', err.status, err.url);
     else console.error('[BFF] request failed:', err?.message || err);
@@ -184,7 +189,8 @@ export async function safeFetchJSON(url, options = {}) {
   }
 }
 
-// Нормализация опыта
+/* -------------------- Нормализация опыта -------------------- */
+
 const EXP_MAP = {
   none: 'none',
   '0-1': '0-1',
@@ -270,9 +276,9 @@ export async function hhRespond({ vacancyId, resumeId, message = '' }, options =
 
 /* -------------------- СПРАВОЧНИКИ (areas) с кэшем -------------------- */
 
-const _AREAS_CACHE = new Map();    // key: host -> { at:number, data:any }
-const _AREAS_LOADING = new Map();  // key: host -> Promise<any>
-const _COUNTRY_ROOT_CACHE = new Map(); // key: host -> { id, name }
+const _AREAS_CACHE = new Map();       // host -> { at:number, data:any }
+const _AREAS_LOADING = new Map();     // host -> Promise<any>
+const _COUNTRY_ROOT_CACHE = new Map();// host -> { id, name }
 
 async function _loadAreasRaw(host = normalizeHost(), options = {}) {
   const h = normalizeHost(host);
@@ -283,8 +289,9 @@ async function _loadAreasRaw(host = normalizeHost(), options = {}) {
 async function getAreas(host = normalizeHost(), options = {}) {
   const h = normalizeHost(host);
   const now = Date.now();
+
   const cached = _AREAS_CACHE.get(h);
-  if (cached && (now - cached.at) < AREAS_TTL_MS) return cached.data;
+  if (cached && now - cached.at < AREAS_TTL_MS) return cached.data;
 
   if (_AREAS_LOADING.has(h)) return _AREAS_LOADING.get(h);
 
@@ -338,6 +345,8 @@ export async function resolveAreaId(cityName, host = normalizeHost()) {
   if (h === 'hh.kz') {
     const kz = await getCountryRoot(h, /казахстан/i);
     if (!kz) return null;
+
+    // ищем actual узел Казахстана в дереве
     const stackFind = [...tree];
     let kzNode = null;
     while (stackFind.length && !kzNode) {
@@ -427,6 +436,7 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host);
 
+  // Если не задано ни city, ни area — для hh.kz ограничим деревом Казахстана
   let area = params.area;
   if (!params.city && !area && host === 'hh.kz') {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);

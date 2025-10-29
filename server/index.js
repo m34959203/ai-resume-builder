@@ -8,10 +8,10 @@
  * - Кеш справочников, rate-limit, helmet, morgan, compression
  * - Дополнительно: passthrough к HH
  * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
- * - /api/ai/infer-search — эвристика/LLM
- * - /api/recommendations — AI рекомендации и улучшение резюме
+ * - /api/ai/infer-search — эвристика/LLM (опционально)
+ * - /api/recommendations — AI рекомендации/улучшение резюме (опционально)
  * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
- * Требуется Node 18+
+ * Требуется Node 18+ (встроенный fetch)
  */
 
 const path = require('path');
@@ -24,13 +24,13 @@ const fs = require('fs');
   if (!isRender) {
     const rootEnv = path.resolve(__dirname, '..', '.env');
     const localEnv = path.resolve(__dirname, '.env');
-    // Сначала корневой .env, потом локальный, и НИЧЕГО не переопределяем
+    // Сначала корневой .env, затем локальный, и НЕ override, чтобы не ломать Render
     require('dotenv').config({ path: rootEnv, override: false });
     require('dotenv').config({ path: localEnv, override: false });
   }
 })();
 
-/* ================================ IMPORTS ================================== */
+/* ================================== IMPORTS ================================= */
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -40,15 +40,16 @@ const morgan = require('morgan');
 const compression = require('compression');
 const crypto = require('crypto');
 
-/* ================================== ENV ==================================== */
+/* =================================== ENV ==================================== */
 const {
-  PORT,                                // Render задаёт, по умолчанию возьмём 10000 ниже
+  PORT,                                // Render задаёт автоматически, локально дефолт ниже
   NODE_ENV = (process.env.RENDER ? 'production' : 'development'),
-  FRONT_ORIGINS,
+  FRONT_ORIGINS,                        // через запятую: http://localhost:5173,https://resume1.kz
 
   HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
   HH_HOST = 'hh.kz',
 
+  // токены в cookies/Authorization
   COOKIE_DOMAIN,
   COOKIE_SECURE,
 
@@ -64,7 +65,7 @@ const isProd = NODE_ENV === 'production';
 const TIMEOUT_MS = Math.max(1000, Number(HH_TIMEOUT_MS) || 15000);
 const HH_API = 'https://api.hh.ru';
 
-/* ================================== APP ==================================== */
+/* ==================================== APP =================================== */
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '2mb' }));
@@ -89,7 +90,7 @@ app.use((req, res, next) => {
 morgan.token('id', (req) => req.id);
 app.use(morgan(isProd ? 'combined' : ':id :method :url :status :response-time ms'));
 
-/* ================================= CORS ==================================== */
+/* ================================== CORS ==================================== */
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -106,7 +107,8 @@ const ALLOWED = ORIGINS.length ? ORIGINS : defaultOrigins;
 
 const corsMw = cors({
   origin: (origin, cb) => {
-    if (!origin || ALLOWED.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);          // Postman/SSR
+    if (ALLOWED.includes(origin)) return cb(null, true);
     return cb(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
@@ -114,7 +116,7 @@ const corsMw = cors({
 app.use(corsMw);
 app.options('*', corsMw);
 
-/* ================================ UTILS ==================================== */
+/* ================================== UTILS =================================== */
 function bool(v) {
   if (typeof v === 'boolean') return v;
   if (v === undefined || v === null) return false;
@@ -126,7 +128,7 @@ const toInt = (v, def = 0) => {
   return Number.isFinite(n) ? n : def;
 };
 
-// fetch с таймаутом
+// fetch с таймаутом (Node 18+)
 async function fetchWithTimeout(resource, options = {}, ms = TIMEOUT_MS) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(new Error('Fetch timeout')), ms);
@@ -178,7 +180,7 @@ async function fetchJSONWithRetry(url, opts = {}, { retries = 2, minDelay = 400 
   }
 }
 
-/* ===== In-memory cache (areas, search) ===== */
+/* ========================== In-memory cache (areas, search) ================== */
 const cache = (() => {
   const m = new Map();
   return {
@@ -194,7 +196,7 @@ const cache = (() => {
   };
 })();
 
-/* ===== опыты ===== */
+/* =============================== Опыт (HH codes) ============================ */
 const EXP_MAP_IN = {
   none: 'noExperience',
   '0-1': 'noExperience',
@@ -209,7 +211,7 @@ function normalizeExperience(val) {
   return allowed.has(val) ? val : undefined;
 }
 
-/* ===== Алиасы городов и areaId ===== */
+/* ====================== Алиасы городов и поиск areaId ======================= */
 const cityAliases = {
   'нур-султан': 'астана',
   'астана': 'астана',
@@ -242,7 +244,7 @@ async function findAreaIdByCity(cityName, host) {
   return undefined;
 }
 
-/* =============================== Passthrough ================================ */
+/* ================================ Passthrough =============================== */
 async function passthrough(url, req, res, extraHeaders = {}) {
   try {
     const r = await fetchWithTimeout(url, {
@@ -258,7 +260,7 @@ async function passthrough(url, req, res, extraHeaders = {}) {
 
     res.status(r.status);
     r.headers.forEach((v, k) => {
-      if (k.toLowerCase() === 'content-encoding') return;
+      if (k.toLowerCase() === 'content-encoding') return; // не форсируем сжатие
       res.setHeader(k, v);
     });
     const buf = await r.arrayBuffer();
@@ -269,7 +271,7 @@ async function passthrough(url, req, res, extraHeaders = {}) {
   }
 }
 
-/* ====== утилиты по вакансиям ====== */
+/* ======================= Утилиты нормализации вакансий ====================== */
 const TAG_RE = /<\/?highlighttext[^>]*>/gi;
 const HTML_RE = /<[^>]+>/g;
 function stripTags(s) {
@@ -329,7 +331,7 @@ function normalizeVacancy(v) {
   };
 }
 
-/* ===== Короткий кэш поиска + коалесинг ===== */
+/* ============= Кэш поиска (fresh/stale) + коалесинг параллельных запросов === */
 const SEARCH_TTL = Math.max(5_000, Number(SEARCH_TTL_MS) || 90_000);
 const SEARCH_STALE_MAX = Math.max(30_000, Number(SEARCH_STALE_MAX_MS) || 900_000);
 const searchCache = new Map();      // key -> { at, value }
@@ -363,7 +365,7 @@ function putCache(key, value) {
   searchCache.set(key, { at: Date.now(), value });
 }
 
-/* ================================ RateLimit ================================= */
+/* =============================== RateLimit API ============================== */
 app.use(
   ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations'],
   rateLimit({
@@ -625,7 +627,7 @@ app.post('/api/hh/respond', async (req, res) => {
   res.json({ ok: true, data: json });
 });
 
-/* ===================== AI: эвристика и рекомендации ======================== */
+/* ===================== AI: эвристика и рекомендации (опционально) ========== */
 function calcYearsByExperience(profile = {}) {
   const items = Array.isArray(profile.experience) ? profile.experience : [];
   if (!items.length) return 0;
@@ -685,10 +687,16 @@ function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
   return { role, city: normalizeCityName(city), experience: exp, skills, confidence };
 }
 
+// /api/polish (если services/ai.js есть — используем, иначе безопасный фолбэк)
 app.post('/api/polish', async (req, res) => {
   const { text = '', lang = 'ru', mode = 'auto' } = req.body || {};
   try {
-    const { polishText } = await import('./services/ai.js').catch(() => ({}));
+    const aiPath = path.resolve(__dirname, 'services', 'ai.js');
+    const hasAI = fs.existsSync(aiPath);
+    if (!hasAI) {
+      return res.json({ corrected: String(text || ''), bullets: [], fallback: true });
+    }
+    const { polishText } = await import(aiPath).catch(() => ({}));
     if (typeof polishText !== 'function') {
       return res.json({ corrected: String(text || ''), bullets: [], fallback: true });
     }
@@ -703,7 +711,13 @@ app.post('/api/polish', async (req, res) => {
 app.post('/api/polish/batch', async (req, res) => {
   const { texts = [], lang = 'ru', mode = 'auto' } = req.body || {};
   try {
-    const { polishMany } = await import('./services/ai.js').catch(() => ({}));
+    const aiPath = path.resolve(__dirname, 'services', 'ai.js');
+    const hasAI = fs.existsSync(aiPath);
+    if (!hasAI) {
+      const arr = Array.isArray(texts) ? texts : [];
+      return res.json({ results: arr.map((t) => ({ corrected: String(t || ''), bullets: [], fallback: true })) });
+    }
+    const { polishMany } = await import(aiPath).catch(() => ({}));
     if (typeof polishMany !== 'function') {
       const arr = Array.isArray(texts) ? texts : [];
       return res.json({ results: arr.map((t) => ({ corrected: String(t || ''), bullets: [], fallback: true })) });
@@ -717,14 +731,18 @@ app.post('/api/polish/batch', async (req, res) => {
   }
 });
 
+// /api/ai/infer-search — LLM (если services/ai.js есть) или эвристика
 app.post('/api/ai/infer-search', async (req, res) => {
   try {
     const { profile = {}, lang = 'ru', overrideModel } = req.body || {};
     let out = null;
     try {
-      const mod = await import('./services/ai.js').catch(() => ({}));
-      if (typeof mod?.inferSearch === 'function') {
-        out = await mod.inferSearch(profile, { lang, overrideModel });
+      const aiPath = path.resolve(__dirname, 'services', 'ai.js');
+      if (fs.existsSync(aiPath)) {
+        const mod = await import(aiPath).catch(() => ({}));
+        if (typeof mod?.inferSearch === 'function') {
+          out = await mod.inferSearch(profile, { lang, overrideModel });
+        }
       }
     } catch (e) {
       console.warn('[ai/infer-search] LLM unavailable, using heuristic:', e?.message || e);
@@ -761,8 +779,17 @@ app.post('/api/ai/infer-search', async (req, res) => {
   }
 });
 
-/* ============================ AI Рекомендации ============================== */
-app.use('/api/recommendations', require('./routes/recommendations'));
+/* ============================ AI Рекомендации (опц.) ======================== */
+/** Подключаем, только если файл существует, чтобы избежать ошибки MODULE_NOT_FOUND */
+(() => {
+  const recPath = path.resolve(__dirname, 'routes', 'recommendations.js');
+  if (fs.existsSync(recPath)) {
+    app.use('/api/recommendations', require(recPath));
+    console.log('✓ /api/recommendations mounted');
+  } else {
+    console.log('∙ /api/recommendations skipped (routes/recommendations.js not found)');
+  }
+})();
 
 /* ============================== Health + misc =============================== */
 app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, time: new Date().toISOString() }));
@@ -798,15 +825,15 @@ app.get('/', (_req, res) => {
   );
 });
 
-/* ============================== Error handler ============================== */
+/* ============================== Error handler =============================== */
 app.use((err, _req, res, _next) => {
   console.error('[unhandled]', err);
   const status = err.status || 500;
   res.status(status).json({ error: 'unhandled', message: err.message || 'Internal error' });
 });
 
-/* ================================= Start =================================== */
-const port = Number(process.env.PORT) || 10000; // Render проставит PORT
+/* ================================== Start ================================== */
+const port = Number(PORT) || 10000; // Render проставит PORT, локально 10000
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`✅ BFF running on 0.0.0.0:${port} (env: ${NODE_ENV})`);
   console.log('Allowed CORS:', ALLOWED.length ? ALLOWED.join(', ') : '(none)');

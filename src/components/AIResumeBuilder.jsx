@@ -6,16 +6,16 @@ import {
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
 import {
-  searchJobsSmart,            // умный поиск (auto areaId + дефолтный host)
+  searchJobsSmart,
   isHttpError,
   fetchAreas,
-  inferSearchFromProfile,     // AI-инференс из резюме (через BFF)
-  getDefaultHost,             // дефолтный host (обычно 'hh.kz')
-  fetchRecommendations,       // реальные рекомендации из бэкенда
+  inferSearchFromProfile,
+  getDefaultHost,
+  fetchRecommendations,
 } from '../services/bff';
 
 const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies']);
-const HOST = getDefaultHost(); // поиск по нужному сайту (по умолчанию Казахстан)
+const HOST = getDefaultHost();
 
 /* ========================== Вспомогательные хелперы ========================== */
 
@@ -50,7 +50,7 @@ function pickLatestExperience(profile) {
   const scored = items.map((it, idx) => {
     const end = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']);
     const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
-    const endScore = end ? +end : Number.MAX_SAFE_INTEGER - idx; // «по сей день» > любых
+    const endScore = end ? +end : Number.MAX_SAFE_INTEGER - idx;
     const startScore = start ? +start : 0;
     return { it, endScore, startScore };
   });
@@ -211,7 +211,7 @@ function CitySelect({ value, onChange }) {
     setLoading(true);
     (async () => {
       try {
-        const areas = await fetchAreas(HOST); // используем текущий host (Казахстан)
+        const areas = await fetchAreas(HOST);
         if (cancelled) return;
 
         // Фильтруем только Казахстан
@@ -325,7 +325,7 @@ const AIResumeBuilder = () => {
   const [recommendations, setRecommendations] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Санитизируем ?page=... (если вдруг прилипло в URL)
+  // Санитизируем ?page=...
   useEffect(() => {
     const url = new URL(window.location.href);
     const p = url.searchParams.get('page');
@@ -804,7 +804,7 @@ function VacanciesPage({
   vacancies,
   setVacancies,
   mockVacancies,
-  profile, // получили профиль
+  profile,
 }) {
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -816,7 +816,7 @@ function VacanciesPage({
   const [aiError, setAiError] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const aiAskedRef = useRef(false);
-  const aiAutoAppliedRef = useRef(false); // чтобы автоприменить только один раз
+  const aiAutoAppliedRef = useRef(false);
 
   // Пагинация
   const [page, setPage] = useState(0);
@@ -825,6 +825,7 @@ function VacanciesPage({
   const [pages, setPages] = useState(0);
 
   // Блокировка после 429
+  the:
   const [retryAfter, setRetryAfter] = useState(null);
   const blocked = retryAfter && Date.now() < retryAfter;
 
@@ -832,14 +833,14 @@ function VacanciesPage({
   const [useProfile, setUseProfile] = useState(true);
   const appliedRef = useRef(false);
 
-  // Страховка от устаревших ответов (дедуп)
+  // Страховка от устаревших ответов
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
 
   // Если меняются входные фильтры — сбрасываем страницу
   useEffect(() => { setPage(0); }, [searchQuery, filters.location, filters.experience, filters.salary]);
 
-  // При включённом useProfile один раз подставляем значения из профиля (и при обновлении профиля)
+  // Подставляем значения из профиля
   useEffect(() => {
     if (!useProfile) return;
     if (appliedRef.current && !profile) return;
@@ -873,7 +874,7 @@ function VacanciesPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useProfile, profile]);
 
-  // AI-инференс подсказки из резюме — один раз при входе/обновлении профиля
+  // AI-инференс подсказки из резюме — один раз
   useEffect(() => {
     const hasProfileData =
       !!(profile?.summary && profile.summary.trim()) ||
@@ -942,7 +943,7 @@ function VacanciesPage({
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
-  // Дебаунсим ввод пользователя (и фильтры), чтобы не спамить HH
+  // Дебаунс
   const debouncedSearch = useDebouncedValue(searchQuery, 800);
   const filtersKey = useMemo(
     () => JSON.stringify({ location: filters.location, experience: filters.experience, salary: filters.salary }),
@@ -950,27 +951,28 @@ function VacanciesPage({
   );
   const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
 
+  // ---- ОБНОВЛЁННЫЙ ОБРАБОТЧИК ПОИСКА ----
   useEffect(() => {
     if (blocked) return;
-    if (inFlightRef.current) return;
 
+    const ac = new AbortController();
     const myId = ++reqIdRef.current;
     inFlightRef.current = true;
     setLoading(true);
     setError('');
 
-    // ФОЛЛБЭКИ: никогда не отправляем пустой запрос в BFF
-    const inferredRole   = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
-    const inferredCity   = aiSuggestion?.city || (profile?.location || '');
-    const inferredExp    = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
+    // Фолбэки: не шлём пустое
+    const inferredRole = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
+    const inferredCity = aiSuggestion?.city || (profile?.location || '');
+    const inferredExp  = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
 
-    const typedText      = (debouncedSearch || '').trim();
-    const chosenCity     = (filters.location || '').trim();
-    const chosenExp      = (filters.experience || '').trim();
+    const typedText    = (debouncedSearch || '').trim();
+    const chosenCity   = (filters.location || '').trim();
+    const chosenExp    = (filters.experience || '').trim();
 
-    const effectiveText  = typedText || inferredRole || 'разработчик';
-    const effectiveCity  = chosenCity || inferredCity || undefined;
-    const effectiveExp   = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
+    const effectiveText = typedText || inferredRole || 'разработчик';
+    const effectiveCity = chosenCity || inferredCity || undefined;
+    const effectiveExp  = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
 
     const salaryNum = filters.salary ? String(filters.salary).replace(/\D/g, '') : undefined;
 
@@ -982,6 +984,8 @@ function VacanciesPage({
       host: HOST,
       page,
       per_page: perPage,
+      signal: ac.signal,
+      timeoutMs: 12000,
     };
 
     (async () => {
@@ -990,32 +994,51 @@ function VacanciesPage({
 
         if (reqIdRef.current !== myId) return;
 
-        const mapped = (data?.items || []).map((v) => ({
-          id: v.id,
-          title: v.title || v.name,
-          company: (typeof v.employer === 'string' ? v.employer : (v.employer?.name || '')),
-          salary: typeof v.salary === 'string'
-            ? v.salary
-            : v.salary_raw
-              ? [v.salary_raw.from, v.salary_raw.to].filter(Boolean).join('–') + ' ' + (v.salary_raw.currency || '')
-              : 'по договорённости',
-          location: v.area?.name || v.area || '',
-          experience: v.experience?.name || v.experience || '',
-          description: v.description || v.snippet?.responsibility || v.snippet?.requirement || '',
-          skills: v.keywords || [],
-          alternate_url: v.url || v.alternate_url || ''
-        }));
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const mapped = items.map((v) => {
+          // salary: нормализация
+          let salaryText = 'по договорённости';
+          if (typeof v.salary === 'string' && v.salary.trim()) {
+            salaryText = v.salary.trim();
+          } else if (v.salary_raw && (v.salary_raw.from || v.salary_raw.to)) {
+            const from = v.salary_raw.from ? String(v.salary_raw.from) : '';
+            const to   = v.salary_raw.to   ? String(v.salary_raw.to)   : '';
+            const cur  = v.salary_raw.currency || '';
+            const range = [from, to].filter(Boolean).join(' – ');
+            salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || 'по договорённости';
+          } else if (v.salary?.from || v.salary?.to) {
+            const from = v.salary?.from ? String(v.salary.from) : '';
+            const to   = v.salary?.to   ? String(v.salary.to)   : '';
+            const cur  = v.salary?.currency || '';
+            const range = [from, to].filter(Boolean).join(' – ');
+            salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || 'по договорённости';
+          }
+
+          return {
+            id: v.id,
+            title: v.title || v.name || 'Вакансия',
+            company: (typeof v.employer === 'string' ? v.employer : (v.employer?.name || '')),
+            salary: salaryText,
+            location: v.area?.name || v.area || '',
+            experience: v.experience?.name || v.experience || '',
+            description: v.description || v.snippet?.responsibility || v.snippet?.requirement || '',
+            skills: Array.isArray(v.keywords) ? v.keywords : [],
+            alternate_url: v.url || v.alternate_url || '',
+          };
+        });
 
         setVacancies(mapped);
-        setFound(Number(data?.found || 0));
-        setPages(Number(data?.pages || 0));
+        setFound(Number(data?.found || items.length || 0));
+        setPages(Number(data?.pages || (items.length ? 1 : 0)));
         setError('');
         setRetryAfter(null);
       } catch (e) {
         if (reqIdRef.current !== myId) return;
+        if (e?.name === 'AbortError') return;
 
         if (isHttpError(e)) {
           const status = e.status || 0;
+
           if (status === 429) {
             const serverRetry = Number(e?.body?.retry_after || 0);
             const retryMs = serverRetry ? serverRetry * 1000 : 3000;
@@ -1029,13 +1052,11 @@ function VacanciesPage({
             const details =
               typeof e.body === 'string' ? e.body :
               (e.body?.details || e.body?.message || '');
-            if (status >= 400) {
-              setError(`Поиск вакансий недоступен (HTTP ${status}). ${details ? `Подробности: ${details}` : ''}`.trim());
-              setVacancies(mockVacancies);
-              setFound(mockVacancies.length);
-              setPages(1);
-              setPage(0);
-            }
+            setError(`Поиск вакансий недоступен (HTTP ${status}). ${details ? `Подробности: ${details}` : ''}`.trim());
+            setVacancies(mockVacancies);
+            setFound(mockVacancies.length);
+            setPages(1);
+            setPage(0);
           }
         } else {
           setError('Ошибка загрузки вакансий, показаны примерные данные.');
@@ -1052,6 +1073,10 @@ function VacanciesPage({
       }
     })();
 
+    // cleanup
+    return () => {
+      try { ac.abort(); } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
 
@@ -1293,7 +1318,7 @@ function VacanciesPage({
                   ))}
                 </div>
 
-                {/* Оставляем только одну кнопку «Откликнуться на HH» */}
+                {/* Только одна кнопка «Откликнуться на HH» */}
                 <div className="flex gap-3">
                   <button
                     onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank')}
