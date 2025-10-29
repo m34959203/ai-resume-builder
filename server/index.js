@@ -1,3 +1,4 @@
+// server/index.js
 /* eslint-disable no-console */
 'use strict';
 
@@ -72,6 +73,9 @@ const HH_API = 'https://api.hh.ru';
 /* ==================================== APP =================================== */
 const app = express();
 app.set('trust proxy', 1);
+app.set('etag', false);               // убираем ETag, чтобы избежать 304 на "/" при поисковых query
+app.disable('x-powered-by');
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(compression());
@@ -92,7 +96,7 @@ app.use((req, res, next) => {
 
 // morgan
 morgan.token('id', (req) => req.id);
-app.use(morgan(isProd ? 'combined' : ':id :method :url :status :response-time ms'));
+app.use(morgan(isProd ? 'combined' : ':id :method :url :status :res[content-length] - :response-time ms'));
 
 /* ================================== CORS ==================================== */
 // ИСПРАВЛЕНИЕ 1: Парсинг FRONT_ORIGINS
@@ -818,7 +822,12 @@ app.post('/api/ai/infer-search', async (req, res) => {
 })();
 
 /* ============================== Health + misc =============================== */
-app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, time: new Date().toISOString() }));
+app.get('/healthz', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  return res.status(200).json({ ok: true, time: new Date().toISOString() });
+});
 
 app.get('/api/version', (_req, res) => {
   try {
@@ -830,7 +839,38 @@ app.get('/api/version', (_req, res) => {
   }
 });
 
+/* ==================== COMPAT: "/" с query → /api/hh/jobs/search ============= */
+app.get('/', async (req, res, next) => {
+  const q = req.query || {};
+  const looksLikeSearch =
+    q.text != null || q.city != null || q.area != null ||
+    q.experience != null || q.salary != null || q.only_with_salary != null ||
+    q.host != null || q.page != null || q.per_page != null;
+
+  if (!looksLikeSearch) return next();
+
+  const params = new URLSearchParams();
+  if (q.text) params.set('text', String(q.text));
+  if (q.city) params.set('city', String(q.city));
+  if (q.area) params.set('area', String(q.area));
+  if (q.experience) params.set('experience', String(q.experience));
+  if (q.salary) params.set('salary', String(q.salary));
+  if (q.only_with_salary) params.set('only_with_salary', 'true');
+  if (q.page != null) params.set('page', String(q.page));
+  if (q.per_page != null) params.set('per_page', String(q.per_page));
+  params.set('host', String(q.host || HH_HOST || 'hh.kz'));
+
+  const target = `/api/hh/jobs/search?${params.toString()}`;
+  console.log('[COMPAT] Redirecting "/" search →', target);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.redirect(307, target);
+});
+
+/* ============================ Корневая «инфо» страница ====================== */
 app.get('/', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.type('text').send(
     [
       'HH proxy is up ✅',
@@ -847,6 +887,8 @@ app.get('/', (_req, res) => {
       ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
       ' - /api/recommendations/generate   (POST {profile})',
       ' - /api/recommendations/improve    (POST {profile})',
+      '',
+      '⚠️ Hint: do not call "/" with search params — use /api/hh/jobs/search',
     ].join('\n')
   );
 });
