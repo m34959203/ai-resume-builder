@@ -42,9 +42,9 @@ const crypto = require('crypto');
 
 /* =================================== ENV ==================================== */
 const {
-  PORT,                                // Render задаёт автоматически, локально дефолт ниже
+  PORT,
   NODE_ENV = (process.env.RENDER ? 'production' : 'development'),
-  FRONT_ORIGINS,                        // через запятую: http://localhost:5173,https://resume1.kz
+  FRONT_ORIGINS,
 
   HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
   HH_HOST = 'hh.kz',
@@ -59,6 +59,10 @@ const {
 
   // опционально — дефолтное резюме для /api/hh/respond
   HH_RESUME_ID,
+
+  // инфо-логи о секретах
+  HH_CLIENT_ID,
+  OPENROUTER_API_KEY,
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
@@ -91,6 +95,7 @@ morgan.token('id', (req) => req.id);
 app.use(morgan(isProd ? 'combined' : ':id :method :url :status :response-time ms'));
 
 /* ================================== CORS ==================================== */
+// ИСПРАВЛЕНИЕ 1: Парсинг FRONT_ORIGINS
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -105,13 +110,27 @@ const ORIGINS = String(FRONT_ORIGINS || '')
 
 const ALLOWED = ORIGINS.length ? ORIGINS : defaultOrigins;
 
+// ИСПРАВЛЕНИЕ 2: CORS с лучшей диагностикой (+ onrender.com)
 const corsMw = cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);          // Postman/SSR
-    if (ALLOWED.includes(origin)) return cb(null, true);
+    if (!origin) {
+      console.log('[CORS] Request without origin - allowed');
+      return cb(null, true);
+    }
+    if (ALLOWED.includes(origin)) {
+      console.log('[CORS] Allowed origin:', origin);
+      return cb(null, true);
+    }
+    if (origin.includes('onrender.com')) {
+      console.log('[CORS] Render domain allowed:', origin);
+      return cb(null, true);
+    }
+    console.warn('[CORS] Rejected origin:', origin, 'Allowed:', ALLOWED);
     return cb(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 });
 app.use(corsMw);
 app.options('*', corsMw);
@@ -377,7 +396,11 @@ app.use(
 );
 
 /* ============================== HH SEARCH API =============================== */
+// ИСПРАВЛЕНИЕ 3: Логирование входа в хендлер
 app.get('/api/hh/jobs/search', async (req, res) => {
+  console.log('[HH Search] Query params:', req.query);
+  console.log('[HH Search] Headers origin:', req.headers.origin);
+
   try {
     const q = req.query;
     const host = (q.host && String(q.host)) || HH_HOST;
@@ -396,10 +419,11 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     let hasAnyFilter =
       !!(text || city || area || exp || (salary && salary > 0) || only_with_salary);
 
-    // Если фильтры не заданы, делаем запрос со словом «разработчик» вместо возврата пустого списка
+    // Если фильтры не заданы, делаем запрос со словом «разработчик» вместо пустого результата
     if (!hasAnyFilter) {
       text = 'разработчик';
       hasAnyFilter = true;
+      console.log('[HH Search] No filters → default text:', text);
     }
 
     let areaId = area;
@@ -408,6 +432,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     const key = makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page });
 
     if (inflightSearches.has(key)) {
+      console.log('[HH Search] Coalesced with inflight request for key');
       const out = await inflightSearches.get(key).catch((e) => { throw e; });
       return res.json(out);
     }
@@ -433,6 +458,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
 
       const fresh = getFreshFromCache(key);
       if (fresh) {
+        console.log('[HH Search] Served from fresh cache');
         return { ...fresh, debug: { ...(fresh.debug || {}), cached: true, stale: false } };
       }
 
@@ -453,8 +479,10 @@ app.get('/api/hh/jobs/search', async (req, res) => {
 
       const retryAfter = status === 429 ? Number(headers?.get?.('Retry-After') || 0) : 0;
       if (status === 429) {
+        console.warn('[HH Search] 429 received, retry-after:', retryAfter);
         const stale = getStaleFromCache(key);
         if (stale) {
+          console.log('[HH Search] Served stale cache due to 429');
           return {
             ...stale,
             debug: { ...(stale.debug || {}), host, areaId, exp, cached: true, stale: true, retry_after: retryAfter },
@@ -479,6 +507,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     }
   } catch (e) {
     if (e && e.status) {
+      console.warn('[HH Search] Error with status:', e.status, 'details:', e.details);
       return res.status(e.status).json({
         error: 'hh_bad_request',
         status: e.status,
@@ -830,21 +859,24 @@ app.use((err, _req, res, _next) => {
 });
 
 /* ================================== Start ================================== */
-const port = Number(PORT) || 10000; // Render проставит PORT, локально 10000
+// ИСПРАВЛЕНИЕ 4: Явный bind на 0.0.0.0 + расширенные логи
+const port = Number(PORT) || 10000;
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`✅ BFF running on 0.0.0.0:${port} (env: ${NODE_ENV})`);
-  console.log('Allowed CORS:', ALLOWED.length ? ALLOWED.join(', ') : '(none)');
+  console.log('📍 RENDER:', !!process.env.RENDER);
+  console.log('🌐 Allowed CORS:', ALLOWED.join(', '));
+  console.log('🔑 HH_CLIENT_ID:', HH_CLIENT_ID ? '✓ set' : '✗ missing');
+  console.log('🔑 OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ set' : '✗ missing');
 });
 
-/** Грейсфул-шатдаун для Render */
-['SIGINT','SIGTERM'].forEach(sig => {
+// Грейсфул шатдаун
+['SIGINT', 'SIGTERM'].forEach((sig) => {
   process.on(sig, () => {
     console.log(`[${sig}] shutting down...`);
     server.close(() => {
       console.log('HTTP server closed');
       process.exit(0);
     });
-    // safety timeout
     setTimeout(() => process.exit(0), 5000).unref();
   });
 });

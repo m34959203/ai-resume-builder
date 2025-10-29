@@ -16,26 +16,57 @@ function env(key, def = '') {
  * Строим абсолютный BASE:
  *  - если задан VITE_API_URL / window.__API_URL__ — используем его
  *  - если фронт локально (localhost/127.0.0.1) — dev-фолбэк http://localhost:8000
+ *  - если Render-фронт на onrender.com — используем хардкод BFF-домена
  *  - иначе — текущий origin (прокси/ингресс на одном домене)
  */
 function computeApiBase() {
   const prefixRaw = env('VITE_API_PREFIX', '/api').trim();
   const prefix = prefixRaw.startsWith('/') ? prefixRaw : `/${prefixRaw}`;
 
+  // 1) Явный URL (приоритет)
   const fromEnv = env('VITE_API_URL', '').trim();
   const fromWindow =
     typeof window !== 'undefined' && window.__API_URL__ ? String(window.__API_URL__).trim() : '';
 
   const chosen = fromEnv || fromWindow;
-  if (chosen) return `${chosen.replace(/\/+$/, '')}${prefix}`;
+  if (chosen) {
+    const url = `${chosen.replace(/\/+$/, '')}${prefix}`;
+    console.log('[BFF] Using explicit API_URL:', url);
+    return url;
+  }
 
+  // 2) Определяем окружение
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
-  if (isLocal) return `http://localhost:8000${prefix}`;
 
+  // 3) Render: фронт и бэкенд на разных доменах
+  //    Пример: фронт → ai-resume-frontend-nepa.onrender.com
+  //            BFF  → ai-resume-bff.onrender.com
+  const isRenderFrontend = typeof host === 'string'
+    && host.includes('onrender.com')
+    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+
+  if (isRenderFrontend) {
+    const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
+    const base = bffCustom || 'https://ai-resume-bff.onrender.com';
+    const bffUrl = `${base.replace(/\/+$/, '')}${prefix}`;
+    console.log('[BFF] Render detected, using BFF URL:', bffUrl);
+    return bffUrl;
+  }
+
+  // 4) Локалка
+  if (isLocal) {
+    const url = `http://localhost:8000${prefix}`;
+    console.log('[BFF] Local dev, using:', url);
+    return url;
+  }
+
+  // 5) Фолбэк: текущий origin
   const origin =
     (typeof window !== 'undefined' && window.location && window.location.origin) || '';
-  return `${String(origin).replace(/\/+$/, '')}${prefix}`;
+  const url = `${String(origin).replace(/\/+$/, '')}${prefix}`;
+  console.log('[BFF] Default origin-based URL:', url);
+  return url;
 }
 
 export const API_BASE = computeApiBase();
@@ -149,8 +180,28 @@ export async function safeFetchJSON(url, options = {}) {
 
   const normalizedUrl = makeApiUrl(url);
 
+  // ---------------- Диагностика HH-поиска (запрос) ----------------
+  if (normalizedUrl.includes('/hh/jobs/search')) {
+    console.log('[BFF Client] Fetching jobs:', normalizedUrl);
+    console.log('[BFF Client] Method:', method);
+    console.log('[BFF Client] Headers:', headers);
+  }
+
   const doFetch = async () => {
     const res = await fetchWithTimeout(normalizedUrl, { ...options, method, headers, body }, timeoutMs);
+
+    // ---------------- Диагностика HH-поиска (ответ) ----------------
+    if (normalizedUrl.includes('/hh/jobs/search')) {
+      console.log('[BFF Client] Response status:', res.status);
+      try {
+        console.log(
+          '[BFF Client] Response headers:',
+          Object.fromEntries([...res.headers.entries()])
+        );
+      } catch {
+        // ignore
+      }
+    }
 
     // Перехват 3xx (например, OAuth redirect)
     if (res.status >= 300 && res.status < 400) {
@@ -165,6 +216,7 @@ export async function safeFetchJSON(url, options = {}) {
 
     if (!res.ok) {
       const msg = `${method} ${normalizedUrl} -> ${res.status}`;
+      console.error('[BFF Client] HTTP Error:', msg, payload);
       throw new BFFHttpError(msg, { status: res.status, url: normalizedUrl, method, body: payload });
     }
     return payload;
@@ -173,13 +225,19 @@ export async function safeFetchJSON(url, options = {}) {
   const key = method === 'GET' && !options.noDedupe ? normalizedUrl : null;
   if (key) {
     const existing = IN_FLIGHT.get(key);
-    if (existing) return existing;
+    if (existing) {
+      console.log('[BFF Client] Using cached request:', key);
+      return existing;
+    }
     const p = doFetch().finally(() => IN_FLIGHT.delete(key));
     IN_FLIGHT.set(key, p);
     try {
       return await p;
     } catch (e) {
-      if (USE_MOCKS) return null;
+      if (USE_MOCKS) {
+        console.warn('[BFF Client] Error, using mocks:', e?.message || e);
+        return null;
+      }
       throw e;
     }
   }
@@ -188,10 +246,13 @@ export async function safeFetchJSON(url, options = {}) {
     return await doFetch();
   } catch (err) {
     const isAbort = err?.name === 'AbortError' || /AbortError/i.test(err?.message || '');
-    if (isAbort) console.warn('[BFF] aborted:', normalizedUrl);
-    else if (isHttpError(err)) console.warn('[BFF] http error:', err.status, err.url);
-    else console.error('[BFF] request failed:', err?.message || err);
-    if (USE_MOCKS) return null;
+    if (isAbort) console.warn('[BFF Client] aborted:', normalizedUrl);
+    else if (isHttpError(err)) console.warn('[BFF Client] http error:', err.status, err.url, err.body);
+    else console.error('[BFF Client] request failed:', err?.message || err);
+    if (USE_MOCKS) {
+      console.warn('[BFF Client] Using mocks due to error');
+      return null;
+    }
     throw err;
   }
 }
@@ -442,7 +503,6 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 
 export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
-
 
   // Если не задано ни city, ни area — для hh.kz ограничим деревом Казахстана
   let area = params.area;
