@@ -20,6 +20,7 @@ const HOST = getDefaultHost();
 
 /* ========================== Вспомогательные хелперы ========================== */
 
+// простой дебаунс
 function useDebouncedValue(value, delay = 800) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -29,11 +30,16 @@ function useDebouncedValue(value, delay = 800) {
   return v;
 }
 
-// Даты
+// --- даты / опыт ---
 function safeDate(d) { if (!d) return null; const s = new Date(d); return isNaN(+s) ? null : s; }
-function bestOfDates(obj, keys = []) { for (const k of keys) { const v = safeDate(obj?.[k]); if (v) return v; } return null; }
+function bestOfDates(obj, keys = []) {
+  for (const k of keys) {
+    const v = safeDate(obj?.[k]);
+    if (v) return v;
+  }
+  return null;
+}
 
-// Последний опыт
 function pickLatestExperience(profile) {
   const items = Array.isArray(profile?.experience) ? profile.experience : [];
   if (!items.length) return null;
@@ -48,7 +54,6 @@ function pickLatestExperience(profile) {
   return scored[0]?.it || items[0];
 }
 
-// Категория опыта в коды HH
 function calcExperienceCategory(profile) {
   const items = Array.isArray(profile?.experience) ? profile.experience : [];
   if (!items.length) return 'noExperience';
@@ -56,8 +61,11 @@ function calcExperienceCategory(profile) {
   items.forEach((it) => {
     const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
     const end   = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']) || new Date();
-    if (start && end && end > start) ms += (+end - +start);
-    else ms += 365 * 24 * 3600 * 1000;
+    if (start && end && end > start) {
+      ms += (+end - +start);
+    } else {
+      ms += 365 * 24 * 3600 * 1000; // считаем год по умолчанию
+    }
   });
   const years = ms / (365 * 24 * 3600 * 1000);
   if (years < 1) return 'noExperience';
@@ -66,36 +74,48 @@ function calcExperienceCategory(profile) {
   return 'moreThan6';
 }
 
-// Роль из образования (fallback)
+// --- целевая роль ---
 function roleFromEducation(eduItem) {
   if (!eduItem) return '';
   const raw = [
     eduItem?.specialization, eduItem?.speciality, eduItem?.major, eduItem?.faculty,
     eduItem?.field, eduItem?.program, eduItem?.department, eduItem?.degree,
   ].map((s) => String(s || '').toLowerCase()).join(' ');
+
   const any = (...words) => words.some((w) => raw.includes(w));
+
   if (any('информат', 'программи', 'computer', 'software', 'cs', 'it', 'information technology', 'айти')) {
     if (any('данн', 'data', 'ml', 'машин', 'искусствен')) return 'Data Analyst (Junior)';
     if (any('frontend', 'фронтенд', 'веб', 'web')) return 'Frontend Developer (Junior)';
     if (any('mobile', 'ios', 'android')) return 'Mobile Developer (Junior)';
     return 'Software Engineer (Junior)';
   }
-  if (any('дизайн', 'ui', 'ux', 'graphic', 'product design', 'интерфейс')) return 'UI/UX Designer (Junior)';
-  if (any('аналит', 'эконом', 'финан', 'бизнес')) return 'Business Analyst (Junior)';
-  if (any('маркет', 'реклам', 'digital marketing')) return 'Маркетолог (Junior)';
-  if (any('менедж', 'управл', 'project')) return 'Project Manager (Junior)';
+  if (any('дизайн', 'ui', 'ux', 'graphic', 'product design', 'интерфейс'))
+    return 'UI/UX Designer (Junior)';
+  if (any('аналит', 'эконом', 'финан', 'бизнес'))
+    return 'Business Analyst (Junior)';
+  if (any('маркет', 'реклам', 'digital marketing'))
+    return 'Маркетолог (Junior)';
+  if (any('менедж', 'управл', 'project'))
+    return 'Project Manager (Junior)';
+
   return '';
 }
 
-// Роль из профиля
 function deriveDesiredRole(profile) {
   const explicit =
-    profile?.position || profile?.desiredRole || profile?.desiredPosition ||
-    profile?.targetRole || profile?.objective || '';
+    profile?.position ||
+    profile?.desiredRole ||
+    profile?.desiredPosition ||
+    profile?.targetRole ||
+    profile?.objective ||
+    '';
   if (explicit) return String(explicit).trim();
+
   const latest = pickLatestExperience(profile);
   const role = latest?.position || latest?.title || latest?.role || '';
   if (role) return String(role).trim();
+
   const edus = Array.isArray(profile?.education) ? profile.education : [];
   if (edus.length) {
     const scored = edus.map((e, i) => {
@@ -108,15 +128,18 @@ function deriveDesiredRole(profile) {
     const eduRole = roleFromEducation(scored[0]?.e);
     if (eduRole) return eduRole;
   }
+
   const skills = (profile?.skills || []).map(String).filter(Boolean);
   if (skills.length) return skills.slice(0, 3).join(' ');
+
   const sum = String(profile?.summary || '').trim();
   if (sum) return sum.split(/\s+/).slice(0, 3).join(' ');
+
   return '';
 }
 const deriveQueryFromProfile = (p) => deriveDesiredRole(p);
 
-// Опыт AI → HH
+// --- опыт от ИИ к HH ---
 function hhExpFromAi(aiExp) {
   const v = String(aiExp || '').trim();
   if (v === 'none' || v === '0-1') return 'noExperience';
@@ -135,7 +158,7 @@ function prettyExp(aiExp) {
   return 'любой';
 }
 
-// Валидность профиля для рекомендаций
+// --- валидация профиля для рекомендаций ---
 const normalizeText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 function hasProfileForRecs(p = {}) {
   const summaryOk = normalizeText(p.summary).length >= 20;
@@ -157,7 +180,7 @@ function missingProfileSections(p = {}) {
   return miss;
 }
 
-/* ===================== Город (только KZ, без дублей и «шумовых» узлов) ===================== */
+/* ===================== Выбор города (только KZ) ===================== */
 function CitySelect({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || '');
@@ -175,10 +198,9 @@ function CitySelect({ value, onChange }) {
         const areas = await fetchAreas(HOST);
         if (cancelled) return;
 
-        // Ищем «Казахстан»
+        // Ищем "Казахстан"
         const kz = (areas || []).find((c) => /казахстан/i.test(c?.name));
         const acc = [];
-
         function walk(node) {
           if (!node) return;
           const child = Array.isArray(node.areas) ? node.areas : [];
@@ -186,21 +208,26 @@ function CitySelect({ value, onChange }) {
             acc.push({ id: String(node.id), name: node.name });
             return;
           }
-          // пропускаем узлы-«контейнеры» без явного города
           child.forEach(walk);
         }
         if (kz) walk(kz);
 
-        // Убираем дубликаты
+        // убираем дубликаты
         const uniq = [];
         const seen = new Set();
         acc.forEach((x) => {
           const k = x.name.toLowerCase();
           if (!seen.has(k)) { seen.add(k); uniq.push(x); }
         });
+
         setCities(uniq.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
       } catch {
-        setCities([{ id: 'almaty', name: 'Алматы' }, { id: 'astana', name: 'Астана' }, { id: 'shymkent', name: 'Шымкент' }]);
+        // fallback на крупные города
+        setCities([
+          { id: 'almaty', name: 'Алматы' },
+          { id: 'astana', name: 'Астана' },
+          { id: 'shymkent', name: 'Шымкент' },
+        ]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -209,7 +236,9 @@ function CitySelect({ value, onChange }) {
   }, []);
 
   useEffect(() => {
-    function handleClickOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -217,7 +246,9 @@ function CitySelect({ value, onChange }) {
   const filtered = useMemo(() => {
     const q = (query || '').trim().toLowerCase();
     if (!q) return cities.slice(0, 50);
-    return cities.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 50);
+    return cities
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .slice(0, 50);
   }, [query, cities]);
 
   return (
@@ -244,7 +275,7 @@ function CitySelect({ value, onChange }) {
                 onClick={() => {
                   setQuery(c.name);
                   setOpen(false);
-                  onChange?.(c.name, c); // строка города — BFF сам мапит в area
+                  onChange?.(c.name, c); // фронт отдаёт строку, бэкенд мапит её в area
                 }}
                 className="w-full text-left px-3 py-2 hover:bg-gray-50"
               >
@@ -258,24 +289,29 @@ function CitySelect({ value, onChange }) {
   );
 }
 
-/* ================================= Основной компонент ================================ */
+/* ================================= Основной компонент ================================= */
 
 const AIResumeBuilder = () => {
   const [currentPage, setCurrentPage] = useState('home');
 
+  // профиль пользователя
   const [profile, setProfile] = useState({
     fullName: '', email: '', phone: '', location: '',
     summary: '', experience: [], education: [], skills: [], languages: []
   });
+
+  // выбор шаблона для PDF
   const [selectedTemplate, setSelectedTemplate] = useState('modern');
 
+  // вакансии и строка поиска (глобально)
   const [vacancies, setVacancies] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // рекомендации
   const [recommendations, setRecommendations] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Санитизация ?page=...
+  // читаем ?page=... из урла один раз
   useEffect(() => {
     const url = new URL(window.location.href);
     const p = url.searchParams.get('page');
@@ -283,14 +319,41 @@ const AIResumeBuilder = () => {
     if (p) window.history.replaceState(null, '', window.location.pathname);
   }, []);
 
-  // Мок-данные на случай ошибок HH
+  // fallback-данные для карточек вакансий при ошибках HH
   const mockVacancies = useMemo(() => ([
-    { id: 'm1', title: 'Frontend Developer', company: 'Tech Corp', salary: '200 000 – 300 000 ₸', location: 'Алматы', experience: 'Junior', description: 'Разработка современных веб-приложений на React', skills: ['React', 'JavaScript', 'TypeScript', 'CSS'] },
-    { id: 'm2', title: 'UI/UX Designer', company: 'Design Studio', salary: '180 000 – 250 000 ₸', location: 'Астана', experience: 'Junior', description: 'Создание интуитивных интерфейсов', skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping'] },
-    { id: 'm3', title: 'Data Analyst', company: 'Analytics Pro', salary: '220 000 – 280 000 ₸', location: 'Алматы', experience: 'Junior', description: 'Анализ данных и отчётность', skills: ['Python', 'SQL', 'Excel', 'Power BI'] }
+    {
+      id: 'm1',
+      title: 'Frontend Developer',
+      company: 'Tech Corp',
+      salary: '200 000 – 300 000 ₸',
+      location: 'Алматы',
+      experience: 'Junior',
+      description: 'Разработка современных веб-приложений на React',
+      skills: ['React', 'JavaScript', 'TypeScript', 'CSS']
+    },
+    {
+      id: 'm2',
+      title: 'UI/UX Designer',
+      company: 'Design Studio',
+      salary: '180 000 – 250 000 ₸',
+      location: 'Астана',
+      experience: 'Junior',
+      description: 'Создание интуитивных интерфейсов',
+      skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping']
+    },
+    {
+      id: 'm3',
+      title: 'Data Analyst',
+      company: 'Analytics Pro',
+      salary: '220 000 – 280 000 ₸',
+      location: 'Алматы',
+      experience: 'Junior',
+      description: 'Анализ данных и отчётность',
+      skills: ['Python', 'SQL', 'Excel', 'Power BI']
+    }
   ]), []);
 
-  // Генерация рекомендаций
+  // генерация рекомендаций (AI)
   const generateRecommendations = async () => {
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
@@ -322,10 +385,13 @@ const AIResumeBuilder = () => {
         professions: professions.slice(0, 6),
         skillsToLearn: skillsToLearn.slice(0, 10),
         courses: courses.slice(0, 10),
-        matchScore: isNaN(matchScore) ? 0 : Math.max(0, Math.min(100, matchScore)),
+        matchScore: isNaN(matchScore)
+          ? 0
+          : Math.max(0, Math.min(100, matchScore)),
         debug: rec?.debug || null,
       });
     } catch {
+      // fallback
       const userSkills = (profile.skills || []).map(s => String(s).toLowerCase());
       const hasDev = userSkills.some(s => ['react', 'javascript', 'python', 'java'].includes(s));
       const hasDesign = userSkills.some(s => ['figma', 'photoshop', 'design'].includes(s));
@@ -370,13 +436,22 @@ const AIResumeBuilder = () => {
             </button>
 
             <div className="flex gap-6">
-              <button onClick={() => setCurrentPage('builder')} className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage('builder')}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
+              >
                 <FileText size={18} /> Резюме
               </button>
-              <button onClick={() => setCurrentPage('vacancies')} className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage('vacancies')}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
+              >
                 <Briefcase size={18} /> Вакансии
               </button>
-              <button onClick={() => setCurrentPage('recommendations')} className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage('recommendations')}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
+              >
                 <TrendingUp size={18} /> Рекомендации
               </button>
             </div>
@@ -386,7 +461,10 @@ const AIResumeBuilder = () => {
 
       {/* Роутинг */}
       {currentPage === 'home' && (
-        <HomePage onCreate={() => setCurrentPage('builder')} onFindJobs={() => setCurrentPage('vacancies')} />
+        <HomePage
+          onCreate={() => setCurrentPage('builder')}
+          onFindJobs={() => setCurrentPage('vacancies')}
+        />
       )}
 
       {currentPage === 'builder' && (
@@ -435,15 +513,45 @@ const AIResumeBuilder = () => {
                 </div>
                 <span className="font-bold">AI Resume</span>
               </div>
-              <p className="text-gray-400 text-sm">Создавайте профессиональные резюме с помощью ИИ</p>
+              <p className="text-gray-400 text-sm">
+                Создавайте профессиональные резюме с помощью ИИ
+              </p>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Продукт</h4>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><button className="hover:text-white" onClick={() => setCurrentPage('builder')}>Создать резюме</button></li>
-                <li><button className="hover:text-white" onClick={() => setCurrentPage('builder')}>Шаблоны</button></li>
-                <li><button className="hover:text-white" onClick={() => setCurrentPage('vacancies')}>Вакансии</button></li>
-                <li><button className="hover:text-white" onClick={() => setCurrentPage('recommendations')}>Рекомендации</button></li>
+                <li>
+                  <button
+                    className="hover:text-white"
+                    onClick={() => setCurrentPage('builder')}
+                  >
+                    Создать резюме
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="hover:text-white"
+                    onClick={() => setCurrentPage('builder')}
+                  >
+                    Шаблоны
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="hover:text-white"
+                    onClick={() => setCurrentPage('vacancies')}
+                  >
+                    Вакансии
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="hover:text-white"
+                    onClick={() => setCurrentPage('recommendations')}
+                  >
+                    Рекомендации
+                  </button>
+                </li>
               </ul>
             </div>
             <div>
@@ -466,7 +574,9 @@ const AIResumeBuilder = () => {
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
             <p>© 2025 AI Resume Builder. Все права защищены.</p>
-            <p className="mt-2">Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика</p>
+            <p className="mt-2">
+              Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика
+            </p>
           </div>
         </div>
       </footer>
@@ -496,10 +606,16 @@ function HomePage({ onCreate, onFindJobs }) {
           </p>
 
           <div className="flex gap-4 justify-center">
-            <button onClick={onCreate} className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg">
+            <button
+              onClick={onCreate}
+              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg"
+            >
               <FileText size={20} /> Создать резюме
             </button>
-            <button onClick={onFindJobs} className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2">
+            <button
+              onClick={onFindJobs}
+              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
+            >
               <Briefcase size={20} /> Найти вакансии
             </button>
           </div>
@@ -518,7 +634,9 @@ function HomePage({ onCreate, onFindJobs }) {
               <Briefcase className="text-purple-600" size={24} />
             </div>
             <h3 className="text-xl font-bold mb-2">Поиск вакансий</h3>
-            <p className="text-gray-600">Интеграция с HeadHunter для релевантных предложений</p>
+            <p className="text-gray-600">
+              Интеграция с HeadHunter для релевантных предложений
+            </p>
           </div>
           <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
@@ -554,7 +672,11 @@ function RecommendationsPage({
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-6xl mx-auto px-4">
-        <button onClick={onBack} className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2" aria-label="Назад">
+        <button
+          onClick={onBack}
+          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
+          aria-label="Назад"
+        >
           ← Назад
         </button>
 
@@ -571,14 +693,36 @@ function RecommendationsPage({
 
           {!profileOk && (
             <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50 p-6">
-              <div className="text-lg font-semibold mb-2">Рекомендации появятся после анализа резюме</div>
-              <p className="text-gray-700 mb-4">Заполните основные разделы — и мы подберём профессии, навыки и курсы. Начните с:</p>
+              <div className="text-lg font-semibold mb-2">
+                Рекомендации появятся после анализа резюме
+              </div>
+              <p className="text-gray-700 mb-4">
+                Заполните основные разделы — и мы подберём профессии, навыки и
+                курсы. Начните с:
+              </p>
               <div className="flex flex-wrap gap-2 mb-6">
-                {missing.map((m) => (<span key={m} className="px-3 py-1 rounded-full bg-white/70 border text-sm">{m}</span>))}
+                {missing.map((m) => (
+                  <span
+                    key={m}
+                    className="px-3 py-1 rounded-full bg-white/70 border text-sm"
+                  >
+                    {m}
+                  </span>
+                ))}
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
-                <button onClick={onImproveResume} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Заполнить резюме</button>
-                <button onClick={onFindVacancies} className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold">Посмотреть вакансии</button>
+                <button
+                  onClick={onImproveResume}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                >
+                  Заполнить резюме
+                </button>
+                <button
+                  onClick={onFindVacancies}
+                  className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                >
+                  Посмотреть вакансии
+                </button>
               </div>
             </div>
           )}
@@ -594,24 +738,38 @@ function RecommendationsPage({
                 <div className="space-y-8">
                   <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-bold">Оценка соответствия рынку</h3>
-                      <div className="text-3xl font-bold text-blue-600">{recommendations.matchScore}%</div>
+                      <h3 className="text-xl font-bold">
+                        Оценка соответствия рынку
+                      </h3>
+                      <div className="text-3xl font-bold text-blue-600">
+                        {recommendations.matchScore}%
+                      </div>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-4">
-                      <div className="bg-gradient-to-r from-blue-600 to-purple-600 h-4 rounded-full transition-all" style={{ width: `${recommendations.matchScore}%` }} />
+                      <div
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 h-4 rounded-full transition-all"
+                        style={{ width: `${recommendations.matchScore}%` }}
+                      />
                     </div>
                   </div>
 
                   <div>
                     <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Briefcase className="text-blue-600" /> Рекомендуемые профессии
+                      <Briefcase className="text-blue-600" /> Рекомендуемые
+                      профессии
                     </h3>
                     <div className="grid md:grid-cols-3 gap-4">
                       {recommendations.professions.map((profession, idx) => (
-                        <div key={`${profession}-${idx}`} className="border rounded-lg p-4 hover:shadow-md transition">
+                        <div
+                          key={`${profession}-${idx}`}
+                          className="border rounded-lg p-4 hover:shadow-md transition"
+                        >
                           <h4 className="font-semibold mb-2">{profession}</h4>
                           <button
-                            onClick={() => { setSearchQuery(profession); onFindVacancies(); }}
+                            onClick={() => {
+                              setSearchQuery(profession);
+                              onFindVacancies();
+                            }}
                             className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                           >
                             Найти вакансии <ExternalLink size={12} />
@@ -623,11 +781,15 @@ function RecommendationsPage({
 
                   <div>
                     <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <TrendingUp className="text-green-600" /> Навыки для развития
+                      <TrendingUp className="text-green-600" /> Навыки для
+                      развития
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {recommendations.skillsToLearn.map((skill, idx) => (
-                        <span key={`${skill}-${idx}`} className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium">
+                        <span
+                          key={`${skill}-${idx}`}
+                          className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium"
+                        >
                           {skill}
                         </span>
                       ))}
@@ -636,17 +798,27 @@ function RecommendationsPage({
 
                   <div>
                     <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <BookOpen className="text-purple-600" /> Рекомендуемые курсы
+                      <BookOpen className="text-purple-600" /> Рекомендуемые
+                      курсы
                     </h3>
                     <div className="space-y-3">
                       {recommendations.courses.map((course, idx) => (
-                        <div key={`${course.name}-${idx}`} className="border rounded-lg p-4 flex justify-between items-center hover:shadow-md transition">
+                        <div
+                          key={`${course.name}-${idx}`}
+                          className="border rounded-lg p-4 flex justify-between items-center hover:shadow-md transition"
+                        >
                           <div>
                             <h4 className="font-semibold">{course.name}</h4>
-                            {course.duration ? <p className="text-sm text-gray-600">Длительность: {course.duration}</p> : null}
+                            {course.duration ? (
+                              <p className="text-sm text-gray-600">
+                                Длительность: {course.duration}
+                              </p>
+                            ) : null}
                           </div>
                           <button
-                            onClick={() => course.url && window.open(course.url, '_blank')}
+                            onClick={() =>
+                              course.url && window.open(course.url, '_blank')
+                            }
                             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
                           >
                             Подробнее
@@ -657,10 +829,16 @@ function RecommendationsPage({
                   </div>
 
                   <div className="flex gap-4">
-                    <button onClick={onFindVacancies} className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
+                    <button
+                      onClick={onFindVacancies}
+                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                    >
                       Найти вакансии
                     </button>
-                    <button onClick={onImproveResume} className="flex-1 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold">
+                    <button
+                      onClick={onImproveResume}
+                      className="flex-1 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                    >
                       Улучшить резюме
                     </button>
                   </div>
@@ -685,8 +863,12 @@ function VacanciesPage({
 }) {
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // bootstrap сделан ли уже стартовый реальный поиск
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   // AI-подсказка
   const [aiLoading, setAiLoading] = useState(false);
@@ -695,42 +877,53 @@ function VacanciesPage({
   const aiAskedRef = useRef(false);
   const aiAutoAppliedRef = useRef(false);
 
-  // Пагинация
+  // пагинация
   const [page, setPage] = useState(0);
   const [perPage] = useState(20);
   const [found, setFound] = useState(0);
   const [pages, setPages] = useState(0);
 
-  // Блокировка после 429
+  // блокировка после 429
   const [retryAfter, setRetryAfter] = useState(null);
   const blocked = retryAfter && Date.now() < retryAfter;
 
-  // Использовать данные резюме
+  // чекбокс "использовать данные резюме"
   const [useProfile, setUseProfile] = useState(true);
   const appliedRef = useRef(false);
 
-  // Обрывы устаревших запросов
+  // обрывы старых запросов
   const reqIdRef = useRef(0);
 
-  // Сброс страницы при изменениях фильтров/запроса
+  // при изменении фильтров или строки поиска — сбрасываем страницу
   useEffect(() => { setPage(0); }, [searchQuery, filters.location, filters.experience, filters.salary]);
 
-  // Автоподстановка из профиля
+  // автоподстановка из профиля: город, опыт, роль
   useEffect(() => {
     if (!useProfile) return;
+
+    // не трогать повторно, если уже применяли и профиль не поменялся
     if (appliedRef.current && !profile) return;
 
     const next = { ...filters };
     let changed = false;
 
     const city = (profile?.location || '').trim();
-    if (city && city !== next.location) { next.location = city; changed = true; }
+    if (city && city !== next.location) {
+      next.location = city;
+      changed = true;
+    }
 
     const cat = calcExperienceCategory(profile);
-    if (cat && cat !== next.experience) { next.experience = cat; changed = true; }
+    if (cat && cat !== next.experience) {
+      next.experience = cat;
+      changed = true;
+    }
 
     const q = deriveQueryFromProfile(profile);
-    if (q && q !== searchQuery) { setSearchQuery(q); changed = true; }
+    if (q && q !== searchQuery) {
+      setSearchQuery(q);
+      changed = true;
+    }
 
     if (changed) {
       setFilters(next);
@@ -740,7 +933,7 @@ function VacanciesPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useProfile, profile]);
 
-  // Разовая AI-подсказка
+  // разовая AI-подсказка из профиля
   useEffect(() => {
     const hasProfileData =
       !!(profile?.summary && profile.summary.trim()) ||
@@ -751,12 +944,16 @@ function VacanciesPage({
     if (!useProfile || !hasProfileData || aiAskedRef.current) return;
 
     aiAskedRef.current = true;
-    setAiLoading(true); setAiError(''); setAiSuggestion(null);
+    setAiLoading(true);
+    setAiError('');
+    setAiSuggestion(null);
 
     (async () => {
       try {
         const s = await inferSearchFromProfile(profile, { lang: 'ru' });
-        if (s && (s.role || s.city || (s.skills || []).length)) setAiSuggestion(s);
+        if (s && (s.role || s.city || (s.skills || []).length)) {
+          setAiSuggestion(s);
+        }
       } catch {
         setAiError('Не удалось получить подсказку ИИ.');
       } finally {
@@ -765,18 +962,22 @@ function VacanciesPage({
     })();
   }, [useProfile, profile]);
 
-  // Авто-применение AI-подсказки
+  // автоматическое применение AI-подсказки (если уверенность высокая и пользователь не вводил свой текст)
   useEffect(() => {
     if (!useProfile || aiAutoAppliedRef.current || !aiSuggestion || aiLoading) return;
+
     const userTyped = Boolean((searchQuery || '').trim());
     const conf = typeof aiSuggestion.confidence === 'number' ? aiSuggestion.confidence : 0;
+
     if (!userTyped && conf >= 0.5) {
       if (aiSuggestion.role) setSearchQuery(aiSuggestion.role);
+
       setFilters((f) => ({
         ...f,
         location: aiSuggestion.city || f.location,
         experience: hhExpFromAi(aiSuggestion.experience) || f.experience,
       }));
+
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
@@ -797,40 +998,54 @@ function VacanciesPage({
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
+    const has = new RegExp(
+      `(^|\\s)${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`,
+      'i'
+    ).test(searchQuery);
     if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
-  // Дебаунс
+  // дебаунс полей
   const debouncedSearch = useDebouncedValue(searchQuery, 800);
   const filtersKey = useMemo(
-    () => JSON.stringify({ location: filters.location, experience: filters.experience, salary: filters.salary }),
+    () =>
+      JSON.stringify({
+        location: filters.location,
+        experience: filters.experience,
+        salary: filters.salary,
+      }),
     [filters.location, filters.experience, filters.salary]
   );
   const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
 
-  // ---- Поиск вакансий (с защитой от пустого текста и «шумовых» тегов) ----
-  useEffect(() => {
-    if (blocked) return;
-
-    const ac = new AbortController();
-    const myId = ++reqIdRef.current;
-    setLoading(true); setError('');
+  // единая функция поиска вакансий
+  const runSearch = async ({
+    typedText,
+    chosenCity,
+    chosenExp,
+    salaryVal,
+    pageArg,
+    perPageArg,
+    abortSignal,
+    myId,
+  }) => {
+    setLoading(true);
+    setError('');
 
     const inferredRole = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
     const inferredCity = aiSuggestion?.city || (profile?.location || '');
     const inferredExp  = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
 
-    const typedText    = (debouncedSearch || '').trim();
-    const chosenCity   = (filters.location || '').trim();
-    const chosenExp    = (filters.experience || '').trim();
-
-    const effectiveText = typedText || inferredRole || 'разработчик';
+    const effectiveText = (typedText || '').trim() || inferredRole || 'разработчик';
     const effectiveCity = chosenCity || inferredCity || undefined;
-    const effectiveExp  = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
+    const effectiveExp  = (chosenExp === 'none')
+      ? 'noExperience'
+      : (chosenExp || inferredExp || '');
 
-    const salaryNum = filters.salary ? String(filters.salary).replace(/\D/g, '') : undefined;
+    const salaryNum = salaryVal
+      ? String(salaryVal).replace(/\D/g, '')
+      : undefined;
 
     const params = {
       text: effectiveText,
@@ -838,92 +1053,159 @@ function VacanciesPage({
       salary: salaryNum,
       city: effectiveCity,
       host: HOST,
-      page,
-      per_page: perPage,
-      signal: ac.signal,
+      page: pageArg,
+      per_page: perPageArg,
+      signal: abortSignal,
       timeoutMs: 12000,
     };
 
-    (async () => {
-      try {
-        const data = await searchJobsSmart(params);
-        if (reqIdRef.current !== myId) return;
+    try {
+      const data = await searchJobsSmart(params);
+      if (reqIdRef.current !== myId) return; // был отменён
 
-        const items = Array.isArray(data?.items) ? data.items : [];
+      const items = Array.isArray(data?.items) ? data.items : [];
 
-        // Фильтрация «шумовых» ключевых слов (короткие токены без пользы)
-        const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
-        const mapSkill = (s) => String(s || '').trim();
-        const goodSkills = (arr) =>
-          (Array.isArray(arr) ? arr : [])
-            .map(mapSkill)
-            .filter((t) => t && !ban.has(t.toLowerCase()) && (t.length > 2 || /[A-Za-z]/.test(t)))
-            .slice(0, 12);
+      // чистим шумовые навыки
+      const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
+      const mapSkill = (s) => String(s || '').trim();
+      const goodSkills = (arr) =>
+        (Array.isArray(arr) ? arr : [])
+          .map(mapSkill)
+          .filter(
+            (t) =>
+              t &&
+              !ban.has(t.toLowerCase()) &&
+              (t.length > 2 || /[A-Za-z]/.test(t))
+          )
+          .slice(0, 12);
 
-        const stripHtml = (t) => String(t || '').replace(/<\/?highlighttext[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
+      const stripHtml = (t) =>
+        String(t || '')
+          .replace(/<\/?highlighttext[^>]*>/gi, '')
+          .replace(/<[^>]+>/g, '')
+          .trim();
 
-        const mapped = items.map((v) => {
-          let salaryText = 'по договорённости';
-          const raw = v.salary_raw || v.salary || {};
-          if (typeof v.salary === 'string' && v.salary.trim()) {
-            salaryText = v.salary.trim();
-          } else if (raw && (raw.from || raw.to)) {
-            const from = raw.from ? String(raw.from) : '';
-            const to   = raw.to   ? String(raw.to)   : '';
-            const cur  = raw.currency || raw.cur || '';
-            const range = [from, to].filter(Boolean).join(' – ');
-            salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || 'по договорённости';
-          }
-
-          return {
-            id: v.id,
-            title: v.title || v.name || 'Вакансия',
-            company: (typeof v.employer === 'string' ? v.employer : (v.employer?.name || '')),
-            salary: salaryText,
-            location: v.area?.name || v.area || '',
-            experience: v.experience?.name || v.experience || '',
-            description: stripHtml(v.description || v.snippet?.responsibility || v.snippet?.requirement || ''),
-            skills: goodSkills(v.keywords),
-            alternate_url: v.url || v.alternate_url || '',
-          };
-        });
-
-        setVacancies(mapped);
-        setFound(Number(data?.found || items.length || 0));
-        setPages(Number(data?.pages || (items.length ? 1 : 0)));
-        setError(''); setRetryAfter(null);
-      } catch (e) {
-        if (reqIdRef.current !== myId) return;
-        if (e?.name === 'AbortError') return;
-
-        if (isHttpError(e)) {
-          const status = e.status || 0;
-          if (status === 429) {
-            const serverRetry = Number(e?.body?.retry_after || 0);
-            const retryMs = serverRetry ? serverRetry * 1000 : 3000;
-            setRetryAfter(Date.now() + retryMs);
-            setError(`HeadHunter ограничил частоту запросов. Повтор через ~${Math.ceil(retryMs / 1000)} сек.`);
-          } else {
-            const details =
-              typeof e.body === 'string' ? e.body : (e.body?.details || e.body?.message || '');
-            setError(`Поиск недоступен (HTTP ${status})${details ? ` — ${details}` : ''}`);
-          }
-        } else {
-          setError('Ошибка загрузки вакансий.');
+      const mapped = items.map((v) => {
+        let salaryText = 'по договорённости';
+        const raw = v.salary_raw || v.salary || {};
+        if (typeof v.salary === 'string' && v.salary.trim()) {
+          salaryText = v.salary.trim();
+        } else if (raw && (raw.from || raw.to)) {
+          const from = raw.from ? String(raw.from) : '';
+          const to   = raw.to   ? String(raw.to)   : '';
+          const cur  = raw.currency || raw.cur || '';
+          const range = [from, to].filter(Boolean).join(' – ');
+          salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || 'по договорённости';
         }
-        // Показываем мок-данные как graceful-degradation
-        setVacancies(mockVacancies);
-        setFound(mockVacancies.length);
-        setPages(1);
-        setPage(0);
-      } finally {
-        if (reqIdRef.current === myId) setLoading(false);
-      }
-    })();
 
-    return () => { try { ac.abort(); } catch {} };
+        return {
+          id: v.id,
+          title: v.title || v.name || 'Вакансия',
+          company:
+            typeof v.employer === 'string'
+              ? v.employer
+              : (v.employer?.name || ''),
+          salary: salaryText,
+          location: v.area?.name || v.area || '',
+          experience: v.experience?.name || v.experience || '',
+          description: stripHtml(
+            v.description ||
+              v.snippet?.responsibility ||
+              v.snippet?.requirement ||
+              ''
+          ),
+          skills: goodSkills(v.keywords),
+          alternate_url: v.url || v.alternate_url || '',
+        };
+      });
+
+      setVacancies(mapped);
+      setFound(Number(data?.found || items.length || 0));
+      setPages(Number(data?.pages || (items.length ? 1 : 0)));
+      setError('');
+      setRetryAfter(null);
+    } catch (e) {
+      if (reqIdRef.current !== myId) return;
+      if (e?.name === 'AbortError') return;
+
+      if (isHttpError(e)) {
+        const status = e.status || 0;
+        if (status === 429) {
+          const serverRetry = Number(e?.body?.retry_after || 0);
+          const retryMs = serverRetry ? serverRetry * 1000 : 3000;
+          setRetryAfter(Date.now() + retryMs);
+          setError(
+            `HeadHunter ограничил частоту запросов. Повтор через ~${Math.ceil(
+              retryMs / 1000
+            )} сек.`
+          );
+        } else {
+          const details =
+            typeof e.body === 'string'
+              ? e.body
+              : (e.body?.details || e.body?.message || '');
+          setError(
+            `Поиск недоступен (HTTP ${status})${
+              details ? ` — ${details}` : ''
+            }`
+          );
+        }
+      } else {
+        setError('Ошибка загрузки вакансий.');
+      }
+
+      // graceful fallback
+      setVacancies(mockVacancies);
+      setFound(mockVacancies.length);
+      setPages(1);
+      setPage(0);
+    } finally {
+      if (reqIdRef.current === myId) {
+        setLoading(false);
+      }
+    }
+  };
+
+  // основной эффект поиска (строка поиска, фильтры, страница)
+  useEffect(() => {
+    if (blocked) return;
+
+    const ac = new AbortController();
+    const myId = ++reqIdRef.current;
+
+    runSearch({
+      typedText: debouncedSearch,
+      chosenCity: filters.location?.trim(),
+      chosenExp: filters.experience?.trim(),
+      salaryVal: filters.salary,
+      pageArg: page,
+      perPageArg: perPage,
+      abortSignal: ac.signal,
+      myId,
+    });
+
+    return () => {
+      try { ac.abort(); } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
+
+  // bootstrap при первом заходе:
+  // как только у нас есть хоть что-то осмысленное (searchQuery ИЛИ deriveQueryFromProfile(profile)),
+  // и мы ещё не делали стабильный первый поиск -> отмечаем bootstrapped
+  useEffect(() => {
+    if (bootstrapped) return;
+
+    const derivedRole = deriveQueryFromProfile(profile) || '';
+    const haveMeaningfulQuery =
+      (searchQuery && searchQuery.trim()) ||
+      (derivedRole && derivedRole.trim());
+
+    if (!haveMeaningfulQuery) return;
+
+    // у нас уже есть стартовые данные => считаем, что стартовый автопоиск должен быть запущен
+    setBootstrapped(true);
+  }, [bootstrapped, searchQuery, profile]);
 
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
@@ -931,7 +1213,11 @@ function VacanciesPage({
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-6xl mx-auto px-4">
-        <button onClick={onBack} className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2" aria-label="Назад">
+        <button
+          onClick={onBack}
+          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
+          aria-label="Назад"
+        >
           ← Назад
         </button>
 
@@ -946,7 +1232,9 @@ function VacanciesPage({
                     <Sparkles className="text-purple-600" size={20} />
                   </div>
                   <div>
-                    <div className="font-semibold mb-1">Подсказка ИИ из вашего резюме</div>
+                    <div className="font-semibold mb-1">
+                      Подсказка ИИ из вашего резюме
+                    </div>
 
                     {aiLoading && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -955,27 +1243,56 @@ function VacanciesPage({
                       </div>
                     )}
 
-                    {aiError && !aiLoading && <div className="text-sm text-red-600">{aiError}</div>}
+                    {aiError && !aiLoading && (
+                      <div className="text-sm text-red-600">{aiError}</div>
+                    )}
 
                     {aiSuggestion && !aiLoading && (
                       <div className="text-sm text-gray-700">
-                        Предлагаем искать: <b>{aiSuggestion.role || 'подходящую роль'}</b>
-                        {aiSuggestion.city ? <> в <b>{aiSuggestion.city}</b></> : null}
-                        {aiSuggestion.experience ? <> • опыт: <b>{prettyExp(aiSuggestion.experience)}</b></> : null}
-                        {typeof aiSuggestion.confidence === 'number' ? <> • уверенность: <b>{Math.round(aiSuggestion.confidence * 100)}%</b></> : null}
+                        Предлагаем искать:{' '}
+                        <b>{aiSuggestion.role || 'подходящую роль'}</b>
+                        {aiSuggestion.city ? (
+                          <>
+                            {' '}
+                            в <b>{aiSuggestion.city}</b>
+                          </>
+                        ) : null}
+                        {aiSuggestion.experience ? (
+                          <>
+                            {' '}
+                            • опыт:{' '}
+                            <b>
+                              {prettyExp(aiSuggestion.experience)}
+                            </b>
+                          </>
+                        ) : null}
+                        {typeof aiSuggestion.confidence === 'number' ? (
+                          <>
+                            {' '}
+                            • уверенность:{' '}
+                            <b>
+                              {Math.round(
+                                aiSuggestion.confidence * 100
+                              )}
+                              %
+                            </b>
+                          </>
+                        ) : null}
 
                         {(aiSuggestion.skills || []).length ? (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            {(aiSuggestion.skills || []).slice(0, 8).map((s, i) => (
-                              <button
-                                key={`${s}-${i}`}
-                                onClick={() => addSkillToQuery(s)}
-                                className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
-                                title="Добавить в запрос"
-                              >
-                                + {s}
-                              </button>
-                            ))}
+                            {(aiSuggestion.skills || [])
+                              .slice(0, 8)
+                              .map((s, i) => (
+                                <button
+                                  key={`${s}-${i}`}
+                                  onClick={() => addSkillToQuery(s)}
+                                  className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
+                                  title="Добавить в запрос"
+                                >
+                                  + {s}
+                                </button>
+                              ))}
                           </div>
                         ) : null}
                       </div>
@@ -985,7 +1302,10 @@ function VacanciesPage({
 
                 <div className="flex gap-2 shrink-0">
                   {aiSuggestion && !aiLoading && (
-                    <button onClick={applyAISuggestion} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                    <button
+                      onClick={applyAISuggestion}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                    >
                       Применить
                     </button>
                   )}
@@ -1002,10 +1322,15 @@ function VacanciesPage({
                   {!aiLoading && (
                     <button
                       onClick={() => {
-                        aiAskedRef.current = false; setAiSuggestion(null); setAiError(''); setAiLoading(true);
+                        aiAskedRef.current = false;
+                        setAiSuggestion(null);
+                        setAiError('');
+                        setAiLoading(true);
                         inferSearchFromProfile(profile, { lang: 'ru' })
                           .then((s) => setAiSuggestion(s))
-                          .catch(() => setAiError('Не удалось получить подсказку ИИ.'))
+                          .catch(() =>
+                            setAiError('Не удалось получить подсказку ИИ.')
+                          )
                           .finally(() => setAiLoading(false));
                       }}
                       className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
@@ -1022,14 +1347,24 @@ function VacanciesPage({
 
           {blocked && (
             <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-              HeadHunter временно ограничил частоту запросов. Подождите&nbsp;
-              <b>{Math.max(1, Math.ceil((retryAfter - Date.now())/1000))} сек.</b>
+              HeadHunter временно ограничил частоту запросов. Подождите{' '}
+              <b>
+                {Math.max(
+                  1,
+                  Math.ceil((retryAfter - Date.now()) / 1000)
+                )}{' '}
+                сек.
+              </b>
             </div>
           )}
 
           <div className="flex flex-col gap-4 mb-4 md:flex-row md:items-center">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 text-gray-400" size={20} aria-hidden />
+              <Search
+                className="absolute left-3 top-3 text-gray-400"
+                size={20}
+                aria-hidden
+              />
               <input
                 type="text"
                 value={searchQuery}
@@ -1045,7 +1380,10 @@ function VacanciesPage({
                 type="checkbox"
                 className="rounded"
                 checked={useProfile}
-                onChange={(e) => { setUseProfile(e.target.checked); appliedRef.current = false; }}
+                onChange={(e) => {
+                  setUseProfile(e.target.checked);
+                  appliedRef.current = false;
+                }}
               />
               Использовать данные резюме
             </label>
@@ -1061,16 +1399,31 @@ function VacanciesPage({
           </div>
 
           {showFilters && (
-            <div id="filters-panel" className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+            <div
+              id="filters-panel"
+              className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"
+            >
               <div>
-                <label className="block text-sm font-medium mb-2">Город (только Казахстан)</label>
-                <CitySelect value={filters.location} onChange={(name) => setFilters((f) => ({ ...f, location: name }))} />
+                <label className="block text-sm font-medium mb-2">
+                  Город (только Казахстан)
+                </label>
+                <CitySelect
+                  value={filters.location}
+                  onChange={(name) =>
+                    setFilters((f) => ({ ...f, location: name }))
+                  }
+                />
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-2">Опыт</label>
+                <label className="block text-sm font-medium mb-2">
+                  Опыт
+                </label>
                 <select
                   value={filters.experience}
-                  onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
+                  onChange={(e) =>
+                    setFilters({ ...filters, experience: e.target.value })
+                  }
                   className="w-full px-4 py-2 border rounded-lg"
                 >
                   <option value="">Любой</option>
@@ -1080,12 +1433,17 @@ function VacanciesPage({
                   <option value="moreThan6">6+ лет</option>
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-2">Зарплата от</label>
+                <label className="block text-sm font-medium mb-2">
+                  Зарплата от
+                </label>
                 <input
                   type="text"
                   value={filters.salary}
-                  onChange={(e) => setFilters({ ...filters, salary: e.target.value })}
+                  onChange={(e) =>
+                    setFilters({ ...filters, salary: e.target.value })
+                  }
                   placeholder="150 000 ₸"
                   className="w-full px-4 py-2 border rounded-lg"
                   inputMode="numeric"
@@ -1098,13 +1456,26 @@ function VacanciesPage({
             <div>
               {loading
                 ? 'Загружаем вакансии…'
-                : <>Найдено в HH: <span className="font-semibold">{found}</span>{pages ? ` • Страница ${page + 1} из ${pages}` : ''}</>}
+                : (
+                  <>
+                    Найдено в HH:{' '}
+                    <span className="font-semibold">{found}</span>
+                    {pages
+                      ? ` • Страница ${page + 1} из ${pages}`
+                      : ''}
+                  </>
+                )}
             </div>
+
             <div className="flex items-center gap-2">
               <button
                 disabled={!canPrev || loading}
-                onClick={() => canPrev && setPage(p => Math.max(0, p - 1))}
-                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${!canPrev || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
+                  !canPrev || loading
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-gray-50'
+                }`}
                 title="Предыдущая страница"
                 aria-label="Предыдущая страница"
               >
@@ -1112,8 +1483,12 @@ function VacanciesPage({
               </button>
               <button
                 disabled={!canNext || loading}
-                onClick={() => canNext && setPage(p => p + 1)}
-                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${!canNext || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                onClick={() => canNext && setPage((p) => p + 1)}
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
+                  !canNext || loading
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-gray-50'
+                }`}
                 title="Следующая страница"
                 aria-label="Следующая страница"
               >
@@ -1126,10 +1501,15 @@ function VacanciesPage({
 
           <div className="space-y-4">
             {vacancies.map((vacancy) => (
-              <div key={vacancy.id} className="border rounded-lg p-6 hover:shadow-md transition">
+              <div
+                key={vacancy.id}
+                className="border rounded-lg p-6 hover:shadow-md transition"
+              >
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="text-xl font-bold mb-1">{vacancy.title}</h3>
+                    <h3 className="text-xl font-bold mb-1">
+                      {vacancy.title}
+                    </h3>
                     <p className="text-gray-600">{vacancy.company}</p>
                   </div>
                   <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
@@ -1146,23 +1526,31 @@ function VacanciesPage({
                   </span>
                 </div>
 
-                {vacancy.description && <p className="text-gray-700 mb-4">{vacancy.description}</p>}
+                {vacancy.description && (
+                  <p className="text-gray-700 mb-4">
+                    {vacancy.description}
+                  </p>
+                )}
 
-                {/* Чипы навыков — уже очищены от «шумовых» токенов */}
                 {!!(vacancy.skills || []).length && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {(vacancy.skills || []).map((skill, idx) => (
-                      <span key={`${vacancy.id}-skill-${idx}`} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm">
+                      <span
+                        key={`${vacancy.id}-skill-${idx}`}
+                        className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm"
+                      >
                         {skill}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* Одна кнопка — только перейти на HH */}
                 <div className="flex gap-3">
                   <button
-                    onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank')}
+                    onClick={() =>
+                      vacancy.alternate_url &&
+                      window.open(vacancy.alternate_url, '_blank')
+                    }
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                   >
                     Откликнуться на HH
@@ -1174,9 +1562,14 @@ function VacanciesPage({
 
           {!loading && vacancies.length === 0 && (
             <div className="text-center py-12">
-              <Briefcase className="mx-auto text-gray-400 mb-4" size={48} />
+              <Briefcase
+                className="mx-auto text-gray-400 mb-4"
+                size={48}
+              />
               <p className="text-gray-600">Вакансии не найдены</p>
-              <p className="text-sm text-gray-500 mt-2">Измените параметры поиска</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Измените параметры поиска
+              </p>
             </div>
           )}
         </div>
