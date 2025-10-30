@@ -295,10 +295,22 @@ const AIResumeBuilder = () => {
   const [currentPage, setCurrentPage] = useState('home');
 
   // профиль пользователя
-  const [profile, setProfile] = useState({
-    fullName: '', email: '', phone: '', location: '',
-    summary: '', experience: [], education: [], skills: [], languages: []
-  });
+const [profile, setProfile] = useState({
+  fullName: '',
+  email: '',
+  phone: '',
+  location: '',
+  age: '',               // 🆕 возраст
+  maritalStatus: '',     // 🆕 семейное положение
+  children: '',          // 🆕 дети
+  driverLicense: '',     // 🆕 водительские права
+  summary: '',
+  experience: [],
+  education: [],
+  skills: [],
+  languages: []
+});
+
 
   // выбор шаблона для PDF
   const [selectedTemplate, setSelectedTemplate] = useState('modern');

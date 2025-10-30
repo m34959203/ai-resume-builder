@@ -2,9 +2,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
-/** ВХОД:
- *  props: { profile, theme, pageInsets, flags, hints }
- *  Этот компонент РЕНДЕРИТ ТОЛЬКО ВНУТРЕННОСТИ страницы (без <Document>/<Page>).
+/**
+ * ВХОД:
+ * props: { profile, theme, pageInsets, flags, hints }
+ * Этот компонент рендерит ТОЛЬКО внутренность страницы (без <Document>/<Page>).
  */
 
 /* ---------- helpers ---------- */
@@ -20,6 +21,7 @@ const normalizeMultiline = (v) =>
     .join('\n')
     .trim();
 
+/** Разбиваем многострочный текст на маркеры */
 const bullets = (text) => {
   const lines = normalizeMultiline(text)
     .split('\n')
@@ -32,6 +34,7 @@ const bullets = (text) => {
   });
 };
 
+/** Форматируем период работы */
 const fmtPeriod = (start, end, current, fallback) => {
   if (has(fallback)) return t(fallback);
   const st = t(start);
@@ -40,7 +43,7 @@ const fmtPeriod = (start, end, current, fallback) => {
   return `${st || '—'} — ${en || '—'}`;
 };
 
-/* ---------- layout ---------- */
+/* ---------- layout & styles ---------- */
 const LEFT_W = 170;
 
 const styles = StyleSheet.create({
@@ -50,7 +53,7 @@ const styles = StyleSheet.create({
   },
   left: {
     width: LEFT_W,
-    backgroundColor: '#243447', // тёмная колонка (можно заменить на #111827 если хочется ещё темнее)
+    backgroundColor: '#243447', // тёмная колонка
     color: '#FFFFFF',
     borderRadius: 8,
     padding: 14,
@@ -61,7 +64,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
 
-  // фото
+  /* Фото */
   avatarWrap: { alignItems: 'center', marginBottom: 14 },
   avatar: {
     width: 86,
@@ -72,7 +75,8 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff44',
   },
 
-  // заголовки секций в левой колонке
+  /* Заголовки секций в левой колонке */
+  sideBlock: { marginBottom: 14 },
   sideTitle: {
     fontSize: 11,
     letterSpacing: 1.2,
@@ -80,21 +84,37 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     color: '#E5E7EB',
   },
-  sideBlock: { marginBottom: 14 },
-  sideLine: { height: 1, backgroundColor: '#ffffff33', marginBottom: 8 },
+  sideLine: {
+    height: 1,
+    backgroundColor: '#ffffff33',
+    marginBottom: 8,
+  },
 
-  // строки контактов/образования/языков
+  /* Строки внутри левой колонки */
   sideRow: { marginBottom: 6 },
   sideLabel: { fontSize: 9, color: '#D1D5DB' },
   sideText: { fontSize: 10, color: '#FFFFFF' },
   sideSmall: { fontSize: 9, color: '#E5E7EB' },
 
-  // правая часть — шапка
-  name: { fontSize: 22, fontWeight: 700, textTransform: 'uppercase' },
-  position: { fontSize: 11, color: '#6B7280', marginTop: 3, marginBottom: 12 },
-  topRule: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 10 },
+  /* Шапка справа */
+  name: {
+    fontSize: 22,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+  },
+  position: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 3,
+    marginBottom: 12,
+  },
+  topRule: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 10,
+  },
 
-  // заголовки секций справа
+  /* Заголовки секций справа */
   h2: {
     fontSize: 12,
     fontWeight: 700,
@@ -102,24 +122,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 8,
   },
-  accentRule: { height: 2, width: 36, marginBottom: 10 },
+  accentRule: {
+    height: 2,
+    width: 36,
+    marginBottom: 10,
+  },
 
-  // профиль
-  paragraph: { fontSize: 10, lineHeight: 1.35, color: '#111827' },
+  /* Описание / профиль */
+  paragraph: {
+    fontSize: 10,
+    lineHeight: 1.35,
+    color: '#111827',
+  },
 
-  // опыт
+  /* Опыт работы */
   xpItem: { marginBottom: 12 },
-  xpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  xpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
   xpTitle: { fontSize: 11, fontWeight: 700 },
   xpCompany: { fontSize: 10, color: '#6B7280' },
   xpPeriod: { fontSize: 9, color: '#6B7280' },
   xpBullets: { marginTop: 4 },
   bulletRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
   bulletDot: { fontSize: 10, lineHeight: 1.35 },
-  bulletText: { fontSize: 10, lineHeight: 1.35, color: '#111827', flex: 1 },
+  bulletText: {
+    fontSize: 10,
+    lineHeight: 1.35,
+    color: '#111827',
+    flex: 1,
+  },
 
-  // навыки
-  skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  /* Навыки */
+  skillsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   skill: {
     fontSize: 9,
     color: '#1F2937',
@@ -130,15 +171,28 @@ const styles = StyleSheet.create({
   },
 });
 
-/* ---------- маленькие секции ---------- */
-const SideSection = ({ title, children }) =>
-  !children ? null : (
+/* ---------- маленькие переиспользуемые блоки ---------- */
+const SideSection = ({ title, children }) => {
+  // children может быть массивом из null, отфильтруем пустое
+  const normalized = Array.isArray(children)
+    ? children.filter(Boolean)
+    : children;
+
+  if (
+    normalized == null ||
+    (Array.isArray(normalized) && normalized.length === 0)
+  ) {
+    return null;
+  }
+
+  return (
     <View style={styles.sideBlock}>
       <Text style={styles.sideTitle}>{title}</Text>
       <View style={styles.sideLine} />
-      {children}
+      {normalized}
     </View>
   );
+};
 
 const Row = ({ label, text, small }) =>
   !has(text) ? null : (
@@ -149,44 +203,73 @@ const Row = ({ label, text, small }) =>
   );
 
 /* ---------- основной компонент ---------- */
-export default function ModernTemplate({ profile, theme, pageInsets }) {
+export default function ModernTemplate({ profile, theme }) {
   const accent = (theme && theme.accent) || '#1E90FF';
 
-  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
-  const position = t(profile?.position || profile?.title || profile?.professionalTitle);
+  /* основные поля профиля */
+  const fullName = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
+  const position =
+    t(profile?.position || profile?.title || profile?.professionalTitle) || '';
   const email = t(profile?.email);
   const phone = t(profile?.phone);
   const location = t(profile?.location);
-  const summary = normalizeMultiline(profile?.summary);
-  const summaryBullets = bullets(profile?.summary);
 
-  const skills = Array.isArray(profile?.skills) ? profile.skills.filter(has) : [];
-  const languages = Array.isArray(profile?.languages) ? profile.languages : [];
+  /* новые поля личного блока */
+  const age = t(profile?.age);
+  const maritalStatus = t(profile?.maritalStatus);
+  const children = t(profile?.children);
+  const driverLicense = t(profile?.driverLicense);
 
-  const education = Array.isArray(profile?.education) ? profile.education : [];
-  const experience = Array.isArray(profile?.experience) ? profile.experience : [];
+  /* секция "о себе" */
+  const summaryText = normalizeMultiline(profile?.summary);
+  const summaryBulletList = bullets(profile?.summary);
+
+  /* массивы */
+  const skills = Array.isArray(profile?.skills)
+    ? profile.skills.filter(has)
+    : [];
+  const languages = Array.isArray(profile?.languages)
+    ? profile.languages
+    : [];
+  const education = Array.isArray(profile?.education)
+    ? profile.education
+    : [];
+  const experience = Array.isArray(profile?.experience)
+    ? profile.experience
+    : [];
 
   return (
     <View style={styles.layout}>
-      {/* LEFT: тёмная колонка */}
+      {/* ===== LEFT COLUMN (dark) ===== */}
       <View style={styles.left}>
         {/* Фото */}
         {has(profile?.photoUrl || profile?.photo) ? (
           <View style={styles.avatarWrap}>
-            <Image src={profile.photoUrl || profile.photo} style={styles.avatar} />
+            <Image
+              src={profile.photoUrl || profile.photo}
+              style={styles.avatar}
+            />
           </View>
         ) : null}
 
+        {/* Личная информация */}
+        <SideSection title="Личная информация">
+          <Row label="Возраст" text={age} />
+          <Row label="Семейное положение" text={maritalStatus} />
+          <Row label="Дети" text={children} />
+          <Row label="Водительские права" text={driverLicense} />
+        </SideSection>
+
         {/* Контакты */}
-        <SideSection title="Contact">
-          <Row label="Адрес" text={location} />
+        <SideSection title="Контакты">
+          <Row label="Город" text={location} />
           <Row label="Телефон" text={phone} />
           <Row label="Email" text={email} />
         </SideSection>
 
         {/* Образование */}
         {education.length ? (
-          <SideSection title="Education">
+          <SideSection title="Образование">
             {education.map((ed, i) => {
               const degree = t(ed.level || ed.degree);
               const inst = t(ed.institution || ed.university);
@@ -194,10 +277,18 @@ export default function ModernTemplate({ profile, theme, pageInsets }) {
               const period = t(ed.period) || t(ed.year) || '';
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
-                  {has(degree) ? <Text style={styles.sideText}>{degree}</Text> : null}
-                  {has(period) ? <Text style={styles.sideSmall}>{period}</Text> : null}
-                  {has(inst) ? <Text style={styles.sideSmall}>{inst}</Text> : null}
-                  {has(spec) ? <Text style={styles.sideSmall}>{spec}</Text> : null}
+                  {has(degree) ? (
+                    <Text style={styles.sideText}>{degree}</Text>
+                  ) : null}
+                  {has(period) ? (
+                    <Text style={styles.sideSmall}>{period}</Text>
+                  ) : null}
+                  {has(inst) ? (
+                    <Text style={styles.sideSmall}>{inst}</Text>
+                  ) : null}
+                  {has(spec) ? (
+                    <Text style={styles.sideSmall}>{spec}</Text>
+                  ) : null}
                 </View>
               );
             })}
@@ -206,14 +297,16 @@ export default function ModernTemplate({ profile, theme, pageInsets }) {
 
         {/* Языки */}
         {languages.length ? (
-          <SideSection title="Languages">
+          <SideSection title="Языки">
             {languages.map((l, i) => {
               const lang = t(l?.language || l?.name);
               const lvl = t(l?.level);
               return (
                 <View key={l.id || i} style={{ marginBottom: 6 }}>
                   <Text style={styles.sideText}>{lang}</Text>
-                  {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
+                  {has(lvl) ? (
+                    <Text style={styles.sideSmall}>{lvl}</Text>
+                  ) : null}
                 </View>
               );
             })}
@@ -221,22 +314,29 @@ export default function ModernTemplate({ profile, theme, pageInsets }) {
         ) : null}
       </View>
 
-      {/* RIGHT: контент */}
+      {/* ===== RIGHT COLUMN (main content) ===== */}
       <View style={styles.right}>
-        {/* Шапка */}
-        <Text style={styles.name}>{name}</Text>
-        {has(position) ? <Text style={styles.position}>{position}</Text> : null}
+        {/* Шапка с именем и позицией */}
+        <Text style={styles.name}>{fullName}</Text>
+        {has(position) ? (
+          <Text style={styles.position}>{position}</Text>
+        ) : null}
         <View style={styles.topRule} />
 
-        {/* PROFILE */}
-        {(has(summary) || summaryBullets.length) && (
+        {/* О себе / Профиль */}
+        {(has(summaryText) || summaryBulletList.length) && (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>Profile</Text>
-            <View style={[styles.accentRule, { backgroundColor: accent }]} />
-            {has(summary) ? <Text style={styles.paragraph}>{summary}</Text> : null}
-            {!has(summary) && summaryBullets.length ? (
+            <Text style={styles.h2}>О себе</Text>
+            <View
+              style={[styles.accentRule, { backgroundColor: accent }]}
+            />
+            {has(summaryText) ? (
+              <Text style={styles.paragraph}>{summaryText}</Text>
+            ) : null}
+
+            {!has(summaryText) && summaryBulletList.length ? (
               <View style={{ marginTop: 2 }}>
-                {summaryBullets.map((b, i) => (
+                {summaryBulletList.map((b, i) => (
                   <View key={i} style={styles.bulletRow}>
                     <Text style={styles.bulletDot}>•</Text>
                     <Text style={styles.bulletText}>{b}</Text>
@@ -247,28 +347,48 @@ export default function ModernTemplate({ profile, theme, pageInsets }) {
           </View>
         )}
 
-        {/* WORK EXPERIENCE */}
+        {/* Опыт работы */}
         {experience.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>Work Experience</Text>
-            <View style={[styles.accentRule, { backgroundColor: accent }]} />
+            <Text style={styles.h2}>Опыт работы</Text>
+            <View
+              style={[styles.accentRule, { backgroundColor: accent }]}
+            />
             {experience.map((ex, i) => {
               const pos = t(ex.position);
               const comp = t(ex.company);
               const loc = t(ex.location);
-              const right = fmtPeriod(ex.startDate || ex.start, ex.endDate || ex.end, ex.currentlyWorking, ex.period);
-              const lines = bullets(ex.responsibilities || ex.description);
+              const periodRight = fmtPeriod(
+                ex.startDate || ex.start,
+                ex.endDate || ex.end,
+                ex.currentlyWorking,
+                ex.period
+              );
+
+              const lines = bullets(
+                ex.responsibilities || ex.description
+              );
 
               return (
-                <View key={ex.id || i} style={styles.xpItem} break={false}>
+                <View
+                  key={ex.id || i}
+                  style={styles.xpItem}
+                  break={false}
+                >
                   <View style={styles.xpRow}>
                     <View>
-                      {has(pos) ? <Text style={styles.xpTitle}>{pos}</Text> : null}
+                      {has(pos) ? (
+                        <Text style={styles.xpTitle}>{pos}</Text>
+                      ) : null}
                       <Text style={styles.xpCompany}>
-                        {has(comp) ? comp : ''}{has(comp) && has(loc) ? ' • ' : ''}{has(loc) ? loc : ''}
+                        {has(comp) ? comp : ''}
+                        {has(comp) && has(loc) ? ' • ' : ''}
+                        {has(loc) ? loc : ''}
                       </Text>
                     </View>
-                    {has(right) ? <Text style={styles.xpPeriod}>{right}</Text> : null}
+                    {has(periodRight) ? (
+                      <Text style={styles.xpPeriod}>{periodRight}</Text>
+                    ) : null}
                   </View>
 
                   {lines.length ? (
@@ -287,14 +407,18 @@ export default function ModernTemplate({ profile, theme, pageInsets }) {
           </View>
         ) : null}
 
-        {/* SKILLS */}
+        {/* Навыки */}
         {skills.length ? (
           <View style={{ marginBottom: 6 }}>
-            <Text style={styles.h2}>Skills</Text>
-            <View style={[styles.accentRule, { backgroundColor: accent }]} />
+            <Text style={styles.h2}>Навыки</Text>
+            <View
+              style={[styles.accentRule, { backgroundColor: accent }]}
+            />
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
-                <Text key={`${sk}_${i}`} style={styles.skill}>{t(sk)}</Text>
+                <Text key={`${sk}_${i}`} style={styles.skill}>
+                  {t(sk)}
+                </Text>
               ))}
             </View>
           </View>
