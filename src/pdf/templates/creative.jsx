@@ -3,8 +3,8 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
 /**
- * props: { profile, theme, pageInsets, flags, hints }
- * Рендерит ТОЛЬКО внутренности страницы (без <Document>/<Page>).
+ * props: { profile, theme }
+ * Рендерит ТОЛЬКО внутренность страницы (без <Document>/<Page>).
  */
 
 /* ---------- helpers ---------- */
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   /* LEFT */
   left: {
     width: LEFT_W,
-    backgroundColor: '#6F95A3', // бирюзово-серый как в референсе
+    backgroundColor: '#6F95A3',
     color: '#FFFFFF',
     borderRadius: 10,
     padding: 12,
@@ -125,7 +125,6 @@ const styles = StyleSheet.create({
 
   paragraph: { fontSize: 10, lineHeight: 1.35, color: '#111827' },
 
-  // двухколоночная строка "слева период / справа контент"
   twoCol: { flexDirection: 'row', gap: 12, marginBottom: 10 },
   colTime: { width: 70, color: '#6B7280', fontSize: 9, paddingTop: 2 },
   colBody: { flex: 1 },
@@ -137,7 +136,6 @@ const styles = StyleSheet.create({
   bulletDot: { fontSize: 10, lineHeight: 1.35 },
   bulletText: { fontSize: 10, lineHeight: 1.35, color: '#111827', flex: 1 },
 
-  // вторичный список навыков справа (как теги)
   skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   skillTag: {
     fontSize: 9,
@@ -167,14 +165,20 @@ const SideRow = ({ primary, secondary }) =>
 
 /* ---------- основной компонент ---------- */
 export default function CreativeTemplate({ profile, theme }) {
-  const accent = (theme && theme.accent) || '#8b5cf6'; // фиолетовый по умолчанию
+  const accent = (theme && theme.accent) || '#8b5cf6';
 
-  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
+  // базовые поля
+  const fullName = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
   const title = t(profile?.position || profile?.title || profile?.professionalTitle);
-
   const email = t(profile?.email);
   const phone = t(profile?.phone);
   const location = t(profile?.location);
+
+  // новые поля личного блока
+  const age = t(profile?.age);
+  const maritalStatus = t(profile?.maritalStatus);
+  const children = t(profile?.children);
+  const driverLicense = t(profile?.driverLicense);
 
   const skills = Array.isArray(profile?.skills) ? profile.skills.filter(has) : [];
   const languages = Array.isArray(profile?.languages) ? profile.languages : [];
@@ -184,16 +188,27 @@ export default function CreativeTemplate({ profile, theme }) {
 
   return (
     <View style={styles.layout}>
-      {/* LEFT: фото, карточка ФИО, контакты, навыки, языки */}
+      {/* ===== LEFT COLUMN ===== */}
       <View style={styles.left}>
         {has(profile?.photoUrl || profile?.photo) ? (
           <Image src={profile.photoUrl || profile.photo} style={styles.photo} />
         ) : null}
 
         <View style={styles.nameCard}>
-          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.name}>{fullName}</Text>
           {has(title) ? <Text style={styles.subTitle}>{title}</Text> : null}
         </View>
+
+        {/* Личная информация */}
+        {(has(age) || has(maritalStatus) || has(children) || has(driverLicense)) && (
+          <View style={styles.sideSection}>
+            <SideTitle>Личная информация</SideTitle>
+            {has(age) && <SideRow primary={`Возраст: ${age}`} />}
+            {has(maritalStatus) && <SideRow primary={`Семейное положение: ${maritalStatus}`} />}
+            {has(children) && <SideRow primary={`Дети: ${children}`} />}
+            {has(driverLicense) && <SideRow primary={`Водительские права: ${driverLicense}`} />}
+          </View>
+        )}
 
         {/* Контакты */}
         {(has(location) || has(phone) || has(email)) && (
@@ -205,7 +220,7 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         )}
 
-        {/* Навыки (с пунктиром справа) */}
+        {/* Навыки */}
         {skills.length ? (
           <View style={styles.sideSection}>
             <SideTitle>Навыки</SideTitle>
@@ -236,9 +251,9 @@ export default function CreativeTemplate({ profile, theme }) {
         ) : null}
       </View>
 
-      {/* RIGHT: образование, опыт, профиль, (доп.) навыки */}
+      {/* ===== RIGHT COLUMN ===== */}
       <View style={styles.right}>
-        {/* ОБРАЗОВАНИЕ */}
+        {/* Образование */}
         {education.length ? (
           <View style={styles.block}>
             <Text style={styles.h2}>Образование</Text>
@@ -267,7 +282,7 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* ОПЫТ РАБОТЫ */}
+        {/* Опыт работы */}
         {experience.length ? (
           <View style={styles.block}>
             <Text style={styles.h2}>Опыт работы</Text>
@@ -277,7 +292,12 @@ export default function CreativeTemplate({ profile, theme }) {
             </View>
 
             {experience.map((ex, i) => {
-              const left = fmtPeriod(ex.startDate || ex.start, ex.endDate || ex.end, ex.currentlyWorking, ex.period);
+              const left = fmtPeriod(
+                ex.startDate || ex.start,
+                ex.endDate || ex.end,
+                ex.currentlyWorking,
+                ex.period
+              );
               const pos = t(ex.position);
               const comp = t(ex.company);
               const loc = t(ex.location);
@@ -289,8 +309,11 @@ export default function CreativeTemplate({ profile, theme }) {
                   <View style={styles.colBody}>
                     {has(pos) ? <Text style={styles.em}>{pos}</Text> : null}
                     <Text style={styles.muted}>
-                      {has(comp) ? comp : ''}{has(comp) && has(loc) ? ' • ' : ''}{has(loc) ? loc : ''}
+                      {has(comp) ? comp : ''}
+                      {has(comp) && has(loc) ? ' • ' : ''}
+                      {has(loc) ? loc : ''}
                     </Text>
+
                     {lines.length ? (
                       <View style={{ marginTop: 4 }}>
                         {lines.map((line, j) => (
@@ -308,10 +331,10 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* ПРОФИЛЬ (о себе) */}
+        {/* Профиль / О себе */}
         {has(summary) ? (
           <View style={styles.block}>
-            <Text style={styles.h2}>Профиль</Text>
+            <Text style={styles.h2}>О себе</Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -320,7 +343,7 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* (доп) Навыки тегами — если хочется продублировать справа */}
+        {/* Навыки (теги справа, если нужно продублировать) */}
         {skills.length ? (
           <View style={[styles.block, { marginTop: 4 }]}>
             <Text style={styles.h2}>Навыки</Text>
@@ -330,7 +353,9 @@ export default function CreativeTemplate({ profile, theme }) {
             </View>
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
-                <Text key={`${sk}_${i}`} style={styles.skillTag}>{t(sk)}</Text>
+                <Text key={`${sk}_${i}`} style={styles.skillTag}>
+                  {t(sk)}
+                </Text>
               ))}
             </View>
           </View>

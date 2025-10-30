@@ -1,11 +1,22 @@
 // src/components/BuilderPage.jsx
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
-  Mail, Phone, MapPin, Plus, X, Check, Sparkles, Download,
-  Briefcase, BookOpen, Upload, Globe, RefreshCw
+  Mail,
+  Phone,
+  MapPin,
+  Plus,
+  X,
+  Check,
+  Sparkles,
+  Download,
+  Briefcase,
+  BookOpen,
+  Upload,
+  Globe,
+  RefreshCw,
 } from 'lucide-react';
 
-// ВАЖНО: НЕ импортируем ResumePDF статически, чтобы не тянуть второй инстанс @react-pdf/renderer
+// Мы не тянем @react-pdf/renderer и сам PDF-компонент до момента скачивания
 // import ResumePDF from './ResumePDF';
 
 /* ---------- Константы ---------- */
@@ -18,11 +29,11 @@ const DEFAULT_PROFILE = {
   summary: '',
   photo: null,
 
-  // 🔹 Новые поля личного блока
+  // 🔹 Личные поля (Шаг 0)
   age: '',
   maritalStatus: '',
   children: '',
-  driversLicense: '',
+  driversLicense: '', // ВАЖНО: это поле идёт в PDF (имя совпадает со стейтом form)
 
   experience: [],
   education: [],
@@ -30,7 +41,14 @@ const DEFAULT_PROFILE = {
   languages: [],
 };
 
-const STEPS = ['Личная информация', 'Опыт работы', 'Образование', 'Навыки', 'Языки', 'Шаблон'];
+const STEPS = [
+  'Личная информация',
+  'Опыт работы',
+  'Образование',
+  'Навыки',
+  'Языки',
+  'Шаблон',
+];
 
 const TEMPLATES = [
   { id: 'modern', name: 'Современный', color: 'blue' },
@@ -69,17 +87,89 @@ const uniqCaseInsensitive = (arr) => {
   return out;
 };
 
-/* ---------- Локальный "ИИ" подсказок навыков ---------- */
+/* ---------- Примитивный "ИИ-помощник" навыков (офлайн) ---------- */
 const SKILL_CATALOG = {
-  frontend: ['React', 'JavaScript', 'TypeScript', 'HTML5', 'CSS3', 'Redux', 'REST API', 'Git', 'Vite', 'Webpack', 'Jest', 'RTL'],
-  backend: ['Node.js', 'Express', 'NestJS', 'PostgreSQL', 'MongoDB', 'Docker', 'GraphQL', 'REST API', 'CI/CD'],
-  mobile: ['React Native', 'Kotlin', 'Swift', 'Flutter', 'MVVM', 'Firebase'],
-  data: ['Python', 'Pandas', 'NumPy', 'SQL', 'ETL', 'Power BI', 'Tableau', 'Excel', 'scikit-learn'],
-  design: ['Figma', 'Prototyping', 'User Research', 'Wireframing', 'Design Systems', 'UX Writing'],
-  qa: ['Manual Testing', 'Test Automation', 'Selenium', 'Cypress', 'Jest', 'Playwright'],
-  pm: ['Agile', 'Scrum', 'Kanban', 'Jira', 'Confluence', 'Stakeholder Management'],
-  marketing: ['Digital Marketing', 'SEO', 'SMM', 'Google Analytics', 'Copywriting'],
-  soft: ['Communication', 'Problem Solving', 'Teamwork', 'Time Management'],
+  frontend: [
+    'React',
+    'JavaScript',
+    'TypeScript',
+    'HTML5',
+    'CSS3',
+    'Redux',
+    'REST API',
+    'Git',
+    'Vite',
+    'Webpack',
+    'Jest',
+    'RTL',
+  ],
+  backend: [
+    'Node.js',
+    'Express',
+    'NestJS',
+    'PostgreSQL',
+    'MongoDB',
+    'Docker',
+    'GraphQL',
+    'REST API',
+    'CI/CD',
+  ],
+  mobile: [
+    'React Native',
+    'Kotlin',
+    'Swift',
+    'Flutter',
+    'MVVM',
+    'Firebase',
+  ],
+  data: [
+    'Python',
+    'Pandas',
+    'NumPy',
+    'SQL',
+    'ETL',
+    'Power BI',
+    'Tableau',
+    'Excel',
+    'scikit-learn',
+  ],
+  design: [
+    'Figma',
+    'Prototyping',
+    'User Research',
+    'Wireframing',
+    'Design Systems',
+    'UX Writing',
+  ],
+  qa: [
+    'Manual Testing',
+    'Test Automation',
+    'Selenium',
+    'Cypress',
+    'Jest',
+    'Playwright',
+  ],
+  pm: [
+    'Agile',
+    'Scrum',
+    'Kanban',
+    'Jira',
+    'Confluence',
+    'Stakeholder Management',
+  ],
+  marketing: [
+    'Digital Marketing',
+    'SEO',
+    'SMM',
+    'Google Analytics',
+    'Copywriting',
+  ],
+  soft: [
+    'Communication',
+    'Problem Solving',
+    'Teamwork',
+    'Time Management',
+  ],
 };
 
 function detectTracks(profile) {
@@ -90,25 +180,80 @@ function detectTracks(profile) {
     ...(profile?.experience || []).map((e) => e?.position),
     ...(profile?.experience || []).map((e) => e?.responsibilities),
     ...(profile?.education || []).map((e) => e?.specialization || e?.level),
-  ].map(norm).join(' \n ');
+  ]
+    .map(norm)
+    .join(' \n ');
 
   const has = (...keys) => keys.some((k) => bag.includes(k));
 
   const tracks = new Set();
-  if (has('frontend', 'фронтенд', 'react', 'javascript', 'typescript', 'веб')) tracks.add('frontend');
-  if (has('backend', 'бекенд', 'node', 'nestjs', 'express')) tracks.add('backend');
-  if (has('mobile', 'android', 'ios', 'react native', 'kotlin', 'swift', 'flutter')) tracks.add('mobile');
-  if (has('data', 'аналит', 'python', 'sql', 'power bi', 'tableau', 'ml', 'машин')) tracks.add('data');
-  if (has('дизайн', 'ui', 'ux', 'figma', 'product design', 'интерфейс')) tracks.add('design');
+  if (
+    has(
+      'frontend',
+      'фронтенд',
+      'react',
+      'javascript',
+      'typescript',
+      'веб',
+    )
+  )
+    tracks.add('frontend');
+  if (has('backend', 'бекенд', 'node', 'nestjs', 'express'))
+    tracks.add('backend');
+  if (
+    has(
+      'mobile',
+      'android',
+      'ios',
+      'react native',
+      'kotlin',
+      'swift',
+      'flutter',
+    )
+  )
+    tracks.add('mobile');
+  if (
+    has(
+      'data',
+      'аналит',
+      'python',
+      'sql',
+      'power bi',
+      'tableau',
+      'ml',
+      'машин',
+    )
+  )
+    tracks.add('data');
+  if (
+    has(
+      'дизайн',
+      'ui',
+      'ux',
+      'figma',
+      'product design',
+      'интерфейс',
+    )
+  )
+    tracks.add('design');
   if (has('qa', 'тест', 'quality')) tracks.add('qa');
   if (has('pm', 'project', 'менедж', 'scrum', 'kanban')) tracks.add('pm');
   if (has('market', 'маркет', 'smm', 'seo')) tracks.add('marketing');
 
   if (tracks.size === 0) {
     const skills = (profile?.skills || []).map(norm);
-    if (skills.some((s) => ['react', 'javascript', 'typescript', 'html', 'css'].some((k) => s.includes(k)))) tracks.add('frontend');
-    if (skills.some((s) => ['python', 'sql'].some((k) => s.includes(k)))) tracks.add('data');
-    if (skills.some((s) => ['figma'].some((k) => s.includes(k)))) tracks.add('design');
+    if (
+      skills.some((s) =>
+        ['react', 'javascript', 'typescript', 'html', 'css'].some((k) =>
+          s.includes(k),
+        ),
+      )
+    )
+      tracks.add('frontend');
+    if (skills.some((s) => ['python', 'sql'].some((k) => s.includes(k))))
+      tracks.add('data');
+    if (skills.some((s) => ['figma'].some((k) => s.includes(k))))
+      tracks.add('design');
   }
   if (tracks.size === 0) tracks.add('soft');
   return [...tracks];
@@ -120,8 +265,9 @@ function smartSuggestSkills(profile, rotate = 0) {
 
   let candidates = tracks.flatMap((t) => SKILL_CATALOG[t] || []);
   candidates = candidates.concat(SKILL_CATALOG.soft);
-
-  candidates = uniqCaseInsensitive(candidates.filter((s) => !existing.has(norm(s))));
+  candidates = uniqCaseInsensitive(
+    candidates.filter((s) => !existing.has(norm(s))),
+  );
 
   if (candidates.length && rotate) {
     const k = rotate % candidates.length;
@@ -133,7 +279,9 @@ function smartSuggestSkills(profile, rotate = 0) {
 /* ---------- UI helpers ---------- */
 const Input = React.memo(({ label, className = '', ...rest }) => (
   <div>
-    {label && <label className="block text-sm font-medium mb-2">{label}</label>}
+    {label && (
+      <label className="block text-sm font-medium mb-2">{label}</label>
+    )}
     <input
       {...rest}
       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}`}
@@ -143,7 +291,9 @@ const Input = React.memo(({ label, className = '', ...rest }) => (
 
 const Select = React.memo(({ label, className = '', children, ...rest }) => (
   <div>
-    {label && <label className="block text-sm font-medium mb-2">{label}</label>}
+    {label && (
+      <label className="block text-sm font-medium mb-2">{label}</label>
+    )}
     <select
       {...rest}
       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}`}
@@ -155,7 +305,9 @@ const Select = React.memo(({ label, className = '', children, ...rest }) => (
 
 const Textarea = React.memo(({ label, rows = 3, className = '', ...rest }) => (
   <div>
-    {label && <label className="block text-sm font-medium mb-2">{label}</label>}
+    {label && (
+      <label className="block text-sm font-medium mb-2">{label}</label>
+    )}
     <textarea
       rows={rows}
       {...rest}
@@ -180,27 +332,21 @@ const Stepper = React.memo(({ current }) => (
           {idx < current ? <Check size={20} /> : idx + 1}
         </div>
         {idx < STEPS.length - 1 && (
-          <div className={`w-20 h-1 mx-2 ${idx < current ? 'bg-green-500' : 'bg-gray-200'}`} />
+          <div
+            className={`w-20 h-1 mx-2 ${
+              idx < current ? 'bg-green-500' : 'bg-gray-200'
+            }`}
+          />
         )}
       </div>
     ))}
   </div>
 ));
 
-const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }) {
-  const COLOR_BG = {
-    blue: 'bg-blue-100',
-    purple: 'bg-purple-100',
-    gray: 'bg-gray-100',
-    green: 'bg-green-100',
-  };
-  const TEMPLATES = [
-    { id: 'modern', name: 'Современный', color: 'blue' },
-    { id: 'creative', name: 'Креативный', color: 'purple' },
-    { id: 'professional', name: 'Профессиональный', color: 'gray' },
-    { id: 'minimal', name: 'Минималистичный', color: 'green' },
-  ];
-
+const TemplateSelect = React.memo(function TemplateSelect({
+  selected,
+  onSelect,
+}) {
   return (
     <div className="grid md:grid-cols-2 gap-4">
       {TEMPLATES.map((t) => (
@@ -208,16 +354,23 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }
           key={t.id}
           onClick={() => onSelect(t.id)}
           className={`border-2 rounded-lg p-6 cursor-pointer transition ${
-            selected === t.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+            selected === t.id
+              ? 'border-blue-600 bg-blue-50'
+              : 'border-gray-200 hover:border-gray-300'
           }`}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => e.key === 'Enter' && onSelect(t.id)}
           aria-pressed={selected === t.id}
+          aria-label={`Выбрать шаблон ${t.name}`}
         >
-          <div className={`${COLOR_BG[t.color]} w-12 h-12 rounded-lg mb-3`} />
+          <div
+            className={`${COLOR_BG[t.color]} w-12 h-12 rounded-lg mb-3`}
+          />
           <h4 className="font-semibold mb-1">{t.name}</h4>
-          <p className="text-sm text-gray-600">Стильный и профессиональный дизайн</p>
+          <p className="text-sm text-gray-600">
+            Стильный и профессиональный дизайн
+          </p>
           {selected === t.id && (
             <div className="mt-3 flex items-center gap-2 text-blue-600">
               <Check size={16} />
@@ -231,13 +384,19 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }
 });
 
 const ResumePreview = React.memo(function ResumePreview({ profile }) {
-  const topSkills = useMemo(() => (profile.skills || []).slice(0, 8), [profile.skills]);
+  const topSkills = useMemo(
+    () => (profile.skills || []).slice(0, 8),
+    [profile.skills],
+  );
   const expCount = (profile.experience || []).length;
   const eduCount = (profile.education || []).length;
   const langCount = (profile.languages || []).length;
+
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-      <h4 className="font-semibold mb-3 text-green-900">Предпросмотр резюме</h4>
+      <h4 className="font-semibold mb-3 text-green-900">
+        Предпросмотр резюме
+      </h4>
       <div className="bg-white rounded-lg p-6 border shadow-sm">
         <div className="mb-4 flex gap-4">
           {profile.photo && (
@@ -247,11 +406,19 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
               className="w-16 h-16 rounded-full object-cover border"
             />
           )}
-          <div>
-            <h2 className="text-2xl font-bold">{profile.fullName || 'Ваше имя'}</h2>
-            {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
 
-            {/* контакты */}
+          <div>
+            <h2 className="text-2xl font-bold">
+              {profile.fullName || 'Ваше имя'}
+            </h2>
+
+            {profile.position && (
+              <p className="text-gray-800 font-medium mt-1">
+                {profile.position}
+              </p>
+            )}
+
+            {/* Контакты */}
             <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
               {profile.email && (
                 <span className="flex items-center gap-1">
@@ -273,12 +440,18 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
               )}
             </div>
 
-            {/* новые поля личной инфы (покажем мелким текстом, если есть) */}
+            {/* Новые поля личной инфы */}
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
               {profile.age && <span>Возраст: {profile.age}</span>}
-              {profile.maritalStatus && <span>Семейное положение: {profile.maritalStatus}</span>}
-              {profile.children && <span>Дети: {profile.children}</span>}
-              {profile.driversLicense && <span>Права: {profile.driversLicense}</span>}
+              {profile.maritalStatus && (
+                <span>Семейное положение: {profile.maritalStatus}</span>
+              )}
+              {profile.children && (
+                <span>Дети: {profile.children}</span>
+              )}
+              {profile.driversLicense && (
+                <span>Права: {profile.driversLicense}</span>
+              )}
             </div>
           </div>
         </div>
@@ -292,18 +465,31 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
 
         <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
           <div className="text-center p-3 bg-blue-50 rounded-lg">
-            <Briefcase size={20} className="mx-auto mb-1 text-blue-600" />
+            <Briefcase
+              size={20}
+              className="mx-auto mb-1 text-blue-600"
+            />
             <div className="font-semibold text-gray-900">{expCount}</div>
             <div className="text-gray-600">мест работы</div>
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg">
-            <BookOpen size={20} className="mx-auto mb-1 text-purple-600" />
-            <div className="font-semibold text-gray-900">{eduCount}</div>
+            <BookOpen
+              size={20}
+              className="mx-auto mb-1 text-purple-600"
+            />
+            <div className="font-semibold text-gray-900">
+              {eduCount}
+            </div>
             <div className="text-gray-600">образование</div>
           </div>
           <div className="text-center p-3 bg-indigo-50 rounded-lg">
-            <Globe size={20} className="mx-auto mb-1 text-indigo-600" />
-            <div className="font-semibold text-gray-900">{langCount}</div>
+            <Globe
+              size={20}
+              className="mx-auto mb-1 text-indigo-600"
+            />
+            <div className="font-semibold text-gray-900">
+              {langCount}
+            </div>
             <div className="text-gray-600">языков</div>
           </div>
         </div>
@@ -328,7 +514,7 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
   );
 });
 
-/* ---------- Основной компонент ---------- */
+/* ---------- Основной компонент BuilderPage ---------- */
 function BuilderPage({
   profile = DEFAULT_PROFILE,
   setProfile,
@@ -338,97 +524,151 @@ function BuilderPage({
 }) {
   const [currentStep, setCurrentStep] = useState(0);
 
-  // 🔝 ref на заголовок шага
+  // заголовок активного шага для фокуса/скролла
   const headingRef = useRef(null);
 
   // локальная форма
-  const [form, setForm] = useState(() => ({ ...DEFAULT_PROFILE, ...(profile || {}) }));
+  const [form, setForm] = useState(() => ({
+    ...DEFAULT_PROFILE,
+    ...(profile || {}),
+  }));
 
-  // синхроним изменения снаружи (если профиль извне поменяли)
+  /* ---------- Синхронизация наружу ---------- */
+  // Если внешний profile изменился (например, пришёл новый проп сверху),
+  // аккуратно мержим в локальную форму.
   useEffect(() => {
-    if (profile) {
-      setForm((prev) => ({ ...prev, ...profile }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!profile) return;
+    setForm((prev) => ({
+      ...prev,
+      ...profile,
+    }));
+    // отслеживаем все поля, включая новые
   }, [
-    profile?.fullName, profile?.email, profile?.phone, profile?.location,
-    profile?.summary, profile?.position, profile?.photo, profile?.languages,
-    profile?.age, profile?.maritalStatus, profile?.children, profile?.driversLicense
+    profile?.fullName,
+    profile?.email,
+    profile?.phone,
+    profile?.location,
+    profile?.summary,
+    profile?.position,
+    profile?.photo,
+    profile?.languages,
+    profile?.age,
+    profile?.maritalStatus,
+    profile?.children,
+    profile?.driversLicense,
+    profile?.experience,
+    profile?.education,
+    profile?.skills,
   ]);
 
-  // пушим наружу форму с задержкой
+  // Пушим наружу form (в AIResumeBuilder) с небольшой задержкой.
+  // ВАЖНО: теперь наружу уходит age / maritalStatus / children / driversLicense.
   useEffect(() => {
-    const t = setTimeout(() => setProfile?.(form), 250);
+    const t = setTimeout(() => {
+      setProfile?.(form);
+    }, 250);
     return () => clearTimeout(t);
   }, [form, setProfile]);
 
-  // прокрутка и фокус при смене шага
+  /* ---------- Переходы по шагам и доступность ---------- */
+  // Прокрутка на верх и фокус на заголовке при смене шага.
   useEffect(() => {
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const reduceMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const behavior = reduceMotion ? 'auto' : 'smooth';
 
     if (headingRef.current?.scrollIntoView) {
-      headingRef.current.scrollIntoView({ behavior, block: 'start' });
+      headingRef.current.scrollIntoView({
+        behavior,
+        block: 'start',
+      });
+
+      // после скролла поставить фокус (для screen reader и клавиатуры)
       setTimeout(() => {
-        try { headingRef.current?.focus?.(); } catch {}
+        try {
+          headingRef.current?.focus?.();
+        } catch {}
       }, reduceMotion ? 0 : 150);
     } else {
       window.scrollTo({ top: 0, behavior });
     }
   }, [currentStep]);
 
-  // универсальный handler поля
+  /* ---------- Общий handler полей формы ---------- */
   const onChangeField = useCallback(
-    (field) => (e) => setForm((p) => ({ ...p, [field]: e.target.value })),
-    []
+    (field) => (e) =>
+      setForm((p) => ({
+        ...p,
+        [field]: e.target.value,
+      })),
+    [],
   );
 
-  /* --- Фото --- */
+  /* ---------- Фото ---------- */
   const handlePhotoUpload = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result;
-      if (dataUrl) setForm((p) => ({ ...p, photo: dataUrl }));
+      if (dataUrl) {
+        setForm((p) => ({
+          ...p,
+          photo: dataUrl,
+        }));
+      }
     };
     reader.readAsDataURL(file);
   }, []);
 
-  /* --- Навыки --- */
+  /* ---------- Навыки ---------- */
   const [newSkill, setNewSkill] = useState('');
   const addSkill = useCallback(() => {
     const s = newSkill.trim();
     if (!s) return;
-    setForm((p) => (p.skills.includes(s) ? p : { ...p, skills: [...p.skills, s] }));
+    setForm((p) =>
+      p.skills.includes(s)
+        ? p
+        : {
+            ...p,
+            skills: [...p.skills, s],
+          },
+    );
     setNewSkill('');
   }, [newSkill]);
   const removeSkill = useCallback((idx) => {
-    setForm((p) => ({ ...p, skills: p.skills.filter((_, i) => i !== idx) }));
+    setForm((p) => ({
+      ...p,
+      skills: p.skills.filter((_, i) => i !== idx),
+    }));
   }, []);
 
-  // офлайн "AI" подсказки навыков
+  // "ИИ"-подсказчик навыков
   const [aiSkillHints, setAiSkillHints] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRotate, setAiRotate] = useState(0);
 
-  const rebuildHints = useCallback((rotateBump = 0) => {
-    setAiLoading(true);
-    const r = aiRotate + rotateBump;
-    setTimeout(() => {
-      const hints = smartSuggestSkills(form, r);
-      setAiSkillHints(hints);
-      setAiRotate(r);
-      setAiLoading(false);
-    }, 250);
-  }, [form, aiRotate]);
+  const rebuildHints = useCallback(
+    (rotateBump = 0) => {
+      setAiLoading(true);
+      const r = aiRotate + rotateBump;
+      setTimeout(() => {
+        const hints = smartSuggestSkills(form, r);
+        setAiSkillHints(hints);
+        setAiRotate(r);
+        setAiLoading(false);
+      }, 250);
+    },
+    [form, aiRotate],
+  );
 
   useEffect(() => {
+    // обновляем список навыковых подсказок только на шаге "Навыки"
     if (currentStep !== 3) return;
     rebuildHints(0);
   }, [currentStep, form.skills, form.position, form.summary, rebuildHints]);
 
-  /* --- Опыт --- */
+  /* ---------- Опыт ---------- */
   const blankExperience = {
     startDate: '',
     endDate: '',
@@ -447,23 +687,34 @@ function BuilderPage({
         !isBlank(e.startDate) ||
         !isBlank(e.endDate) ||
         !isBlank(e.responsibilities)),
-    []
+    [],
   );
   const canCommitExperience = useCallback(
     (e) => !!e && !isBlank(e.position) && !isBlank(e.company),
-    []
+    [],
   );
+
   const commitExperienceDraft = useCallback(() => {
-    if (isExperienceDraftFilled(newExperience) && canCommitExperience(newExperience)) {
+    if (
+      isExperienceDraftFilled(newExperience) &&
+      canCommitExperience(newExperience)
+    ) {
       setForm((p) => ({
         ...p,
-        experience: [...p.experience, { ...newExperience, id: Date.now() }],
+        experience: [
+          ...p.experience,
+          { ...newExperience, id: Date.now() },
+        ],
       }));
       setNewExperience(blankExperience);
       return true;
     }
     return false;
-  }, [newExperience, isExperienceDraftFilled, canCommitExperience]);
+  }, [
+    newExperience,
+    isExperienceDraftFilled,
+    canCommitExperience,
+  ]);
 
   const addExperience = useCallback(() => {
     commitExperienceDraft();
@@ -472,12 +723,19 @@ function BuilderPage({
   const removeExperience = useCallback((idxOrId) => {
     setForm((p) => ({
       ...p,
-      experience: p.experience.filter((e, i) => (e.id ? e.id !== idxOrId : i !== idxOrId)),
+      experience: p.experience.filter((e, i) =>
+        e.id ? e.id !== idxOrId : i !== idxOrId,
+      ),
     }));
   }, []);
 
-  /* --- Образование --- */
-  const blankEducation = { year: '', institution: '', level: '', specialization: '' };
+  /* ---------- Образование ---------- */
+  const blankEducation = {
+    year: '',
+    institution: '',
+    level: '',
+    specialization: '',
+  };
   const [newEducation, setNewEducation] = useState(blankEducation);
 
   const isEducationDraftFilled = useCallback(
@@ -487,24 +745,34 @@ function BuilderPage({
         !isBlank(e.level) ||
         !isBlank(e.year) ||
         !isBlank(e.specialization)),
-    []
+    [],
   );
   const canCommitEducation = useCallback(
     (e) => !!e && !isBlank(e.institution) && !isBlank(e.level),
-    []
+    [],
   );
 
   const commitEducationDraft = useCallback(() => {
-    if (isEducationDraftFilled(newEducation) && canCommitEducation(newEducation)) {
+    if (
+      isEducationDraftFilled(newEducation) &&
+      canCommitEducation(newEducation)
+    ) {
       setForm((p) => ({
         ...p,
-        education: [...p.education, { ...newEducation, id: Date.now() }],
+        education: [
+          ...p.education,
+          { ...newEducation, id: Date.now() },
+        ],
       }));
       setNewEducation(blankEducation);
       return true;
     }
     return false;
-  }, [newEducation, isEducationDraftFilled, canCommitEducation]);
+  }, [
+    newEducation,
+    isEducationDraftFilled,
+    canCommitEducation,
+  ]);
 
   const addEducation = useCallback(() => {
     commitEducationDraft();
@@ -513,20 +781,29 @@ function BuilderPage({
   const removeEducation = useCallback((idxOrId) => {
     setForm((p) => ({
       ...p,
-      education: p.education.filter((e, i) => (e.id ? e.id !== idxOrId : i !== idxOrId)),
+      education: p.education.filter((e, i) =>
+        e.id ? e.id !== idxOrId : i !== idxOrId,
+      ),
     }));
   }, []);
 
-  /* --- Языки --- */
+  /* ---------- Языки ---------- */
   const blankLanguage = { language: '', level: 'B1 — Средний' };
   const [newLanguage, setNewLanguage] = useState(blankLanguage);
 
-  const isLanguageDraftFilled = useCallback((l) => !!l && !isBlank(l.language), []);
+  const isLanguageDraftFilled = useCallback(
+    (l) => !!l && !isBlank(l.language),
+    [],
+  );
+
   const commitLanguageDraft = useCallback(() => {
     if (isLanguageDraftFilled(newLanguage)) {
       setForm((p) => ({
         ...p,
-        languages: [...(p.languages || []), { ...newLanguage, id: Date.now() }],
+        languages: [
+          ...(p.languages || []),
+          { ...newLanguage, id: Date.now() },
+        ],
       }));
       setNewLanguage(blankLanguage);
       return true;
@@ -541,22 +818,29 @@ function BuilderPage({
   const removeLanguage = useCallback((idOrIdx) => {
     setForm((p) => ({
       ...p,
-      languages: (p.languages || []).filter((l, i) => (l.id ? l.id !== idOrIdx : i !== idOrIdx)),
+      languages: (p.languages || []).filter((l, i) =>
+        l.id ? l.id !== idOrIdx : i !== idOrIdx,
+      ),
     }));
   }, []);
 
+  /* ---------- Шаблон ---------- */
   const handleSelectTemplate = useCallback(
     (id) => setSelectedTemplate(id),
-    [setSelectedTemplate]
+    [setSelectedTemplate],
   );
 
-  // имя файла
+  /* ---------- Имя файла PDF ---------- */
   const fileName = useMemo(() => {
-    const base = (form.fullName || 'resume').toString().trim().replace(/\s+/g, '_').replace(/[^\w\-]+/g, '');
+    const base = (form.fullName || 'resume')
+      .toString()
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^\w\-]+/g, '');
     return `${base || 'resume'}.pdf`;
   }, [form.fullName]);
 
-  // валидация для скачивания
+  /* ---------- Проверка обязательных полей ---------- */
   const requiredMissing = useMemo(() => {
     const miss = [];
     if (!form.fullName?.trim()) miss.push('ФИО');
@@ -566,36 +850,63 @@ function BuilderPage({
   }, [form.fullName, form.email, form.phone]);
   const canDownload = requiredMissing.length === 0;
 
-  // далее
+  /* ---------- Навигация по шагам ---------- */
   const goNext = useCallback(() => {
+    // фиксируем черновики при переходах
     if (currentStep === 1) commitExperienceDraft();
     if (currentStep === 2) commitEducationDraft();
     if (currentStep === 4) commitLanguageDraft();
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft]);
+  }, [
+    currentStep,
+    commitExperienceDraft,
+    commitEducationDraft,
+    commitLanguageDraft,
+  ]);
 
-  // построить профиль для экспорта (включая незакоммиченные черновики + новые поля)
+  /* ---------- Профиль для экспорта в PDF ---------- */
   const buildExportProfile = useCallback(() => {
+    // включаем незакоммиченные драфты
     const exp = [...form.experience];
-    if (isExperienceDraftFilled(newExperience) && canCommitExperience(newExperience)) {
-      exp.push({ ...newExperience, id: `draft-${Date.now()}` });
+    if (
+      isExperienceDraftFilled(newExperience) &&
+      canCommitExperience(newExperience)
+    ) {
+      exp.push({
+        ...newExperience,
+        id: `draft-${Date.now()}`,
+      });
     }
+
     const edu = [...form.education];
-    if (isEducationDraftFilled(newEducation) && canCommitEducation(newEducation)) {
-      edu.push({ ...newEducation, id: `draft-${Date.now()}` });
+    if (
+      isEducationDraftFilled(newEducation) &&
+      canCommitEducation(newEducation)
+    ) {
+      edu.push({
+        ...newEducation,
+        id: `draft-${Date.now()}`,
+      });
     }
+
     const langs = [...(form.languages || [])];
     if (isLanguageDraftFilled(newLanguage)) {
-      langs.push({ ...newLanguage, id: `draft-${Date.now()}` });
+      langs.push({
+        ...newLanguage,
+        id: `draft-${Date.now()}`,
+      });
     }
+
+    // возвращаем финальный профиль, который уходит в PDF
     return {
       ...form,
       experience: exp,
       education: edu,
       languages: langs,
+
       photoUrl: form.photo || form.photoUrl || null,
 
-      // важно: эти поля уходят в PDF
+      // 👇 КЛЮЧЕВОЕ: личные данные для PDF-шаблонов
       age: form.age || '',
       maritalStatus: form.maritalStatus || '',
       children: form.children || '',
@@ -603,23 +914,31 @@ function BuilderPage({
     };
   }, [
     form,
-    newExperience, isExperienceDraftFilled, canCommitExperience,
-    newEducation, isEducationDraftFilled, canCommitEducation,
-    newLanguage, isLanguageDraftFilled
+    newExperience,
+    isExperienceDraftFilled,
+    canCommitExperience,
+    newEducation,
+    isEducationDraftFilled,
+    canCommitEducation,
+    newLanguage,
+    isLanguageDraftFilled,
   ]);
 
-  // генерация PDF
+  /* ---------- Генерация PDF ---------- */
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
   const handleDownload = useCallback(async () => {
     if (!canDownload || downloading) return;
 
+    // перед скачиванием добиваем незакоммиченные черновики, чтобы ничего не потерялось
     try {
       if (currentStep === 1) await commitExperienceDraft();
       if (currentStep === 2) await commitEducationDraft();
       if (currentStep === 4) await commitLanguageDraft();
-    } catch {}
+    } catch {
+      // не критично
+    }
 
     setDownloading(true);
     setDownloadError('');
@@ -632,9 +951,15 @@ function BuilderPage({
       ]);
 
       const blob = await pdf(
-        <ResumePDF profile={exportProfile} template={selectedTemplate} />
+        <ResumePDF
+          profile={exportProfile}
+          template={selectedTemplate}
+        />,
       ).toBlob();
-      if (!blob || blob.size === 0) throw new Error('Пустой PDF (blob.size === 0)');
+
+      if (!blob || blob.size === 0) {
+        throw new Error('Пустой PDF (blob.size === 0)');
+      }
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -646,17 +971,28 @@ function BuilderPage({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('PDF generate error:', err);
-      const msg = (err && (err.message || err.toString())) || 'Неизвестная ошибка';
-      setDownloadError(`Не удалось сформировать PDF. ${msg}`);
+      const msg =
+        (err && (err.message || err.toString())) ||
+        'Неизвестная ошибка';
+      setDownloadError(
+        `Не удалось сформировать PDF. ${msg}`,
+      );
     } finally {
       setDownloading(false);
     }
   }, [
-    canDownload, downloading, currentStep,
-    commitExperienceDraft, commitEducationDraft, commitLanguageDraft,
-    buildExportProfile, selectedTemplate, fileName
+    canDownload,
+    downloading,
+    currentStep,
+    commitExperienceDraft,
+    commitEducationDraft,
+    commitLanguageDraft,
+    buildExportProfile,
+    selectedTemplate,
+    fileName,
   ]);
 
+  /* ---------- RENDER ---------- */
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-5xl mx-auto px-4">
@@ -668,6 +1004,7 @@ function BuilderPage({
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8">
+          {/* Шаги и заголовок */}
           <div className="mb-8">
             <Stepper current={currentStep} />
             <h2
@@ -679,8 +1016,9 @@ function BuilderPage({
             </h2>
           </div>
 
+          {/* Контент текущего шага */}
           <div className="mb-8">
-            {/* Шаг 0 — Личная информация */}
+            {/* ------------ ШАГ 0: Личная информация ------------ */}
             {currentStep === 0 && (
               <div className="space-y-6">
                 {/* Фото */}
@@ -694,11 +1032,18 @@ function BuilderPage({
                       />
                     ) : (
                       <div className="w-28 h-28 rounded-full bg-gray-100 flex items-center justify-center border-4 border-gray-200">
-                        <Upload className="text-gray-400" size={28} />
+                        <Upload
+                          className="text-gray-400"
+                          size={28}
+                        />
                       </div>
                     )}
+
                     <label className="absolute bottom-0 right-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition shadow">
-                      <Upload size={18} className="text-white" />
+                      <Upload
+                        size={18}
+                        className="text-white"
+                      />
                       <input
                         type="file"
                         accept="image/*"
@@ -707,7 +1052,9 @@ function BuilderPage({
                       />
                     </label>
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Рекомендуется загрузить фото</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Рекомендуется загрузить фото
+                  </p>
                 </div>
 
                 <Input
@@ -804,14 +1151,20 @@ function BuilderPage({
                     placeholder="Расскажите о себе: 2–3 предложения о ключевых компетенциях и целях…"
                   />
                   <div className="mt-2 flex items-start gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded">
-                    <Sparkles size={16} className="mt-0.5" />
-                    <p>AI подсказка: Укажите опыт, 1–2 достижения и стек/сферы, в которых сильны.</p>
+                    <Sparkles
+                      size={16}
+                      className="mt-0.5"
+                    />
+                    <p>
+                      Укажите опыт, 1–2 достижения и стек / сферу,
+                      в которой сильны.
+                    </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Шаг 1 — Опыт работы */}
+            {/* ------------ ШАГ 1: Опыт работы ------------ */}
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -823,13 +1176,23 @@ function BuilderPage({
                     <Input
                       label="Должность *"
                       value={newExperience.position}
-                      onChange={(e) => setNewExperience((p) => ({ ...p, position: e.target.value }))}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          position: e.target.value,
+                        }))
+                      }
                       placeholder="Frontend Developer"
                     />
                     <Input
                       label="Компания *"
                       value={newExperience.company}
-                      onChange={(e) => setNewExperience((p) => ({ ...p, company: e.target.value }))}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          company: e.target.value,
+                        }))
+                      }
                       placeholder='ТОО "Tech Corp"'
                     />
                   </div>
@@ -839,15 +1202,29 @@ function BuilderPage({
                       label="Начало работы *"
                       type="month"
                       value={newExperience.startDate}
-                      onChange={(e) => setNewExperience((p) => ({ ...p, startDate: e.target.value }))}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          startDate: e.target.value,
+                        }))
+                      }
                     />
                     <Input
                       label="Окончание работы"
                       type="month"
                       value={newExperience.endDate}
-                      onChange={(e) => setNewExperience((p) => ({ ...p, endDate: e.target.value }))}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          endDate: e.target.value,
+                        }))
+                      }
                       disabled={newExperience.currentlyWorking}
-                      className={newExperience.currentlyWorking ? 'bg-gray-100 cursor-not-allowed' : ''}
+                      className={
+                        newExperience.currentlyWorking
+                          ? 'bg-gray-100 cursor-not-allowed'
+                          : ''
+                      }
                     />
                   </div>
 
@@ -859,20 +1236,31 @@ function BuilderPage({
                         setNewExperience((p) => ({
                           ...p,
                           currentlyWorking: e.target.checked,
-                          endDate: e.target.checked ? '' : p.endDate,
+                          endDate: e.target.checked
+                            ? ''
+                            : p.endDate,
                         }))
                       }
                       className="w-4 h-4"
                     />
-                    <span className="text-sm">Работаю в настоящее время</span>
+                    <span className="text-sm">
+                      Работаю в настоящее время
+                    </span>
                   </label>
 
                   <Textarea
                     label="Обязанности и достижения"
                     rows={4}
                     value={newExperience.responsibilities}
-                    onChange={(e) => setNewExperience((p) => ({ ...p, responsibilities: e.target.value }))}
-                    placeholder={'• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров'}
+                    onChange={(e) =>
+                      setNewExperience((p) => ({
+                        ...p,
+                        responsibilities: e.target.value,
+                      }))
+                    }
+                    placeholder={
+                      '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров'
+                    }
                   />
 
                   <button
@@ -886,26 +1274,42 @@ function BuilderPage({
 
                 {form.experience.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold">Добавленный опыт:</h3>
+                    <h3 className="font-semibold">
+                      Добавленный опыт:
+                    </h3>
                     {form.experience.map((exp, idx) => (
-                      <div key={exp.id || idx} className="border rounded-lg p-4 bg-white">
+                      <div
+                        key={exp.id || idx}
+                        className="border rounded-lg p-4 bg-white"
+                      >
                         <div className="flex justify-between items-start mb-1">
                           <div>
-                            <h4 className="font-semibold">{exp.position}</h4>
+                            <h4 className="font-semibold">
+                              {exp.position}
+                            </h4>
                             <p className="text-sm text-gray-600">
-                              {exp.company} • {fmtMonth(exp.startDate)} — {exp.currentlyWorking ? 'настоящее время' : fmtMonth(exp.endDate)}
+                              {exp.company} •{' '}
+                              {fmtMonth(exp.startDate)} —{' '}
+                              {exp.currentlyWorking
+                                ? 'настоящее время'
+                                : fmtMonth(exp.endDate)}
                             </p>
                           </div>
                           <button
-                            onClick={() => removeExperience(exp.id ?? idx)}
+                            onClick={() =>
+                              removeExperience(exp.id ?? idx)
+                            }
                             className="text-red-500 hover:text-red-700"
                             aria-label="Удалить опыт"
                           >
                             <X size={16} />
                           </button>
                         </div>
+
                         {exp.responsibilities && (
-                          <p className="text-sm text-gray-700 whitespace-pre-line">{exp.responsibilities}</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-line">
+                            {exp.responsibilities}
+                          </p>
                         )}
                       </div>
                     ))}
@@ -914,7 +1318,7 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 2 — Образование */}
+            {/* ------------ ШАГ 2: Образование ------------ */}
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="space-y-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -926,7 +1330,12 @@ function BuilderPage({
                     <Select
                       label="Уровень *"
                       value={newEducation.level}
-                      onChange={(e) => setNewEducation((p) => ({ ...p, level: e.target.value }))}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({
+                          ...p,
+                          level: e.target.value,
+                        }))
+                      }
                     >
                       <option value="">Выберите</option>
                       {[
@@ -940,13 +1349,21 @@ function BuilderPage({
                         'Кандидат наук',
                         'Доктор наук',
                       ].map((lvl) => (
-                        <option key={lvl} value={lvl}>{lvl}</option>
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
                       ))}
                     </Select>
+
                     <Input
                       label="Учебное заведение *"
                       value={newEducation.institution}
-                      onChange={(e) => setNewEducation((p) => ({ ...p, institution: e.target.value }))}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({
+                          ...p,
+                          institution: e.target.value,
+                        }))
+                      }
                       placeholder="Жезказганский университет имени О.А. Байконурова"
                     />
                   </div>
@@ -958,13 +1375,23 @@ function BuilderPage({
                       min="1950"
                       max="2035"
                       value={newEducation.year}
-                      onChange={(e) => setNewEducation((p) => ({ ...p, year: e.target.value }))}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({
+                          ...p,
+                          year: e.target.value,
+                        }))
+                      }
                       placeholder="2024"
                     />
                     <Input
                       label="Специальность"
                       value={newEducation.specialization}
-                      onChange={(e) => setNewEducation((p) => ({ ...p, specialization: e.target.value }))}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({
+                          ...p,
+                          specialization: e.target.value,
+                        }))
+                      }
                       placeholder="Программная инженерия"
                     />
                   </div>
@@ -980,21 +1407,35 @@ function BuilderPage({
 
                 {form.education.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold">Добавленное образование:</h3>
+                    <h3 className="font-semibold">
+                      Добавленное образование:
+                    </h3>
                     {form.education.map((edu, idx) => (
-                      <div key={edu.id || idx} className="border rounded-lg p-4 bg-white">
+                      <div
+                        key={edu.id || idx}
+                        className="border rounded-lg p-4 bg-white"
+                      >
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-semibold">{edu.level}</h4>
+                            <h4 className="font-semibold">
+                              {edu.level}
+                            </h4>
                             <p className="text-sm text-gray-600">
-                              {edu.institution}{edu.year ? ` • ${edu.year}` : ''}
+                              {edu.institution}
+                              {edu.year
+                                ? ` • ${edu.year}`
+                                : ''}
                             </p>
                             {edu.specialization && (
-                              <p className="text-sm text-gray-700">{edu.specialization}</p>
+                              <p className="text-sm text-gray-700">
+                                {edu.specialization}
+                              </p>
                             )}
                           </div>
                           <button
-                            onClick={() => removeEducation(edu.id ?? idx)}
+                            onClick={() =>
+                              removeEducation(edu.id ?? idx)
+                            }
                             className="text-red-500 hover:text-red-700"
                             aria-label="Удалить образование"
                           >
@@ -1008,17 +1449,23 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 3 — Навыки */}
+            {/* ------------ ШАГ 3: Навыки ------------ */}
             {currentStep === 3 && (
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Добавить навык</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Добавить навык
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={newSkill}
-                      onChange={(e) => setNewSkill(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+                      onChange={(e) =>
+                        setNewSkill(e.target.value)
+                      }
+                      onKeyDown={(e) =>
+                        e.key === 'Enter' && addSkill()
+                      }
                       className="flex-1 px-4 py-2 border rounded-lg"
                       placeholder="Например: React, JavaScript, Python"
                     />
@@ -1033,7 +1480,9 @@ function BuilderPage({
 
                 {form.skills.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-3">Ваши навыки:</h3>
+                    <h3 className="font-semibold mb-3">
+                      Ваши навыки:
+                    </h3>
                     <div className="flex flex-wrap gap-2">
                       {form.skills.map((skill, idx) => (
                         <span
@@ -1042,7 +1491,9 @@ function BuilderPage({
                         >
                           {skill}
                           <button
-                            onClick={() => removeSkill(idx)}
+                            onClick={() =>
+                              removeSkill(idx)
+                            }
                             className="hover:text-blue-900"
                             aria-label={`Удалить навык ${skill}`}
                           >
@@ -1057,12 +1508,19 @@ function BuilderPage({
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2">
-                      <Sparkles className="text-purple-600 mt-0.5" size={16} />
+                      <Sparkles
+                        className="text-purple-600 mt-0.5"
+                        size={16}
+                      />
                       <div>
-                        <h4 className="font-semibold text-purple-900">AI рекомендует добавить:</h4>
+                        <h4 className="font-semibold text-purple-900">
+                          AI рекомендует добавить:
+                        </h4>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {aiLoading ? (
-                            <span className="text-sm text-gray-600">Подбираем навыки…</span>
+                            <span className="text-sm text-gray-600">
+                              Подбираем навыки…
+                            </span>
                           ) : aiSkillHints.length ? (
                             aiSkillHints.map((skill) => (
                               <button
@@ -1071,7 +1529,14 @@ function BuilderPage({
                                   setForm((p) =>
                                     p.skills.includes(skill)
                                       ? p
-                                      : { ...p, skills: uniqCaseInsensitive([...p.skills, skill]) }
+                                      : {
+                                          ...p,
+                                          skills:
+                                            uniqCaseInsensitive([
+                                              ...p.skills,
+                                              skill,
+                                            ]),
+                                        }
                                   )
                                 }
                                 className="px-3 py-1 bg-white border border-purple-300 text-purple-700 rounded-full text-sm hover:bg-purple-100"
@@ -1081,7 +1546,9 @@ function BuilderPage({
                             ))
                           ) : (
                             <span className="text-sm text-gray-600">
-                              Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.
+                              Пока нечего предложить — добавьте
+                              пару ключевых навыков или укажите
+                              должность.
                             </span>
                           )}
                         </div>
@@ -1094,14 +1561,19 @@ function BuilderPage({
                       disabled={aiLoading}
                       title="Обновить рекомендации"
                     >
-                      <RefreshCw size={16} className={aiLoading ? 'animate-spin' : ''} />
+                      <RefreshCw
+                        size={16}
+                        className={
+                          aiLoading ? 'animate-spin' : ''
+                        }
+                      />
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Шаг 4 — Языки */}
+            {/* ------------ ШАГ 4: Языки ------------ */}
             {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
@@ -1113,13 +1585,23 @@ function BuilderPage({
                     <Input
                       label="Язык *"
                       value={newLanguage.language}
-                      onChange={(e) => setNewLanguage((p) => ({ ...p, language: e.target.value }))}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({
+                          ...p,
+                          language: e.target.value,
+                        }))
+                      }
                       placeholder="Английский"
                     />
                     <Select
                       label="Уровень *"
                       value={newLanguage.level}
-                      onChange={(e) => setNewLanguage((p) => ({ ...p, level: e.target.value }))}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({
+                          ...p,
+                          level: e.target.value,
+                        }))
+                      }
                     >
                       {[
                         'A1 — Начальный',
@@ -1129,7 +1611,9 @@ function BuilderPage({
                         'C1 — Продвинутый',
                         'C2 — В совершенстве',
                       ].map((lvl) => (
-                        <option key={lvl} value={lvl}>{lvl}</option>
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
                       ))}
                     </Select>
                   </div>
@@ -1151,11 +1635,17 @@ function BuilderPage({
                         className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white"
                       >
                         <div>
-                          <span className="font-medium text-gray-900">{l.language}</span>
-                          <span className="text-gray-500 text-sm ml-2">— {l.level}</span>
+                          <span className="font-medium text-gray-900">
+                            {l.language}
+                          </span>
+                          <span className="text-gray-500 text-sm ml-2">
+                            — {l.level}
+                          </span>
                         </div>
                         <button
-                          onClick={() => removeLanguage(l.id ?? idx)}
+                          onClick={() =>
+                            removeLanguage(l.id ?? idx)
+                          }
                           className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
                           aria-label={`Удалить язык ${l.language}`}
                         >
@@ -1168,23 +1658,33 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 5 — Шаблон и предпросмотр */}
+            {/* ------------ ШАГ 5: Шаблон и предпросмотр ------------ */}
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-4">Выберите шаблон резюме:</h3>
-                  <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} />
+                  <h3 className="font-semibold mb-4">
+                    Выберите шаблон резюме:
+                  </h3>
+                  <TemplateSelect
+                    selected={selectedTemplate}
+                    onSelect={handleSelectTemplate}
+                  />
                 </div>
+
+                {/* В предпросмотре мы показываем текущую форму:
+                   это полезно, чтобы юзер сразу видел возраст, права и т.д. */}
                 <ResumePreview profile={form} />
               </div>
             )}
           </div>
 
-          {/* Навигация/скачивание */}
+          {/* Кнопки навигации и скачивания */}
           <div className="flex justify-between items-start">
             {currentStep > 0 && (
               <button
-                onClick={() => setCurrentStep((s) => s - 1)}
+                onClick={() =>
+                  setCurrentStep((s) => s - 1)
+                }
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Назад
@@ -1204,14 +1704,20 @@ function BuilderPage({
                   onClick={handleDownload}
                   disabled={downloading}
                   className={`px-6 py-2 rounded-lg flex items-center gap-2 ${
-                    downloading ? 'bg-green-500 text-white opacity-80 cursor-wait' : 'bg-green-600 text-white hover:bg-green-700'
+                    downloading
+                      ? 'bg-green-500 text-white opacity-80 cursor-wait'
+                      : 'bg-green-600 text-white hover:bg-green-700'
                   }`}
                 >
                   <Download size={20} />
-                  {downloading ? 'Готовим PDF…' : 'Скачать PDF'}
+                  {downloading
+                    ? 'Готовим PDF…'
+                    : 'Скачать PDF'}
                 </button>
                 {downloadError && (
-                  <p className="text-sm text-red-600">{downloadError}</p>
+                  <p className="text-sm text-red-600">
+                    {downloadError}
+                  </p>
                 )}
               </div>
             ) : (
@@ -1219,13 +1725,16 @@ function BuilderPage({
                 <button
                   disabled
                   className="px-6 py-2 bg-gray-300 text-gray-600 rounded-lg cursor-not-allowed flex items-center gap-2"
-                  title={`Заполните: ${requiredMissing.join(', ')}`}
+                  title={`Заполните: ${requiredMissing.join(
+                    ', ',
+                  )}`}
                 >
                   <Download size={20} />
                   Заполните обязательные поля
                 </button>
                 <p className="text-xs text-gray-500">
-                  Необходимо: {requiredMissing.join(', ')}
+                  Необходимо:{' '}
+                  {requiredMissing.join(', ')}
                 </p>
               </div>
             )}

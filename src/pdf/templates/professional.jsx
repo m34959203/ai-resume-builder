@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
-/** props: { profile, theme, pageInsets, flags, hints } */
+/** props: { profile, theme } */
 
 /* ---------- helpers ---------- */
 const s = (v) => (v == null ? '' : String(v));
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff33',
   },
   name: { fontSize: 14, fontWeight: 700, textAlign: 'center', marginTop: 8 },
-  role: { fontSize: 10, textAlign: 'center', color: '#38BDF8', marginTop: 2 }, // accent
+  role: { fontSize: 10, textAlign: 'center', color: '#38BDF8', marginTop: 2 },
 
   sideSection: { marginTop: 14 },
   sideTitle: {
@@ -106,7 +106,6 @@ const styles = StyleSheet.create({
 
   paragraph: { fontSize: 10, lineHeight: 1.45, color: '#111827' },
 
-  // experience rows
   xpItem: { marginBottom: 12 },
   xpHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   xpTitle: { fontSize: 11, fontWeight: 700 },
@@ -117,14 +116,12 @@ const styles = StyleSheet.create({
   bulletDot: { fontSize: 10, lineHeight: 1.35, color: '#0891B2' },
   bulletText: { fontSize: 10, lineHeight: 1.35, color: '#111827', flex: 1 },
 
-  // two-column listing (education)
   eduRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   eduYear: { width: 42, fontSize: 9, color: '#6B7280', paddingTop: 1 },
   eduBody: { flex: 1 },
   strong: { fontSize: 10, fontWeight: 700, color: '#0F172A' },
   muted: { fontSize: 10, color: '#6B7280' },
 
-  // competencies (two columns)
   cols2: { flexDirection: 'row', gap: 24 },
   col: { flex: 1 },
 });
@@ -156,11 +153,18 @@ const Heading = ({ children, accent }) => (
 export default function ProfessionalTemplate({ profile, theme }) {
   const accent = (theme && theme.accent) || '#38BDF8'; // cyan
 
-  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
+  // базовые поля
+  const fullName = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
   const role = t(profile?.position || profile?.title || profile?.professionalTitle);
   const email = t(profile?.email);
   const phone = t(profile?.phone);
   const location = t(profile?.location);
+
+  // новые поля личного блока
+  const age = t(profile?.age);
+  const maritalStatus = t(profile?.maritalStatus);
+  const children = t(profile?.children);
+  const driverLicense = t(profile?.driverLicense);
 
   const skills = Array.isArray(profile?.skills) ? profile.skills.filter(has) : [];
   const languages = Array.isArray(profile?.languages) ? profile.languages : [];
@@ -170,28 +174,41 @@ export default function ProfessionalTemplate({ profile, theme }) {
 
   return (
     <View style={styles.layout}>
-      {/* LEFT: dark sidebar */}
+      {/* LEFT: левая тёмная колонка */}
       <View style={styles.left}>
         <View style={styles.avatarWrap}>
           {has(profile?.photoUrl || profile?.photo) ? (
             <Image src={profile.photoUrl || profile.photo} style={styles.avatar} />
           ) : null}
-          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.name}>{fullName}</Text>
           {has(role) ? <Text style={[styles.role, { color: accent }]}>{role}</Text> : null}
         </View>
 
+        {/* Личная информация */}
+        {(has(age) || has(maritalStatus) || has(children) || has(driverLicense)) && (
+          <View style={styles.sideSection}>
+            <Text style={styles.sideTitle}>Личная информация</Text>
+            {has(age) && <SideRow primary={`Возраст: ${age}`} />}
+            {has(maritalStatus) && <SideRow primary={`Семейное положение: ${maritalStatus}`} />}
+            {has(children) && <SideRow primary={`Дети: ${children}`} />}
+            {has(driverLicense) && <SideRow primary={`Водительские права: ${driverLicense}`} />}
+          </View>
+        )}
+
+        {/* Контакты */}
         {(has(location) || has(phone) || has(email)) && (
           <View style={styles.sideSection}>
-            <Text style={styles.sideTitle}>Contact</Text>
+            <Text style={styles.sideTitle}>Контакты</Text>
             {has(phone) && <SideRow primary={phone} />}
             {has(email) && <SideRow primary={email} />}
             {has(location) && <SideRow primary={location} />}
           </View>
         )}
 
+        {/* Языки */}
         {languages.length ? (
           <View style={styles.sideSection}>
-            <Text style={styles.sideTitle}>Languages</Text>
+            <Text style={styles.sideTitle}>Языки</Text>
             {languages.map((l, i) => {
               const lang = t(l?.language || l?.name);
               const lvl = t(l?.level);
@@ -200,9 +217,10 @@ export default function ProfessionalTemplate({ profile, theme }) {
           </View>
         ) : null}
 
+        {/* Навыки */}
         {skills.length ? (
           <View style={styles.sideSection}>
-            <Text style={styles.sideTitle}>Key Skills</Text>
+            <Text style={styles.sideTitle}>Навыки</Text>
             <View style={styles.chips}>
               {skills.map((sk, i) => (
                 <Text key={`${sk}_${i}`} style={styles.chip}>{t(sk)}</Text>
@@ -212,22 +230,27 @@ export default function ProfessionalTemplate({ profile, theme }) {
         ) : null}
       </View>
 
-      {/* RIGHT: content */}
+      {/* RIGHT: контент */}
       <View style={styles.right}>
-        {/* About Me */}
+        {/* О себе */}
         {has(summary) ? (
           <View style={styles.block}>
-            <Heading accent={accent}>About Me</Heading>
+            <Heading accent={accent}>О себе</Heading>
             <Text style={styles.paragraph}>{summary}</Text>
           </View>
         ) : null}
 
-        {/* Professional Experience */}
+        {/* Опыт работы */}
         {experience.length ? (
           <View style={styles.block}>
-            <Heading accent={accent}>Professional Experience</Heading>
+            <Heading accent={accent}>Опыт работы</Heading>
             {experience.map((ex, i) => {
-              const period = fmtPeriod(ex.startDate || ex.start, ex.endDate || ex.end, ex.currentlyWorking, ex.period);
+              const period = fmtPeriod(
+                ex.startDate || ex.start,
+                ex.endDate || ex.end,
+                ex.currentlyWorking,
+                ex.period
+              );
               const title = t(ex.position);
               const company = t(ex.company);
               const loc = t(ex.location);
@@ -239,10 +262,14 @@ export default function ProfessionalTemplate({ profile, theme }) {
                     <View>
                       {has(title) ? <Text style={styles.xpTitle}>{title}</Text> : null}
                       <Text style={styles.xpSub}>
-                        {has(company) ? company : ''}{has(company) && has(loc) ? ' • ' : ''}{has(loc) ? loc : ''}
+                        {has(company) ? company : ''}
+                        {has(company) && has(loc) ? ' • ' : ''}
+                        {has(loc) ? loc : ''}
                       </Text>
                     </View>
-                    {has(period) ? <Text style={[styles.xpPeriod, { color: accent }]}>{period}</Text> : null}
+                    {has(period) ? (
+                      <Text style={[styles.xpPeriod, { color: accent }]}>{period}</Text>
+                    ) : null}
                   </View>
 
                   {lines.length ? (
@@ -261,10 +288,10 @@ export default function ProfessionalTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Education */}
+        {/* Образование */}
         {education.length ? (
           <View style={styles.block}>
-            <Heading accent={accent}>Education</Heading>
+            <Heading accent={accent}>Образование</Heading>
             {education.map((ed, i) => {
               const year = t(ed.period) || t(ed.year) || '';
               const degree = t(ed.level || ed.degree);
@@ -285,10 +312,10 @@ export default function ProfessionalTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Core Competencies (из skills, двумя колонками) */}
+        {/* Ключевые компетенции (дублируем навыки в 2 колонки) */}
         {skills.length ? (
           <View style={styles.block}>
-            <Heading accent={accent}>Core Competencies</Heading>
+            <Heading accent={accent}>Ключевые компетенции</Heading>
             <View style={styles.cols2}>
               <View style={styles.col}>
                 {skills.filter((_, idx) => idx % 2 === 0).map((sk, i) => (
