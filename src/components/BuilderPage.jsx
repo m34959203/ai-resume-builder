@@ -17,6 +17,13 @@ const DEFAULT_PROFILE = {
   location: '',
   summary: '',
   photo: null,
+
+  // 🔹 Новые поля личного блока
+  age: '',
+  maritalStatus: '',
+  children: '',
+  driversLicense: '',
+
   experience: [],
   education: [],
   skills: [],
@@ -62,8 +69,7 @@ const uniqCaseInsensitive = (arr) => {
   return out;
 };
 
-/* ---------- Примитивный офлайн-AI для подсказок навыков ---------- */
-/** Каталоги навыков по направлениям (можно расширять) */
+/* ---------- Локальный "ИИ" подсказок навыков ---------- */
 const SKILL_CATALOG = {
   frontend: ['React', 'JavaScript', 'TypeScript', 'HTML5', 'CSS3', 'Redux', 'REST API', 'Git', 'Vite', 'Webpack', 'Jest', 'RTL'],
   backend: ['Node.js', 'Express', 'NestJS', 'PostgreSQL', 'MongoDB', 'Docker', 'GraphQL', 'REST API', 'CI/CD'],
@@ -76,7 +82,6 @@ const SKILL_CATALOG = {
   soft: ['Communication', 'Problem Solving', 'Teamwork', 'Time Management'],
 };
 
-/** детектор направлений по текстам профиля */
 function detectTracks(profile) {
   const bag = [
     profile?.position,
@@ -100,7 +105,6 @@ function detectTracks(profile) {
   if (has('market', 'маркет', 'smm', 'seo')) tracks.add('marketing');
 
   if (tracks.size === 0) {
-    // Попробуем угадать по базовым скиллам
     const skills = (profile?.skills || []).map(norm);
     if (skills.some((s) => ['react', 'javascript', 'typescript', 'html', 'css'].some((k) => s.includes(k)))) tracks.add('frontend');
     if (skills.some((s) => ['python', 'sql'].some((k) => s.includes(k)))) tracks.add('data');
@@ -110,19 +114,15 @@ function detectTracks(profile) {
   return [...tracks];
 }
 
-/** Генератор подсказок навыков — полностью локально, без сети */
 function smartSuggestSkills(profile, rotate = 0) {
   const tracks = detectTracks(profile);
   const existing = new Set((profile?.skills || []).map(norm));
 
-  // Собираем кандидатов по трекам + общие
   let candidates = tracks.flatMap((t) => SKILL_CATALOG[t] || []);
   candidates = candidates.concat(SKILL_CATALOG.soft);
 
-  // Убираем то, что уже есть (с учётом регистра), чистим дубли
   candidates = uniqCaseInsensitive(candidates.filter((s) => !existing.has(norm(s))));
 
-  // Лёгкая «случайность» для кнопки Обновить: циклический сдвиг
   if (candidates.length && rotate) {
     const k = rotate % candidates.length;
     candidates = candidates.slice(k).concat(candidates.slice(0, k));
@@ -188,6 +188,19 @@ const Stepper = React.memo(({ current }) => (
 ));
 
 const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }) {
+  const COLOR_BG = {
+    blue: 'bg-blue-100',
+    purple: 'bg-purple-100',
+    gray: 'bg-gray-100',
+    green: 'bg-green-100',
+  };
+  const TEMPLATES = [
+    { id: 'modern', name: 'Современный', color: 'blue' },
+    { id: 'creative', name: 'Креативный', color: 'purple' },
+    { id: 'professional', name: 'Профессиональный', color: 'gray' },
+    { id: 'minimal', name: 'Минималистичный', color: 'green' },
+  ];
+
   return (
     <div className="grid md:grid-cols-2 gap-4">
       {TEMPLATES.map((t) => (
@@ -237,6 +250,8 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
           <div>
             <h2 className="text-2xl font-bold">{profile.fullName || 'Ваше имя'}</h2>
             {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
+
+            {/* контакты */}
             <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
               {profile.email && (
                 <span className="flex items-center gap-1">
@@ -256,6 +271,14 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
                   {profile.location}
                 </span>
               )}
+            </div>
+
+            {/* новые поля личной инфы (покажем мелким текстом, если есть) */}
+            <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
+              {profile.age && <span>Возраст: {profile.age}</span>}
+              {profile.maritalStatus && <span>Семейное положение: {profile.maritalStatus}</span>}
+              {profile.children && <span>Дети: {profile.children}</span>}
+              {profile.driversLicense && <span>Права: {profile.driversLicense}</span>}
             </div>
           </div>
         </div>
@@ -315,28 +338,31 @@ function BuilderPage({
 }) {
   const [currentStep, setCurrentStep] = useState(0);
 
-  // 🔝 ref на заголовок шага — сюда ставим фокус и крутим в начало
+  // 🔝 ref на заголовок шага
   const headingRef = useRef(null);
 
-  // ЛОКАЛЬНОЕ состояние формы
+  // локальная форма
   const [form, setForm] = useState(() => ({ ...DEFAULT_PROFILE, ...(profile || {}) }));
 
-  // подтянуть внешние изменения
+  // синхроним изменения снаружи (если профиль извне поменяли)
   useEffect(() => {
-    if (profile) setForm((prev) => ({ ...prev, ...profile }));
+    if (profile) {
+      setForm((prev) => ({ ...prev, ...profile }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     profile?.fullName, profile?.email, profile?.phone, profile?.location,
-    profile?.summary, profile?.position, profile?.photo, profile?.languages
+    profile?.summary, profile?.position, profile?.photo, profile?.languages,
+    profile?.age, profile?.maritalStatus, profile?.children, profile?.driversLicense
   ]);
 
-  // мягкая синхронизация наружу
+  // пушим наружу форму с задержкой
   useEffect(() => {
     const t = setTimeout(() => setProfile?.(form), 250);
     return () => clearTimeout(t);
   }, [form, setProfile]);
 
-  // 🎯 При смене шага — прокрутка вверх и установка фокуса на заголовок
+  // прокрутка и фокус при смене шага
   useEffect(() => {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const behavior = reduceMotion ? 'auto' : 'smooth';
@@ -351,7 +377,7 @@ function BuilderPage({
     }
   }, [currentStep]);
 
-  // обработчики
+  // универсальный handler поля
   const onChangeField = useCallback(
     (field) => (e) => setForm((p) => ({ ...p, [field]: e.target.value })),
     []
@@ -381,7 +407,7 @@ function BuilderPage({
     setForm((p) => ({ ...p, skills: p.skills.filter((_, i) => i !== idx) }));
   }, []);
 
-  // 🔮 Офлайн-подсказки навыков (никаких запросов к /api/ai/chat)
+  // офлайн "AI" подсказки навыков
   const [aiSkillHints, setAiSkillHints] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRotate, setAiRotate] = useState(0);
@@ -389,7 +415,6 @@ function BuilderPage({
   const rebuildHints = useCallback((rotateBump = 0) => {
     setAiLoading(true);
     const r = aiRotate + rotateBump;
-    // имитируем «прогресс», но без сети
     setTimeout(() => {
       const hints = smartSuggestSkills(form, r);
       setAiSkillHints(hints);
@@ -398,7 +423,6 @@ function BuilderPage({
     }, 250);
   }, [form, aiRotate]);
 
-  // Пересчитывать подсказки при изменении скиллов/позиции/summary и при входе на шаг «Навыки»
   useEffect(() => {
     if (currentStep !== 3) return;
     rebuildHints(0);
@@ -418,7 +442,11 @@ function BuilderPage({
   const isExperienceDraftFilled = useCallback(
     (e) =>
       !!e &&
-      (!isBlank(e.position) || !isBlank(e.company) || !isBlank(e.startDate) || !isBlank(e.endDate) || !isBlank(e.responsibilities)),
+      (!isBlank(e.position) ||
+        !isBlank(e.company) ||
+        !isBlank(e.startDate) ||
+        !isBlank(e.endDate) ||
+        !isBlank(e.responsibilities)),
     []
   );
   const canCommitExperience = useCallback(
@@ -453,13 +481,19 @@ function BuilderPage({
   const [newEducation, setNewEducation] = useState(blankEducation);
 
   const isEducationDraftFilled = useCallback(
-    (e) => !!e && (!isBlank(e.institution) || !isBlank(e.level) || !isBlank(e.year) || !isBlank(e.specialization)),
+    (e) =>
+      !!e &&
+      (!isBlank(e.institution) ||
+        !isBlank(e.level) ||
+        !isBlank(e.year) ||
+        !isBlank(e.specialization)),
     []
   );
   const canCommitEducation = useCallback(
     (e) => !!e && !isBlank(e.institution) && !isBlank(e.level),
     []
   );
+
   const commitEducationDraft = useCallback(() => {
     if (isEducationDraftFilled(newEducation) && canCommitEducation(newEducation)) {
       setForm((p) => ({
@@ -516,13 +550,13 @@ function BuilderPage({
     [setSelectedTemplate]
   );
 
-  // Имя файла
+  // имя файла
   const fileName = useMemo(() => {
     const base = (form.fullName || 'resume').toString().trim().replace(/\s+/g, '_').replace(/[^\w\-]+/g, '');
     return `${base || 'resume'}.pdf`;
   }, [form.fullName]);
 
-  // Валидация для скачивания
+  // валидация для скачивания
   const requiredMissing = useMemo(() => {
     const miss = [];
     if (!form.fullName?.trim()) miss.push('ФИО');
@@ -532,7 +566,7 @@ function BuilderPage({
   }, [form.fullName, form.email, form.phone]);
   const canDownload = requiredMissing.length === 0;
 
-  // «Далее» — авто-коммит черновиков по шагам
+  // далее
   const goNext = useCallback(() => {
     if (currentStep === 1) commitExperienceDraft();
     if (currentStep === 2) commitEducationDraft();
@@ -540,7 +574,7 @@ function BuilderPage({
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
   }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft]);
 
-  // Построить профиль для экспорта (с учётом незажатых черновиков)
+  // построить профиль для экспорта (включая незакоммиченные черновики + новые поля)
   const buildExportProfile = useCallback(() => {
     const exp = [...form.experience];
     if (isExperienceDraftFilled(newExperience) && canCommitExperience(newExperience)) {
@@ -560,6 +594,12 @@ function BuilderPage({
       education: edu,
       languages: langs,
       photoUrl: form.photo || form.photoUrl || null,
+
+      // важно: эти поля уходят в PDF
+      age: form.age || '',
+      maritalStatus: form.maritalStatus || '',
+      children: form.children || '',
+      driversLicense: form.driversLicense || '',
     };
   }, [
     form,
@@ -568,7 +608,7 @@ function BuilderPage({
     newLanguage, isLanguageDraftFilled
   ]);
 
-  // Ручная генерация PDF (динамически грузим и шаблон, и pdf())
+  // генерация PDF
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
@@ -591,7 +631,9 @@ function BuilderPage({
         import('./ResumePDF'),
       ]);
 
-      const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
+      const blob = await pdf(
+        <ResumePDF profile={exportProfile} template={selectedTemplate} />
+      ).toBlob();
       if (!blob || blob.size === 0) throw new Error('Пустой PDF (blob.size === 0)');
 
       const url = URL.createObjectURL(blob);
@@ -628,7 +670,6 @@ function BuilderPage({
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="mb-8">
             <Stepper current={currentStep} />
-            {/* Заголовок шага — сюда ставим фокус при смене шага */}
             <h2
               ref={headingRef}
               tabIndex={-1}
@@ -717,6 +758,43 @@ function BuilderPage({
                   autoComplete="address-level2"
                 />
 
+                {/* 🔹 Новые поля блока «Личная информация» */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    label="Возраст"
+                    type="number"
+                    min="14"
+                    max="80"
+                    value={form.age}
+                    onChange={onChangeField('age')}
+                    placeholder="30"
+                  />
+                  <Input
+                    label="Семейное положение"
+                    type="text"
+                    value={form.maritalStatus}
+                    onChange={onChangeField('maritalStatus')}
+                    placeholder="Женат / Замужем / Не женат"
+                  />
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    label="Дети"
+                    type="text"
+                    value={form.children}
+                    onChange={onChangeField('children')}
+                    placeholder="2 детей / нет"
+                  />
+                  <Input
+                    label="Водительские права"
+                    type="text"
+                    value={form.driversLicense}
+                    onChange={onChangeField('driversLicense')}
+                    placeholder="Категория B"
+                  />
+                </div>
+
                 <div>
                   <Textarea
                     label="О себе"
@@ -733,7 +811,7 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 1 — Опыт */}
+            {/* Шаг 1 — Опыт работы */}
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -851,8 +929,19 @@ function BuilderPage({
                       onChange={(e) => setNewEducation((p) => ({ ...p, level: e.target.value }))}
                     >
                       <option value="">Выберите</option>
-                      {['Среднее', 'Среднее специальное', 'Неоконченное высшее', 'Высшее', 'Бакалавр', 'Магистр', 'MBA', 'Кандидат наук', 'Доктор наук']
-                        .map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                      {[
+                        'Среднее',
+                        'Среднее специальное',
+                        'Неоконченное высшее',
+                        'Высшее',
+                        'Бакалавр',
+                        'Магистр',
+                        'MBA',
+                        'Кандидат наук',
+                        'Доктор наук',
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
                     </Select>
                     <Input
                       label="Учебное заведение *"
@@ -979,7 +1068,11 @@ function BuilderPage({
                               <button
                                 key={skill}
                                 onClick={() =>
-                                  setForm((p) => (p.skills.includes(skill) ? p : { ...p, skills: uniqCaseInsensitive([...p.skills, skill]) }))
+                                  setForm((p) =>
+                                    p.skills.includes(skill)
+                                      ? p
+                                      : { ...p, skills: uniqCaseInsensitive([...p.skills, skill]) }
+                                  )
                                 }
                                 className="px-3 py-1 bg-white border border-purple-300 text-purple-700 rounded-full text-sm hover:bg-purple-100"
                               >
@@ -987,7 +1080,9 @@ function BuilderPage({
                               </button>
                             ))
                           ) : (
-                            <span className="text-sm text-gray-600">Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.</span>
+                            <span className="text-sm text-gray-600">
+                              Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1026,8 +1121,16 @@ function BuilderPage({
                       value={newLanguage.level}
                       onChange={(e) => setNewLanguage((p) => ({ ...p, level: e.target.value }))}
                     >
-                      {['A1 — Начальный','A2 — Элементарный','B1 — Средний','B2 — Средне-продвинутый','C1 — Продвинутый','C2 — В совершенстве']
-                        .map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                      {[
+                        'A1 — Начальный',
+                        'A2 — Элементарный',
+                        'B1 — Средний',
+                        'B2 — Средне-продвинутый',
+                        'C1 — Продвинутый',
+                        'C2 — В совершенстве',
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
                     </Select>
                   </div>
 
