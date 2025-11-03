@@ -18,9 +18,7 @@
 //   MODELS, chatLLM, summarizeProfile, recommendFromProfile,
 //   generateCoverLetter, suggestSkills,
 //   polishText, polishMany,
-//   inferSearch  ← извлечение "должность • город (KZ) • навыки • опыт" из резюме
-//
-// 🔤 Новое: все генераторы принимают opts.lang ('ru' | 'kk' | 'en') и формируют результат на нужном языке.
+//   inferSearch  ← НОВОЕ: извлечение "должность • город (KZ) • навыки • опыт" из резюме
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -34,199 +32,7 @@ const DEFAULT_TIMEOUT = Math.max(
   Number(process.env.OR_TIMEOUT_MS || 30_000) || 30_000
 );
 
-/* =============================== Lang helpers =============================== */
-
-function normalizeLang(l) {
-  const v = String(l || '').trim().toLowerCase();
-  if (!v) return 'ru';
-  if (['ru', 'rus', 'ru-ru'].includes(v)) return 'ru';
-  if (['kk', 'kz', 'kaz', 'kk-kz'].includes(v)) return 'kk';
-  if (['en', 'eng', 'en-us', 'en-gb'].includes(v)) return 'en';
-  return 'ru';
-}
-
-function i18n(langRaw) {
-  const lang = normalizeLang(langRaw);
-
-  const L = {
-    ru: {
-      youAre: 'Ты',
-      careerAssistant: 'карьерный ассистент',
-      editor: 'строгий редактор на русском языке',
-      jsonOnly: 'Всегда возвращай ТОЛЬКО минифицированный JSON, без комментариев и пояснений.',
-      returnOnlyJson: 'Ответ — ТОЛЬКО JSON, БЕЗ текста.',
-      summary_sys:
-        'Ты помощник карьерного консультанта. Пиши кратко, по-деловому, на русском. Максимум 3–4 предложения.',
-      cover_sys:
-        'Ты карьерный ассистент. Пиши на русском, деловым стилем, 150–220 слов, без воды, с примерами достижений.',
-      cover_rules: [
-        'Обращение без "Здравствуйте, меня зовут".',
-        '2–3 абзаца: релевантный опыт → стек и достижения → мотивация/fit.',
-        'В конце 1 предложение про готовность к собеседованию.',
-      ].join('\n'),
-      suggest_sys:
-        'Ты лаконичный ассистент по развитию навыков. Отвечай только списком, через запятую, без пояснений. Пиши на русском.',
-      rec_sys:
-        'Ты эксперт по трудоустройству. Пиши на русском. Всегда возвращай ТОЛЬКО минифицированный JSON, без комментариев и пояснений. Все строковые значения — на русском.',
-      rec_format: `Сформируй объект JSON строго такого вида:
-{
-  "professions": ["string", ...],
-  "skillsToLearn": ["string", ...],
-  "courses": [{"name":"string","duration":"string"}, ...],
-  "matchScore": 0
-}
-Где:
-- "professions" — 3–5 подходящих ролей.
-- "skillsToLearn" — 4–8 ключевых навыков для роста.
-- "courses" — 2–4 курса ({"name","duration"}, без ссылок).
-- "matchScore" — целое 0–100 о соответствии рынку.
-Ответ — ТОЛЬКО JSON, БЕЗ текста.`,
-      polish_system: [
-        'Ты — строгий редактор. Пиши на русском.',
-        'Исправляй орфографию и пунктуацию, не меняя смысл.',
-        'Следи за пробелами вокруг тире и запятых, единообразие кавычек.',
-        'Возвращай ТОЛЬКО JSON без лишнего текста.',
-        'Схема: {"corrected": string, "bullets": string[]}.',
-        'Режимы: "paragraph" — цельный текст; "bullets" — короткие пункты; "auto" — сохранить формат автора.',
-      ].join(' '),
-      infer_sys:
-        'Ты карьерный ассистент. По JSON резюме верни ТОЛЬКО валидный JSON-объект подсказки для поиска вакансий в Казахстане. Все строковые значения — на русском.',
-      infer_format: `Формат ответа:
-{
-  "role": "string",
-  "city": "string (KZ only)",
-  "skills": ["string", "..."],
-  "experience": "noExperience|between1And3|between3And6|moreThan6"
-}
-experience ∈ {"noExperience","between1And3","between3And6","moreThan6"}.
-city — только один город Казахстана (если в профиле другой — выбери подходящий из списка крупных городов РК).
-skills — 3–8 основных навыков (одно-двухсловные, без лишних слов).`,
-      fallback_cover:
-        'Готов обсудить детали вакансии и буду рад рассказать больше о релевантных проектах на собеседовании.',
-      fallback_professions: ['Frontend-разработчик', 'Full Stack-разработчик', 'Инженер-программист'],
-      fallback_skillsLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
-      fallback_courses: [
-        { name: 'Coursera — Специализация по React', duration: '3 месяца' },
-        { name: 'Udemy — Полный курс веб-разработки', duration: '2 месяца' },
-      ],
-      fallback_suggest: ['Коммуникации', 'Аналитика данных', 'TypeScript', 'SQL', 'Docker', 'Design Systems'],
-    },
-    kk: {
-      youAre: 'Сен',
-      careerAssistant: 'мансап бойынша кеңесші көмекшісісің',
-      editor: 'мұқият редакторсың, қазақ тілінде жаза бер',
-      jsonOnly: 'Әрқашан ТЕК қана ықшам JSON қайтар.',
-      returnOnlyJson: 'Жауап — ТЕК JSON, артық мәтінсіз.',
-      summary_sys:
-        'Сен мансап кеңесшісінің көмекшісісің. Қазақ тілінде қысқа әрі іскерлік стильде жаз. Ең көбі 3–4 сөйлем.',
-      cover_sys:
-        'Сен мансап көмекшісісің. Қазақ тілінде, іскерлік стильде, 150–220 сөз. Артық су сөзсіз, нақты жетістіктермен.',
-      cover_rules: [
-        'Сәлемдесусіз және "Менің атым ..." дегенсіз.',
-        '2–3 абзац: релевантты тәжірибе → технологиялық стек және жетістіктер → мотивация/сәйкестік.',
-        'Соңында — әңгімелесуге дайын екенің туралы бір сөйлем.',
-      ].join('\n'),
-      suggest_sys:
-        'Сен дағдыларды дамытуға арналған ықшам көмекшісің. Тек үтір арқылы тізіммен жауап бер, түсіндірмесіз. Қазақ тілінде жаз.',
-      rec_sys:
-        'Сен жұмысқа орналастыру бойынша сарапшысың. Қазақ тілінде жаз. Әрқашан ТЕК ықшам JSON қайтар. Барлық жолдар — қазақ тілінде.',
-      rec_format: `JSON мынадай болсын:
-{
-  "professions": ["string", ...],
-  "skillsToLearn": ["string", ...],
-  "courses": [{"name":"string","duration":"string"}, ...],
-  "matchScore": 0
-}
-Талаптар: мамандықтар — 3–5; дамыту керек дағдылар — 4–8; курстар — 2–4 (атауы мен ұзақтығы, сілтемесіз); matchScore — 0–100.
-Жауап — ТЕК JSON.`,
-      polish_system: [
-        'Сен — мұқият редакторсың. Қазақ тілінде жаз.',
-        'Емле мен пунктуацияны дұрыстап, мағынаны өзгертпе.',
-        'Тырнақша мен сызықша аралығындағы бос орындарды біріздендір.',
-        'Артық мәтінсіз ТЕК JSON қайтар.',
-        'Схема: {"corrected": string, "bullets": string[]}.',
-      ].join(' '),
-      infer_sys:
-        'Сен мансап көмекшісісің. Тек Қазақстан қалалары бойынша іздеу үшін JSON-ны қайтар. Жолдар қазақ тілінде.',
-      infer_format: `Пішім:
-{
-  "role": "string",
-  "city": "string (KZ only)",
-  "skills": ["string", "..."],
-  "experience": "noExperience|between1And3|between3And6|moreThan6"
-}
-experience — осы тізімнен; city — Қазақстан қаласы; skills — 3–8 қысқа атау.`,
-      fallback_cover:
-        'Вакансияның егжей-тегжейін талқылауға дайынмын, сұхбатта релевантты жобалар туралы толық айта аламын.',
-      fallback_professions: ['Frontend әзірлеуші', 'Full Stack әзірлеуші', 'Бағдарламалық жасақтама инженері'],
-      fallback_skillsLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
-      fallback_courses: [
-        { name: 'Coursera — React мамандану бағдарламасы', duration: '3 ай' },
-        { name: 'Udemy — Толық веб-әзірлеу курсы', duration: '2 ай' },
-      ],
-      fallback_suggest: ['Коммуникация', 'Деректерді талдау', 'TypeScript', 'SQL', 'Docker', 'Design Systems'],
-    },
-    en: {
-      youAre: 'You are a',
-      careerAssistant: 'career assistant',
-      editor: 'strict copy-editor in English',
-      jsonOnly: 'Always return ONLY compact JSON, without comments or explanations.',
-      returnOnlyJson: 'Return ONLY JSON, NO prose.',
-      summary_sys:
-        'You are a career advisor assistant. Write concisely, business tone, in English. Max 3–4 sentences.',
-      cover_sys:
-        'You are a career assistant. Write in English, business tone, 150–220 words, no fluff, with concrete achievements.',
-      cover_rules: [
-        'No greeting like "Hello, my name is...".',
-        '2–3 paragraphs: relevant experience → stack & achievements → motivation/fit.',
-        'End with one sentence about interview readiness.',
-      ].join('\n'),
-      suggest_sys:
-        'You are a concise skills coach. Answer only as a comma-separated list, no explanations. Use English.',
-      rec_sys:
-        'You are a job market expert. Use English. Always return ONLY compact JSON. All string values must be in English.',
-      rec_format: `Produce JSON of the form:
-{
-  "professions": ["string", ...],
-  "skillsToLearn": ["string", ...],
-  "courses": [{"name":"string","duration":"string"}, ...],
-  "matchScore": 0
-}
-Rules: 3–5 professions; 4–8 skills to learn; 2–4 courses (name & duration, no links); matchScore is 0–100.
-Return ONLY JSON.`,
-      polish_system: [
-        'You are a strict copy-editor. Use English.',
-        'Fix spelling and punctuation without changing meaning.',
-        'Normalize spaces around dashes/commas and quotes.',
-        'Return ONLY JSON.',
-        'Schema: {"corrected": string, "bullets": string[]}.',
-      ].join(' '),
-      infer_sys:
-        'You are a career assistant. From resume JSON, return ONLY a valid JSON object for job search in Kazakhstan. All strings must be in English.',
-      infer_format: `Response format:
-{
-  "role": "string",
-  "city": "string (KZ only)",
-  "skills": ["string", "..."],
-  "experience": "noExperience|between1And3|between3And6|moreThan6"
-}
-experience must be one of the listed values; city must be a city in Kazakhstan; skills are 3–8 short items.`,
-      fallback_cover:
-        'I am ready to discuss details and will be glad to share more about relevant projects during the interview.',
-      fallback_professions: ['Frontend Developer', 'Full Stack Developer', 'Software Engineer'],
-      fallback_skillsLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
-      fallback_courses: [
-        { name: 'Coursera — React Specialization', duration: '3 months' },
-        { name: 'Udemy — Complete Web Development', duration: '2 months' },
-      ],
-      fallback_suggest: ['Communication', 'Data Analysis', 'TypeScript', 'SQL', 'Docker', 'Design Systems'],
-    },
-  };
-
-  return L[lang] || L.ru;
-}
-
-/* ============================= Common utilities ============================= */
+// ------------------------- Вспомогательные утилиты ----------------------------
 
 function ensureApiKey() {
   const key = process.env.OPENROUTER_API_KEY;
@@ -296,7 +102,7 @@ function tryParseJSON(text) {
   return null;
 }
 
-/* ============================== OpenRouter core ============================= */
+// ------------------------- Низкоуровневый вызов OpenRouter --------------------
 
 /**
  * Внутренний запрос к OpenRouter с ретраями на 429/5xx и поддержкой response_format.
@@ -381,7 +187,7 @@ async function openrouterChatSafe(args) {
   }
 }
 
-/* =============================== High-level API ============================= */
+// ----------------------- Универсальная прокси-функция -------------------------
 
 export async function chatLLM({
   messages,
@@ -400,22 +206,16 @@ export async function chatLLM({
   });
 }
 
-/* ============================= Specialized tools ============================ */
+// ---------------------------- Специализированные ИИ ---------------------------
 
 export async function summarizeProfile(profile, opts = {}) {
-  const lang = normalizeLang(opts.lang);
-  const L = i18n(lang);
   const model = pickModel({ complex: false, override: opts.overrideModel });
-
-  const sys = L.summary_sys;
-  const usr = `${lang === 'en' ? 'Candidate profile (JSON):' : lang === 'kk' ? 'Кандидат профилі (JSON):' : 'Профиль кандидата (JSON):'}
+  const sys =
+    'Ты помощник карьерного консультанта. Пиши кратко, по-деловому, на русском. Максимум 3–4 предложения.';
+  const usr = `Профиль кандидата (JSON):
 ${JSON.stringify(profile, null, 2)}
 
-${lang === 'en'
-    ? 'Create a concise summary of strengths and focus. No lists — a single short paragraph.'
-    : lang === 'kk'
-    ? 'Күшті жақтары мен кәсіби фокусын қысқаша сипатта. Тізімсіз — бір абзац.'
-    : 'Сделай краткое саммари сильных сторон и фокуса кандидата. Без списков — один абзац.'}`;
+Сделай краткое саммари сильных сторон и фокуса кандидата. Без списков и маркировок — цельный текст.`;
 
   return openrouterChat({
     messages: [
@@ -429,21 +229,31 @@ ${lang === 'en'
 }
 
 /**
- * Возвращает объект (строки — на выбранном языке):
+ * Возвращает объект:
  * { professions: string[], skillsToLearn: string[], courses: { name, duration }[], matchScore: number }
  */
 export async function recommendFromProfile(profile, opts = {}) {
-  const lang = normalizeLang(opts.lang);
-  const L = i18n(lang);
-
   const complex = !!opts.complex;
   const model = pickModel({ complex, override: opts.overrideModel });
 
-  const sys = L.rec_sys;
-  const usr = `${lang === 'en' ? 'User profile:' : lang === 'kk' ? 'Пайдаланушы профилі:' : 'Профиль пользователя:'}
+  const sys =
+    'Ты эксперт по трудоустройству. Всегда возвращай ТОЛЬКО минифицированный JSON, без комментариев и пояснений.';
+  const usr = `Вот профиль кандидата:
 ${JSON.stringify(profile, null, 2)}
 
-${L.rec_format}`;
+Сформируй объект JSON строго такого вида:
+{
+  "professions": ["string", ...],
+  "skillsToLearn": ["string", ...],
+  "courses": [{"name":"string","duration":"string"}, ...],
+  "matchScore": 0
+}
+Где:
+- "professions" — 3–5 подходящих ролей.
+- "skillsToLearn" — 4–8 ключевых навыков для роста.
+- "courses" — 2–4 курса ({"name","duration"}, без ссылок).
+- "matchScore" — целое 0–100 о соответствии рынку.
+Ответ — ТОЛЬКО JSON, БЕЗ текста.`;
 
   try {
     const text = await openrouterChatSafe({
@@ -453,7 +263,7 @@ ${L.rec_format}`;
       ],
       model,
       temperature: complex ? 0.6 : 0.3,
-      max_tokens: 650,
+      max_tokens: 600,
       reasoning: complex ? { effort: 'medium' } : undefined,
     });
 
@@ -461,33 +271,36 @@ ${L.rec_format}`;
     if (json) return json;
   } catch {}
 
-  // fallback (локализованный)
+  // fallback
   return {
-    professions: i18n(lang).fallback_professions.slice(),
-    skillsToLearn: i18n(lang).fallback_skillsLearn.slice(),
-    courses: i18n(lang).fallback_courses.map((c) => ({ ...c })),
+    professions: ['Frontend Developer', 'Full Stack Developer', 'Software Engineer'],
+    skillsToLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
+    courses: [
+      { name: 'Coursera — React Специализация', duration: '3 месяца' },
+      { name: 'Udemy — Complete Web Development', duration: '2 месяца' },
+    ],
     matchScore: 70,
     _note: 'fallback: model error or non-JSON',
   };
 }
 
 export async function generateCoverLetter({ vacancy, profile }, opts = {}) {
-  const lang = normalizeLang(opts.lang);
-  const L = i18n(lang);
-
   const complex = !!opts.complex;
   const model = pickModel({ complex, override: opts.overrideModel });
 
-  const sys = L.cover_sys;
-  const usr = `${lang === 'en' ? 'Candidate data:' : lang === 'kk' ? 'Кандидат туралы деректер:' : 'Данные кандидата:'}
+  const sys =
+    'Ты карьерный ассистент. Пиши на русском, деловым стилем, 150–220 слов, без воды, с примерами достижений.';
+  const usr = `Данные кандидата:
 ${JSON.stringify(profile, null, 2)}
 
-${lang === 'en' ? 'Vacancy (brief):' : lang === 'kk' ? 'Вакансия (қысқаша):' : 'Вакансия (кратко):'}
+Вакансия (кратко):
 ${JSON.stringify(vacancy, null, 2)}
 
-${lang === 'en' ? 'Task: produce a personalized cover letter.' : lang === 'kk' ? 'Тапсырма: дараланған ілеспе хат құрастыр.' : 'Задача: сделай персонализированное сопроводительное письмо.'}
-${lang === 'en' ? 'Rules:' : lang === 'kk' ? 'Ережелер:' : 'Требования к формату:'}
-${L.cover_rules}`;
+Задача: сделай персонализированное сопроводительное письмо.
+Требования к формату:
+- Обращение без "Здравствуйте, меня зовут".
+- 2–3 абзаца: релевантный опыт → стек и достижения → мотивация/fit.
+- В конце 1 предложение про готовность к собеседованию.`;
 
   try {
     const content = await openrouterChat({
@@ -503,24 +316,18 @@ ${L.cover_rules}`;
 
     return String(content).replace(/```[\s\S]*?```/g, '').trim();
   } catch {
-    // короткий фолбэк (локализованный)
-    return i18n(lang).fallback_cover;
+    // короткий фолбэк
+    return 'Готов обсудить детали вакансии и буду рад рассказать больше о релевантных проектах на собеседовании.';
   }
 }
 
 export async function suggestSkills(profile, opts = {}) {
-  const lang = normalizeLang(opts.lang);
-  const L = i18n(lang);
   const model = pickModel({ complex: false, override: opts.overrideModel });
-
-  const sys = L.suggest_sys;
-  const usr = `${lang === 'en' ? 'Profile:' : lang === 'kk' ? 'Профиль:' : 'Профиль:'}
+  const sys =
+    'Ты лаконичный ассистент по развитию навыков. Отвечай только списком, через запятую, без пояснений.';
+  const usr = `Профиль:
 ${JSON.stringify(profile, null, 2)}
-${lang === 'en'
-    ? 'Give 6–8 short skills to develop (1–2 words), comma-separated, no explanations.'
-    : lang === 'kk'
-    ? 'Дамытуға 6–8 қысқа дағдыны (1–2 сөз) үтірмен бөліп жаз, түсіндірмесіз.'
-    : 'Дай 6–8 навыков для развития (одно-двухсловные названия), перечисли через запятую, без пояснений.'}`;
+Дай 6–8 навыков для развития (одно-двухсловные названия), без пояснений.`;
 
   try {
     const text = await openrouterChat({
@@ -540,18 +347,19 @@ ${lang === 'en'
       .filter(Boolean)
       .slice(0, 8);
   } catch {
-    return i18n(lang).fallback_suggest.slice(0, 8);
+    return ['Коммуникации', 'Аналитика данных', 'TypeScript', 'SQL', 'Docker', 'Design Systems'];
   }
 }
 
-/* ============================ Text polishing (LLM) ========================== */
+// --------------------- Полировка текста (DeepSeek/Gemma через OpenRouter) -----
+
 /**
  * Полировка текста: аккуратная орфография/пунктуация + опциональная раскладка в буллеты.
  * Возвращает { corrected: string, bullets: string[] }.
  *
  * @param {string} text
  * @param {object} opts
- *  - lang: 'ru' | 'kk' | 'en' (по умолчанию 'ru' — ЯЗЫК ВЫВОДА)
+ *  - lang: 'ru' | 'en' (по умолчанию 'ru')
  *  - mode: 'auto' | 'paragraph' | 'bullets'
  *  - complex: boolean (форсировать complex-модель)
  *  - overrideModel: string (любой openrouter id)
@@ -559,18 +367,23 @@ ${lang === 'en'
  */
 export async function polishText(text, opts = {}) {
   const {
-    lang: langRaw = 'ru',
+    lang = 'ru',
     mode = 'auto',
     complex = (mode === 'bullets') || String(text || '').length > 600,
     overrideModel,
     maxBullets = 16,
   } = opts;
 
-  const lang = normalizeLang(langRaw);
-  const L = i18n(lang);
   const model = pickModel({ complex, override: overrideModel });
 
-  const system = L.polish_system;
+  const system = [
+    'Ты — строгий редактор на русском языке.',
+    'Исправляй орфографию и пунктуацию, не меняя смысл.',
+    'Следи за пробелами вокруг тире и запятых, единообразие кавычек.',
+    'Возвращай ТОЛЬКО JSON без лишнего текста.',
+    'Схема: {"corrected": string, "bullets": string[]}.',
+    'Режимы: "paragraph" — цельный текст; "bullets" — короткие пункты; "auto" — сохранить формат автора.',
+  ].join(' ');
 
   const user = JSON.stringify({
     lang,
@@ -639,7 +452,7 @@ export async function polishMany(texts, opts = {}) {
   return out;
 }
 
-/* ===================== Search inference (KZ cities only) ==================== */
+// -------------------- Инференс поискового запроса из резюме (KZ only) --------
 
 // Базовый список городов РК. Используем как whitelist (исключаем РФ и др.)
 const KZ_CITIES = [
@@ -713,26 +526,34 @@ function fallbackInfer(profile = {}) {
 }
 
 /**
- * inferSearch(profile, {lang}) → { role, city, skills[], experience }
+ * inferSearch(profile) → { role, city, skills[], experience }
  * city — всегда из Казахстана (если исходный город не из KZ, выбираем ближайший крупный).
- * Строковые значения — на выбранном языке (насколько возможно).
  */
 export async function inferSearch(profile = {}, { lang = 'ru', overrideModel } = {}) {
-  const langN = normalizeLang(lang);
-  const L = i18n(langN);
-
-  // Если нет ключа — сразу вернём эвристику (она на RU)
+  // Если нет ключа — сразу вернём эвристику
   if (!process.env.OPENROUTER_API_KEY) return fallbackInfer(profile);
 
   const complex = false; // здесь хватает "быстрой" модели
   const model = pickModel({ complex, override: overrideModel });
 
-  const sys = L.infer_sys;
-  const usr = `${langN === 'en' ? 'Interface language:' : langN === 'kk' ? 'Интерфейс тілі:' : 'Язык интерфейса:'} ${langN}
-${langN === 'en' ? 'User profile (JSON):' : langN === 'kk' ? 'Пайдаланушы профилі (JSON):' : 'Профиль пользователя (JSON):'}
+  const sys =
+`Ты карьерный ассистент. По JSON резюме верни ТОЛЬКО валидный JSON-объект подсказки для поиска вакансий в Казахстане.
+experience ∈ {"noExperience","between1And3","between3And6","moreThan6"}.
+city — только один город Казахстана (если в профиле другой — выбери подходящий из списка крупных городов РК).
+skills — 3–8 основных навыков (одно-двухсловные, без лишних слов).`;
+
+  const usr =
+`Язык интерфейса: ${lang}
+Профиль пользователя (JSON):
 ${JSON.stringify(profile, null, 2)}
 
-${L.infer_format}`;
+Формат ответа:
+{
+  "role": "string",
+  "city": "string (KZ only)",
+  "skills": ["string", "..."],
+  "experience": "noExperience|between1And3|between3And6|moreThan6"
+}`;
 
   try {
     const text = await openrouterChatSafe({
@@ -769,7 +590,7 @@ ${L.infer_format}`;
   }
 }
 
-/* =================================== Export ================================= */
+// ---------------------------- Экспорт по умолчанию ----------------------------
 
 export default {
   MODELS,
@@ -780,5 +601,5 @@ export default {
   suggestSkills,
   polishText,
   polishMany,
-  inferSearch,
+  inferSearch, // ← не забудь экспортировать
 };

@@ -3,14 +3,13 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
 /*
-  props: { profile, theme, dict }
+  props: { profile, theme }
 
-  Шаблон:
-  - двухколоночный: слева тёмный сайдбар (контакты, личные данные, краткое образование, языки),
-    справа контент (имя, ABOUT, EXPERIENCE, SKILLS, EDUCATION).
-  - поддерживает новые поля: возраст, семейное положение, дети, права.
-  - аккуратно чистит bullets в опыте.
-  - лейблы секций берутся из dict: about, experience, education, skills, contacts (+ personalInfo, languages).
+  Этот шаблон:
+  - двухколоночный: слева тёмный сайдбар с контактами и личными данными,
+    справа контент: имя, "О себе", "Опыт", "Образование", "Навыки".
+  - аккуратно рендерит новые поля (возраст, семейное положение, дети, права).
+  - чистит многострочные bullets в опыте.
 */
 
 /* ===== helpers ===== */
@@ -18,20 +17,20 @@ const s = (v) => (v == null ? '' : String(v));
 const t = (v) => s(v).trim();
 const has = (v) => !!t(v);
 
-// normalize textarea
+// приводим textarea к предсказуемому виду
 const normalizeMultiline = (v) =>
   s(v)
-    .replace(/\r\n?/g, '\n')
+    .replace(/\r\n?/g, '\n')        // \r\n -> \n
     .split('\n')
-    .map((line) => line.replace(/\s+$/g, ''))
+    .map((line) => line.replace(/\s+$/g, '')) // убрать пробелы в конце строки
     .join('\n')
     .trim();
 
 /**
  * bulletsPlus:
- * - режем на строки
- * - строки с маркером (•, -, *, 1.) — новый пункт
- * - прочие строки — продолжение предыдущего пункта
+ * - режем текст на строки
+ * - если строка начинается с маркера (•, -, *, 1.), создаём новый пункт
+ * - если НЕ начинается, но уже есть активный пункт, то это продолжение предыдущего: склеиваем
  */
 function bulletsPlus(text) {
   const lines = normalizeMultiline(text)
@@ -41,26 +40,34 @@ function bulletsPlus(text) {
 
   const out = [];
   let current = '';
+
   const isMarker = (line) => /^([•\-\*\u2022]|\d+[.)])\s+/.test(line);
 
   for (const line of lines) {
     if (isMarker(line)) {
+      // пушим предыдущий пункт
       if (current.trim()) out.push(current.trim());
-      const cleaned = line.replace(/^([•\-\*\u2022]|\d+[.)])\s+/, '').replace(/^[-–—]\s*/, '');
-      current = cleaned;
+      // срезаем маркер
+      const cleaned = line.replace(/^([•\-\*\u2022]|\d+[.)])\s+/, '');
+      // иногда люди пишут "• – Текст"; уберём ведущие тире/длинное тире
+      const cleaned2 = cleaned.replace(/^[-–—]\s*/, '');
+      current = cleaned2;
     } else {
+      // просто продолжение предыдущего буллета
       if (current) {
         current += ' ' + line;
       } else {
+        // не было маркера до этого — значит новая "сырая" строка, создаём пункт
         current = line.replace(/^[-–—]\s*/, '');
       }
     }
   }
   if (current.trim()) out.push(current.trim());
+
   return out;
 }
 
-// период: "start — end | настоящее время"
+// формат "Май.2021 — Настоящее время"
 const fmtPeriod = (start, end, current, fallback) => {
   if (has(fallback)) return t(fallback);
   const st = t(start);
@@ -196,66 +203,35 @@ const Row = ({ label, text, small }) =>
   );
 
 /* ===== основной компонент ===== */
-export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) {
-  const accent = theme.accent || '#1E90FF';
+export default function ModernTemplate({ profile, theme }) {
+  const accent = (theme && theme.accent) || '#1E90FF';
 
-  // Локализованные подписи (дефолты на русском)
-  const L = {
-    about: dict.about || 'О себе',
-    experience: dict.experience || 'Опыт',
-    education: dict.education || 'Образование',
-    skills: dict.skills || 'Навыки',
-    contacts: dict.contacts || 'Контакты',
-    personalInfo: dict.personalInfo || 'Личная информация',
-    languages: dict.languages || 'Языки',
-    age: dict.age || 'Возраст',
-    maritalStatus: dict.maritalStatus || 'Семейное положение',
-    children: dict.children || 'Дети',
-    driversLicense: dict.driversLicense || 'Права',
-    city: dict.city || 'Город',
-    phone: dict.phone || 'Телефон',
-    email: dict.email || 'Email',
-  };
+  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
+  const position = t(profile?.position || profile?.title || profile?.professionalTitle);
 
-  const name = t(profile.fullName) || 'ИМЯ ФАМИЛИЯ';
-  const position = t(profile.position || profile.title || profile.professionalTitle);
+  const email = t(profile?.email);
+  const phone = t(profile?.phone);
+  const location = t(profile?.location);
 
-  const email = t(profile.email);
-  const phone = t(profile.phone);
-  const location = t(profile.location);
+  const age = t(profile?.age);
+  const maritalStatus = t(profile?.maritalStatus);
+  const children = t(profile?.children);
+  const driversLicense = t(profile?.driversLicense);
 
-  const age = t(profile.age);
-  const maritalStatus = t(profile.maritalStatus);
-  const children = t(profile.children);
-  const driversLicense = t(profile.driversLicense);
-
-  const summary = normalizeMultiline(profile.summary);
-  const experience = Array.isArray(profile.experience) ? profile.experience : [];
-  const education = Array.isArray(profile.education) ? profile.education : [];
-  const languages = Array.isArray(profile.languages) ? profile.languages : [];
-  const skills = Array.isArray(profile.skills)
+  const summary = normalizeMultiline(profile?.summary);
+  const experience = Array.isArray(profile?.experience) ? profile.experience : [];
+  const education = Array.isArray(profile?.education) ? profile.education : [];
+  const languages = Array.isArray(profile?.languages) ? profile.languages : [];
+  const skills = Array.isArray(profile?.skills)
     ? profile.skills.filter((x) => has(x)).slice(0, 20)
     : [];
-
-  // Дедуп языков
-  const uniqLangs = [];
-  const seenLang = new Set();
-  for (const l of languages) {
-    const nm = t(l?.language || l?.name);
-    const lv = t(l?.level);
-    if (!nm) continue;
-    const key = `${nm}__${lv}`.toLowerCase();
-    if (seenLang.has(key)) continue;
-    seenLang.add(key);
-    uniqLangs.push({ language: nm, level: lv });
-  }
 
   return (
     <View style={styles.layout}>
       {/* LEFT SIDEBAR */}
       <View style={styles.left}>
         {/* Фото */}
-        {has(profile.photoUrl || profile.photo) ? (
+        {has(profile?.photoUrl || profile?.photo) ? (
           <View style={styles.avatarWrap}>
             <Image src={profile.photoUrl || profile.photo} style={styles.avatar} />
           </View>
@@ -263,26 +239,26 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
 
         {/* Контакты */}
         {(has(location) || has(phone) || has(email)) && (
-          <SideSection title={L.contacts}>
-            <Row label={L.city} text={location} />
-            <Row label={L.phone} text={phone} />
-            <Row label={L.email} text={email} />
+          <SideSection title="Контакты">
+            <Row label="Город" text={location} />
+            <Row label="Телефон" text={phone} />
+            <Row label="Email" text={email} />
           </SideSection>
         )}
 
         {/* Личная информация */}
         {(has(age) || has(maritalStatus) || has(children) || has(driversLicense)) && (
-          <SideSection title={L.personalInfo}>
-            <Row label={L.age} text={age} />
-            <Row label={L.maritalStatus} text={maritalStatus} />
-            <Row label={L.children} text={children} />
-            <Row label={L.driversLicense} text={driversLicense} />
+          <SideSection title="Личная информация">
+            <Row label="Возраст" text={age} />
+            <Row label="Семейное положение" text={maritalStatus} />
+            <Row label="Дети" text={children} />
+            <Row label="Права" text={driversLicense} />
           </SideSection>
         )}
 
-        {/* Образование (кратко) */}
+        {/* Образование (кратко, год + вуз + спец) */}
         {education.length ? (
-          <SideSection title={L.education}>
+          <SideSection title="Образование">
             {education.map((ed, i) => {
               const degree = t(ed.level || ed.degree);
               const inst = t(ed.institution || ed.university);
@@ -301,14 +277,18 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
         ) : null}
 
         {/* Языки */}
-        {uniqLangs.length ? (
-          <SideSection title={L.languages}>
-            {uniqLangs.map((l, i) => (
-              <View key={l.id || i} style={{ marginBottom: 6 }}>
-                {has(l.language) ? <Text style={styles.sideText}>{l.language}</Text> : null}
-                {has(l.level) ? <Text style={styles.sideSmall}>{l.level}</Text> : null}
-              </View>
-            ))}
+        {languages.length ? (
+          <SideSection title="Языки">
+            {languages.map((l, i) => {
+              const lang = t(l?.language || l?.name);
+              const lvl = t(l?.level);
+              return (
+                <View key={l.id || i} style={{ marginBottom: 6 }}>
+                  {has(lang) ? <Text style={styles.sideText}>{lang}</Text> : null}
+                  {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
+                </View>
+              );
+            })}
           </SideSection>
         ) : null}
       </View>
@@ -323,16 +303,16 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
         {/* О себе */}
         {has(summary) ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{L.about}</Text>
+            <Text style={styles.h2}>О себе</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <Text style={styles.paragraph}>{summary}</Text>
           </View>
         ) : null}
 
-        {/* Опыт */}
+        {/* Опыт работы */}
         {experience.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{L.experience}</Text>
+            <Text style={styles.h2}>Опыт работы</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {experience.map((ex, i) => {
               const pos = t(ex.position);
@@ -358,7 +338,9 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
                         {has(locTxt) ? locTxt : ''}
                       </Text>
                     </View>
-                    {has(periodText) ? <Text style={styles.xpPeriod}>{periodText}</Text> : null}
+                    {has(periodText) ? (
+                      <Text style={styles.xpPeriod}>{periodText}</Text>
+                    ) : null}
                   </View>
 
                   {pts.length ? (
@@ -380,7 +362,7 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
         {/* Навыки */}
         {skills.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{L.skills}</Text>
+            <Text style={styles.h2}>Навыки</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
@@ -392,10 +374,11 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
           </View>
         ) : null}
 
-        {/* Образование — детально (по желанию можно убрать дублирование с левым сайдбаром) */}
+        {/* Образование (расширенный блок дублируем справа только если хотим подробно).
+            Если не нужно дублировать, эту секцию можно убрать. */}
         {education.length ? (
           <View style={{ marginBottom: 6 }}>
-            <Text style={styles.h2}>{L.education}</Text>
+            <Text style={styles.h2}>Образование</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {education.map((ed, i) => {
               const degree = t(ed.level || ed.degree);
@@ -405,13 +388,17 @@ export default function ModernTemplate({ profile = {}, theme = {}, dict = {} }) 
 
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
-                  {has(degree) ? <Text style={styles.xpTitle}>{degree}</Text> : null}
+                  {has(degree) ? (
+                    <Text style={styles.xpTitle}>{degree}</Text>
+                  ) : null}
                   <Text style={styles.xpCompany}>
                     {has(inst) ? inst : ''}
                     {has(inst) && has(year) ? ' • ' : ''}
                     {has(year) ? year : ''}
                   </Text>
-                  {has(spec) ? <Text style={styles.paragraph}>{spec}</Text> : null}
+                  {has(spec) ? (
+                    <Text style={styles.paragraph}>{spec}</Text>
+                  ) : null}
                 </View>
               );
             })}

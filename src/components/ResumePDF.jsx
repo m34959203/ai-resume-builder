@@ -4,7 +4,6 @@ import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import "../pdf/fonts";
 import { DEFAULT_PDF_FONT } from "../pdf/fonts";
 import TEMPLATES from "../pdf/templates";
-import { PDF_I18N } from "../pdf/i18n";
 
 /* ---------- utils ---------- */
 const safe = (v) => (v === undefined || v === null ? "" : String(v));
@@ -64,18 +63,12 @@ function fmtMonth(val) {
   return v;
 }
 
-/** Нормализация языка для словаря PDF */
-function pickLang(inputLang, prof) {
-  const candidate = String(inputLang || prof?.lang || prof?.language || "ru")
-    .toLowerCase()
-    .trim();
-  return ["ru", "kk", "en"].includes(candidate) ? candidate : "ru";
-}
-
-/** Темы (оставлены только minimal и modern для согласованности с UI) */
+/** Темы: цвет + включение общей шапки/футера оболочки */
 const THEMES = {
-  minimal: { accent: "#16a34a", header: false, footer: false },
-  modern: { accent: "#1E90FF", header: false, footer: true },
+  minimal:      { accent: "#16a34a", header: false, footer: false },
+  modern:       { accent: "#1E90FF", header: false, footer: true  },
+  creative:     { accent: "#8b5cf6", header: false, footer: true  },
+  professional: { accent: "#38BDF8", header: true,  footer: true  },
 };
 
 /** Нормализация профиля под шаблоны */
@@ -88,13 +81,6 @@ function normalizeProfile(input) {
   const email = trim(p.email);
   const phone = trim(p.phone);
   const location = trim(p.location);
-
-  // Дополнительные поля (новые)
-  const age = trim(p.age);
-  const maritalStatus = trim(p.maritalStatus || p.familyStatus);
-  const children = trim(p.children);
-  // Унифицируем ключ прав: поддерживаем и старый, и новый
-  const driversLicense = trim(p.driversLicense || p.driverLicense);
 
   // Саммари
   const summaryRaw = normalizeMultiline(p.summary);
@@ -218,10 +204,6 @@ function normalizeProfile(input) {
     email,
     phone,
     location,
-    age,
-    maritalStatus,
-    children,
-    driversLicense,
     summary: summaryRaw,
     summaryBullets,
     photoUrl,
@@ -231,7 +213,6 @@ function normalizeProfile(input) {
     languages,
     flags: { hasExperience, hasEducation, studentMode },
     hints,
-    // Прокинем остальные поля "как есть" (на случай расширений)
     ...p,
   };
 }
@@ -243,9 +224,9 @@ const COLORS = {
   blueLightText: "#EAF2FF",
   white: "#FFFFFF",
 };
-const INSET_X = 26; // горизонтальные поля
-const HEADER_H = 84; // высота общей шапки
-const FOOTER_H = 24; // высота общего футера
+const INSET_X = 26;     // горизонтальные поля
+const HEADER_H = 84;    // высота общей шапки
+const FOOTER_H = 24;    // высота общего футера
 
 /* ---------- стили оболочки ---------- */
 const styles = StyleSheet.create({
@@ -320,22 +301,13 @@ const Footer = () => (
 );
 
 /* ---------- PDF оболочка ---------- */
-export default function ResumePDF({
-  profile = {},
-  template: templateProp = "minimal",
-  lang: langProp,
-}) {
+export default function ResumePDF({ profile = {}, template: templateProp = "minimal" }) {
   const tplKey = typeof templateProp === "string" ? templateProp : "minimal";
   const TemplateComp =
     (TEMPLATES && TEMPLATES[tplKey]) || (TEMPLATES && TEMPLATES.minimal) || null;
   const theme = THEMES[tplKey] || THEMES.minimal;
 
   const normalized = normalizeProfile(profile);
-
-  // i18n словарь для шаблонов
-  const lang = pickLang(langProp, profile);
-  const dict = (PDF_I18N && PDF_I18N[lang]) || (PDF_I18N && PDF_I18N.ru) || {};
-
   const fullName = normalized.fullName;
   const docTitle = fullName ? `${fullName} — резюме` : "Резюме";
 
@@ -369,8 +341,6 @@ export default function ResumePDF({
 
         {/* Контент — строго без фрагментов и строковых узлов */}
         <View style={styles.root}>
-          {/* ВАЖНО: комментарии держим ВНЕ списка атрибутов, иначе esbuild/JSX ломается */}
-          {/* dict — i18n словарь для заголовков секций; lang — код языка для шаблона */}
           {TemplateComp ? (
             <TemplateComp
               profile={normalized}
@@ -379,8 +349,6 @@ export default function ResumePDF({
               flags={normalized.flags}
               hints={normalized.hints}
               pageInsets={pageInsets}
-              dict={dict}
-              lang={lang}
             />
           ) : null}
         </View>
@@ -396,7 +364,7 @@ export default function ResumePDF({
               color: "#9CA3AF",
             }}
           >
-            tpl: {tplKey} | lang: {lang}
+            tpl: {tplKey}
           </Text>
         ) : null}
       </Page>
