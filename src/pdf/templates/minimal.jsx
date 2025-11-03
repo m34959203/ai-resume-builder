@@ -1,3 +1,4 @@
+// src/pdf/templates/minimal.jsx
 import React from "react";
 import { View, Text, StyleSheet, Image } from "@react-pdf/renderer";
 
@@ -72,7 +73,7 @@ function uniqKeep(arr) {
 }
 
 /* ---------- стили под образец ---------- */
-function buildStyles() {
+function buildStyles(accent = "#16a34a") {
   const colorText = "#2F2F2E";
   const colorIcon = "#A1AAB3";
   const colorPosition = "#2B3A45";
@@ -101,7 +102,7 @@ function buildStyles() {
       borderTopWidth: 1,
       borderBottomWidth: 1,
       borderStyle: "solid",
-      borderColor: colorIcon,
+      borderColor: accent, // ← акцент вместо серого
       paddingTop: 8,
       paddingBottom: 8,
       fontSize: 10,
@@ -113,7 +114,13 @@ function buildStyles() {
 
     photo: { width: 140, height: 140, borderRadius: 999 },
 
-    contacts: { marginTop: 10, marginBottom: 0 },
+    contactsBlock: { marginTop: 10 },
+    contactsTitle: {
+      fontSize: 10,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      marginBottom: 4,
+    },
     contact: { fontSize: 10.5, marginBottom: 4, color: colorText },
 
     /* Колонки */
@@ -129,7 +136,7 @@ function buildStyles() {
       fontSize: 11,
       paddingBottom: 6,
       borderBottomWidth: 1,
-      borderBottomColor: colorIcon,
+      borderBottomColor: accent, // ← акцент
       borderBottomStyle: "solid",
       marginBottom: 10,
       marginTop: 0,
@@ -141,6 +148,7 @@ function buildStyles() {
     aboutText: { fontSize: 10, lineHeight: 1.35, textAlign: "left" },
     skills: { fontSize: 10, lineHeight: 1.35, textAlign: "left" },
     langLine: { fontSize: 10, lineHeight: 1.35, marginBottom: 2 },
+    extraLine: { fontSize: 10, lineHeight: 1.35, marginBottom: 2 },
 
     /* Маркированные списки */
     bulletItem: { flexDirection: "row", alignItems: "flex-start", marginBottom: 2 },
@@ -175,8 +183,30 @@ const BulletList = ({ items, s }) => {
 };
 
 /* ---------- Template ---------- */
-export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } }) {
-  const s = buildStyles();
+export default function Minimal({
+  profile = {},
+  theme = { accent: "#16a34a" },
+  dict = {},
+}) {
+  const accent = theme?.accent || "#16a34a";
+  const s = buildStyles(accent);
+
+  // Локализованные подписи (с дефолтами)
+  const L = {
+    profile: dict.profile || "Профиль",
+    about: dict.about || "О себе",
+    skills: dict.skills || "Навыки",
+    languages: dict.languages || "Языки",
+    contacts: dict.contacts || "Контакты",
+    experience: dict.experience || "Опыт",
+    education: dict.education || "Образование",
+    dutiesAchievements: dict.dutiesAchievements || "Обязанности и достижения",
+    extra: dict.extra || "Дополнительно",
+    age: dict.age || "Возраст",
+    maritalStatus: dict.maritalStatus || "Семейное положение",
+    children: dict.children || "Дети",
+    driversLicense: dict.driversLicense || "Права",
+  };
 
   const fullName = safe(profile.fullName) || "Ваше имя";
   const [nameLine1, nameLine2] = splitNameTwoLines(fullName);
@@ -201,6 +231,12 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
     }
   }
 
+  const extraLines = [];
+  if (safe(profile.age)) extraLines.push(`${L.age}: ${safe(profile.age)}`);
+  if (safe(profile.maritalStatus)) extraLines.push(`${L.maritalStatus}: ${safe(profile.maritalStatus)}`);
+  if (safe(profile.children)) extraLines.push(`${L.children}: ${safe(profile.children)}`);
+  if (safe(profile.driversLicense)) extraLines.push(`${L.driversLicense}: ${safe(profile.driversLicense)}`);
+
   return (
     <View style={s.page}>
       {/* Header */}
@@ -211,7 +247,9 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
           {position ? <Text style={s.position}>{position}</Text> : null}
 
           {hasContacts ? (
-            <View style={s.contacts}>
+            <View style={s.contactsBlock}>
+              {/* Локализованный заголовок контактов */}
+              <Text style={s.contactsTitle}>{L.contacts}</Text>
               {profile.email ? <Text style={s.contact}>{safe(profile.email)}</Text> : null}
               {profile.phone ? <Text style={s.contact}>{safe(profile.phone)}</Text> : null}
               {profile.location ? <Text style={s.contact}>{safe(profile.location)}</Text> : null}
@@ -228,11 +266,11 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
       <View style={s.main}>
         {/* Левый сайдбар */}
         <View style={s.leftCol}>
-          <Text style={s.sectionTitle}>Профиль</Text>
+          <Text style={s.sectionTitle}>{L.profile}</Text>
 
           {safe(profile.summary) ? (
             <View style={s.aboutBlock}>
-              <Text style={s.aboutTitle}>О себе</Text>
+              <Text style={s.aboutTitle}>{L.about}</Text>
               {toBullets(profile.summary).length > 1 ? (
                 <BulletList items={toBullets(profile.summary)} s={s} />
               ) : (
@@ -243,18 +281,27 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
 
           {Array.isArray(profile.skills) && profile.skills.length ? (
             <View style={s.aboutBlock}>
-              <Text style={s.aboutTitle}>Навыки</Text>
+              <Text style={s.aboutTitle}>{L.skills}</Text>
               <Text style={s.skills}>{joinList(profile.skills, " • ")}</Text>
             </View>
           ) : null}
 
           {uniqueLangs.length ? (
             <View style={s.aboutBlock}>
-              <Text style={s.aboutTitle}>Языки</Text>
+              <Text style={s.aboutTitle}>{L.languages}</Text>
               {uniqueLangs.map((lng, i) => (
                 <Text key={i} style={s.langLine}>
                   {lng.language}{lng.level ? ` — ${lng.level}` : ""}
                 </Text>
+              ))}
+            </View>
+          ) : null}
+
+          {extraLines.length ? (
+            <View style={s.aboutBlock}>
+              <Text style={s.aboutTitle}>{L.extra}</Text>
+              {extraLines.map((t, i) => (
+                <Text key={i} style={s.extraLine}>{t}</Text>
               ))}
             </View>
           ) : null}
@@ -265,7 +312,7 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
           {/* Опыт */}
           {Array.isArray(profile.experience) && profile.experience.length ? (
             <View>
-              <Text style={s.sectionTitle}>Опыт</Text>
+              <Text style={s.sectionTitle}>{L.experience}</Text>
               {profile.experience.map((e, idx) => {
                 const pos = safe(e?.position);
                 const org = safe(e?.company);
@@ -273,7 +320,7 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
                 const period = safe(e?.period) || expPeriod(e);
                 const metaRow = [period, where].filter(Boolean).join(" • ");
 
-                // ✅ приоритет: уже подготовленные bullets из оболочки → иначе собираем из responsibilities/description
+                // приоритет: bullets → иначе собираем из responsibilities/description
                 const mergedBullets =
                   (Array.isArray(e?.bullets) && e.bullets.length
                     ? e.bullets
@@ -290,7 +337,7 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
 
                     {mergedBullets.length > 0 ? (
                       <View>
-                        <Text style={s.subLabel}>Обязанности и достижения</Text>
+                        <Text style={s.subLabel}>{L.dutiesAchievements}</Text>
                         <BulletList items={mergedBullets} s={s} />
                       </View>
                     ) : null}
@@ -305,7 +352,7 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
           {/* Образование */}
           {Array.isArray(profile.education) && profile.education.length ? (
             <View style={{ marginTop: 4 }}>
-              <Text style={s.sectionTitle}>Образование</Text>
+              <Text style={s.sectionTitle}>{L.education}</Text>
               {profile.education.map((ed, idx) => {
                 const degreeOrLevel = safe(ed?.degree || ed?.level);
                 const spec = safe(ed?.specialization || ed?.major);
@@ -329,9 +376,7 @@ export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } })
                     {inst ? <Text style={s.org}>{inst}</Text> : null}
                     {metaRow ? <Text style={s.date}>{metaRow}</Text> : null}
 
-                    {eduBullets.length > 0 ? (
-                      <BulletList items={eduBullets} s={s} />
-                    ) : null}
+                    {eduBullets.length > 0 ? <BulletList items={eduBullets} s={s} /> : null}
 
                     <View style={s.hrThin} />
                   </View>

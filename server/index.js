@@ -8,10 +8,10 @@
  * - Поиск вакансий (host=hh.kz|hh.ru, area по городу/areaId, опыт, salary=KZT)
  * - Кеш справочников, rate-limit, helmet, morgan, compression
  * - Дополнительно: passthrough к HH
- * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
+ * - /api/polish, /api/polish/batch — полировка текста (опционально)
  * - /api/ai/infer-search — эвристика/LLM (опционально)
- * - /api/recommendations — AI рекомендации/улучшение резюме (опционально)
- * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
+ * - /api/recommendations — AI рекомендации (опционально)
+ * - ✅ /api/translate и ✅ /api/translate/batch — перевод с кешем (Libre/Google)
  * Требуется Node 18+ (встроенный fetch)
  */
 
@@ -19,13 +19,11 @@ const path = require('path');
 const fs = require('fs');
 
 /* ============================ ENV LOADING (SAFE) ============================ */
-/** На Render переменные приходят из Dashboard. Не перетираем их .env-файлами. */
 (() => {
   const isRender = !!process.env.RENDER;
   if (!isRender) {
     const rootEnv = path.resolve(__dirname, '..', '.env');
     const localEnv = path.resolve(__dirname, '.env');
-    // Сначала корневой .env, затем локальный, и НЕ override, чтобы не ломать Render
     require('dotenv').config({ path: rootEnv, override: false });
     require('dotenv').config({ path: localEnv, override: false });
   }
@@ -50,7 +48,6 @@ const {
   HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
   HH_HOST = 'hh.kz',
 
-  // токены в cookies/Authorization
   COOKIE_DOMAIN,
   COOKIE_SECURE,
 
@@ -58,22 +55,30 @@ const {
   SEARCH_TTL_MS = '90000',
   SEARCH_STALE_MAX_MS = '900000',
 
-  // опционально — дефолтное резюме для /api/hh/respond
   HH_RESUME_ID,
 
-  // инфо-логи о секретах
   HH_CLIENT_ID,
   OPENROUTER_API_KEY,
+
+  /* ---------- перевод ---------- */
+  TRANSLATE_PROVIDER = 'libre', // 'libre' | 'google'
+  LIBRE_URL = 'https://libretranslate.com/translate',
+  LIBRE_API_KEY,
+  GOOGLE_TRANSLATE_KEY,
+  TRANSLATE_TTL_MS = String(7 * 24 * 60 * 60 * 1000),
+  TRANSLATE_MAX_CHARS = '4800',
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
 const TIMEOUT_MS = Math.max(1000, Number(HH_TIMEOUT_MS) || 15000);
 const HH_API = 'https://api.hh.ru';
+const TTL_TRANSLATE = Math.max(60_000, Number(TRANSLATE_TTL_MS) || 604_800_000);
+const CHUNK_LIMIT = Math.max(500, Number(TRANSLATE_MAX_CHARS) || 4800);
 
 /* ==================================== APP =================================== */
 const app = express();
 app.set('trust proxy', 1);
-app.set('etag', false);               // убираем ETag, чтобы избежать 304 на "/" при поисковых query
+app.set('etag', false);
 app.disable('x-powered-by');
 
 app.use(express.json({ limit: '2mb' }));
@@ -99,7 +104,6 @@ morgan.token('id', (req) => req.id);
 app.use(morgan(isProd ? 'combined' : ':id :method :url :status :res[content-length] - :response-time ms'));
 
 /* ================================== CORS ==================================== */
-// ИСПРАВЛЕНИЕ 1: Парсинг FRONT_ORIGINS
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -114,7 +118,6 @@ const ORIGINS = String(FRONT_ORIGINS || '')
 
 const ALLOWED = ORIGINS.length ? ORIGINS : defaultOrigins;
 
-// ИСПРАВЛЕНИЕ 2: CORS с лучшей диагностикой (+ onrender.com)
 const corsMw = cors({
   origin: (origin, cb) => {
     if (!origin) {
@@ -142,7 +145,7 @@ app.options('*', corsMw);
 /* ================================== UTILS =================================== */
 function bool(v) {
   if (typeof v === 'boolean') return v;
-  if (v === undefined || v === null) return false;
+  if (v == null) return false;
   const s = String(v).toLowerCase();
   return s === '1' || s === 'true' || s === 'yes';
 }
@@ -215,7 +218,12 @@ const cache = (() => {
       m.set(key, { value, expires: now + ttlMs });
       return value;
     },
+    set(key, value, ttlMs) {
+      const now = Date.now();
+      m.set(key, { value, expires: now + ttlMs });
+    },
     clear: (k) => m.delete(k),
+    _raw: m,
   };
 })();
 
@@ -283,7 +291,7 @@ async function passthrough(url, req, res, extraHeaders = {}) {
 
     res.status(r.status);
     r.headers.forEach((v, k) => {
-      if (k.toLowerCase() === 'content-encoding') return; // не форсируем сжатие
+      if (k.toLowerCase() === 'content-encoding') return;
       res.setHeader(k, v);
     });
     const buf = await r.arrayBuffer();
@@ -333,10 +341,7 @@ function normalizeVacancy(v) {
     'graphql','rest','redux','tailwind','sass','css','html','next.js','nuxt'
   ];
   const dictLower = new Set(DICT);
-  tokens.forEach((t) => {
-    const k = t.toLowerCase();
-    if (dictLower.has(k)) kw.add(k);
-  });
+  tokens.forEach((t) => { const k = t.toLowerCase(); if (dictLower.has(k)) kw.add(k); });
 
   const salaryText = salaryToText(v.salary);
   return {
@@ -390,17 +395,11 @@ function putCache(key, value) {
 
 /* =============================== RateLimit API ============================== */
 app.use(
-  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations'],
-  rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
+  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations', '/api/translate'],
+  rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false })
 );
 
 /* ============================== HH SEARCH API =============================== */
-// ИСПРАВЛЕНИЕ 3: Логирование входа в хендлер
 app.get('/api/hh/jobs/search', async (req, res) => {
   console.log('[HH Search] Query params:', req.query);
   console.log('[HH Search] Headers origin:', req.headers.origin);
@@ -409,8 +408,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     const q = req.query;
     const host = (q.host && String(q.host)) || HH_HOST;
 
-    // text делаем изменяемым, чтобы можно было подставить значение по умолчанию
-    let text   = q.text ? String(q.text).trim() : '';
+    let text = q.text ? String(q.text).trim() : '';
     const city   = q.city ? String(q.city).trim() : '';
     const area   = q.area ? String(q.area).trim() : '';
     const exp    = normalizeExperience(q.experience ? String(q.experience) : '');
@@ -423,7 +421,6 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     let hasAnyFilter =
       !!(text || city || area || exp || (salary && salary > 0) || only_with_salary);
 
-    // Если фильтры не заданы, делаем запрос со словом «разработчик» вместо пустого результата
     if (!hasAnyFilter) {
       text = 'разработчик';
       hasAnyFilter = true;
@@ -669,7 +666,7 @@ function calcYearsByExperience(profile = {}) {
     const s = start ? new Date(start) : null;
     const e = end   ? new Date(end)   : null;
     if (s && !isNaN(+s) && e && !isNaN(+e) && e > s) ms += (+e - +s);
-    else ms += 365 * 24 * 3600 * 1000; // если дат нет — считаем запись за год
+    else ms += 365 * 24 * 3600 * 1000;
   });
   return ms / (365 * 24 * 3600 * 1000);
 }
@@ -717,7 +714,7 @@ function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
   return { role, city: normalizeCityName(city), experience: exp, skills, confidence };
 }
 
-// /api/polish (если services/ai.js есть — используем, иначе безопасный фолбэк)
+// /api/polish
 app.post('/api/polish', async (req, res) => {
   const { text = '', lang = 'ru', mode = 'auto' } = req.body || {};
   try {
@@ -761,7 +758,7 @@ app.post('/api/polish/batch', async (req, res) => {
   }
 });
 
-// /api/ai/infer-search — LLM (если services/ai.js есть) или эвристика
+// /api/ai/infer-search — LLM (если есть) или эвристика
 app.post('/api/ai/infer-search', async (req, res) => {
   try {
     const { profile = {}, lang = 'ru', overrideModel } = req.body || {};
@@ -810,7 +807,6 @@ app.post('/api/ai/infer-search', async (req, res) => {
 });
 
 /* ============================ AI Рекомендации (опц.) ======================== */
-/** Подключаем, только если файл существует, чтобы избежать ошибки MODULE_NOT_FOUND */
 (() => {
   const recPath = path.resolve(__dirname, 'routes', 'recommendations.js');
   if (fs.existsSync(recPath)) {
@@ -821,6 +817,179 @@ app.post('/api/ai/infer-search', async (req, res) => {
   }
 })();
 
+/* ============================== TRANSLATE API =============================== */
+/**
+ * POST /api/translate         -> { translated, translatedText, provider, cached }
+ * POST /api/translate/batch   -> { translations, provider }
+ *
+ * - Разбивает текст на чанки, укладывается в лимиты провайдера
+ * - Кеширует переводы в памяти (key: sha1(source|target|text)), TTL настраиваемый
+ * - Совместимо с фронтом, который ждёт поле "translated"
+ */
+const translateCache = new Map(); // key -> { text, at }
+const normLang = (l) => String(l || '').trim().toLowerCase();
+const sameLang = (a, b) => normLang(a) && normLang(a) === normLang(b);
+
+function chunkText(str, maxLen = CHUNK_LIMIT) {
+  const s = String(str || '');
+  if (s.length <= maxLen) return [s];
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    out.push(s.slice(i, i + maxLen));
+    i += maxLen;
+  }
+  return out;
+}
+
+async function translateViaLibre(text, sourceLang, targetLang) {
+  const chunks = chunkText(text);
+  const results = [];
+  for (const q of chunks) {
+    const r = await fetchWithTimeout(LIBRE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        q,
+        source: sourceLang === 'auto' ? 'auto' : sourceLang || 'auto',
+        target: targetLang,
+        format: 'text',
+        ...(LIBRE_API_KEY ? { api_key: LIBRE_API_KEY } : {}),
+      }),
+    });
+    const payload = await r.json().catch(() => ({}));
+    const t =
+      payload?.translatedText ??
+      payload?.translated_text ??
+      payload?.result ??
+      payload?.data?.translated ??
+      '';
+    results.push(String(t || ''));
+  }
+  return results.join('');
+}
+
+async function translateViaGoogle(text, sourceLang, targetLang) {
+  if (!GOOGLE_TRANSLATE_KEY) throw new Error('Missing GOOGLE_TRANSLATE_KEY');
+  const url = `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(GOOGLE_TRANSLATE_KEY)}`;
+  const chunks = chunkText(text, 4500);
+  const results = [];
+  for (const q of chunks) {
+    const body = {
+      q,
+      target: targetLang,
+      format: 'text',
+      ...(sourceLang && sourceLang !== 'auto' ? { source: sourceLang } : {}),
+    };
+    const r = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await r.json().catch(() => ({}));
+    const t = payload?.data?.translations?.[0]?.translatedText ?? '';
+    results.push(String(t || ''));
+  }
+  return results.join('');
+}
+
+async function translateOne(text, sourceLang, targetLang, prefer = TRANSLATE_PROVIDER.toLowerCase()) {
+  let providerUsed = prefer;
+  try {
+    if (providerUsed === 'google') return { provider: 'google', out: await translateViaGoogle(text, sourceLang, targetLang) };
+    return { provider: 'libre', out: await translateViaLibre(text, sourceLang, targetLang) };
+  } catch (e) {
+    if (providerUsed === 'google') {
+      console.warn('[translate] google failed, fallback libre:', e?.message || e);
+      return { provider: 'libre', out: await translateViaLibre(text, sourceLang, targetLang) };
+    }
+    console.warn('[translate] libre failed:', e?.message || e);
+    return { provider: 'error_fallback', out: text };
+  }
+}
+
+app.post('/api/translate', async (req, res) => {
+  try {
+    const text = String(req.body?.text ?? '');
+    const sourceLang = normLang(req.body?.sourceLang ?? 'auto');
+    const targetLang = normLang(req.body?.targetLang ?? '');
+
+    if (!targetLang) return res.status(400).json({ error: 'targetLang_required' });
+    if (!text) return res.json({ translated: '', translatedText: '', provider: TRANSLATE_PROVIDER, cached: false });
+    if (sameLang(sourceLang === 'auto' ? '' : sourceLang, targetLang)) {
+      return res.json({ translated: text, translatedText: text, provider: 'noop', cached: false });
+    }
+
+    const key = crypto.createHash('sha1').update(`${sourceLang}|${targetLang}|${text}`).digest('hex');
+    const cached = translateCache.get(key);
+    if (cached && Date.now() - cached.at < TTL_TRANSLATE) {
+      return res.json({ translated: cached.text, translatedText: cached.text, provider: 'cache', cached: true });
+    }
+
+    const { provider, out } = await translateOne(text, sourceLang, targetLang);
+    translateCache.set(key, { text: out, at: Date.now() });
+    return res.json({ translated: out, translatedText: out, provider, cached: false });
+  } catch (e) {
+    console.error('[translate] error:', e);
+    const original = String(req.body?.text ?? '');
+    return res.json({ translated: original, translatedText: original, provider: 'error_fallback', cached: false });
+  }
+});
+
+/** batch-перевод: { texts: string[], sourceLang?, targetLang } -> { translations: string[], provider } */
+app.post('/api/translate/batch', async (req, res) => {
+  try {
+    const texts = Array.isArray(req.body?.texts) ? req.body.texts.map((t) => String(t ?? '')) : [];
+    const sourceLang = normLang(req.body?.sourceLang ?? 'auto');
+    const targetLang = normLang(req.body?.targetLang ?? '');
+    if (!targetLang) return res.status(400).json({ error: 'targetLang_required' });
+    if (!texts.length) return res.json({ translations: [], provider: TRANSLATE_PROVIDER });
+
+    // быстрый путь, если язык совпадает
+    if (sameLang(sourceLang === 'auto' ? '' : sourceLang, targetLang)) {
+      return res.json({ translations: texts, provider: 'noop' });
+    }
+
+    const out = new Array(texts.length);
+    const tasks = [];
+    const prefer = TRANSLATE_PROVIDER.toLowerCase();
+
+    // кеш
+    const keys = texts.map((t) => crypto.createHash('sha1').update(`${sourceLang}|${targetLang}|${t}`).digest('hex'));
+
+    // предварительно заполним из кеша
+    keys.forEach((k, i) => {
+      const c = translateCache.get(k);
+      if (c && Date.now() - c.at < TTL_TRANSLATE) out[i] = c.text;
+    });
+
+    // простая ограниченная конкуренция
+    const CONCURRENCY = 4;
+    let idx = 0;
+    let providerUsed = prefer;
+
+    async function worker() {
+      while (idx < texts.length) {
+        const i = idx++;
+        if (out[i] != null) continue; // из кеша уже есть
+        const { provider, out: translated } = await translateOne(texts[i], sourceLang, targetLang, prefer);
+        providerUsed = providerUsed === prefer ? provider : providerUsed; // первый реально использованный
+        out[i] = translated;
+        translateCache.set(keys[i], { text: translated, at: Date.now() });
+      }
+    }
+
+    for (let k = 0; k < CONCURRENCY; k++) tasks.push(worker());
+    await Promise.all(tasks);
+
+    return res.json({ translations: out, provider: providerUsed });
+  } catch (e) {
+    console.error('[translate/batch] error:', e);
+    const texts = Array.isArray(req.body?.texts) ? req.body.texts.map((t) => String(t ?? '')) : [];
+    return res.json({ translations: texts, provider: 'error_fallback' });
+  }
+});
+
 /* ============================== Health + misc =============================== */
 app.get('/healthz', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -830,6 +999,16 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/api/version', (_req, res) => {
+  try {
+    const pkgPath = path.resolve(__dirname, '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    res.json({ name: pkg.name, version: pkg.version, env: NODE_ENV, time: new Date().toISOString() });
+  } catch {
+    res.json({ name: 'server', version: 'unknown', env: NODE_ENV });
+  }
+});
+// алиас, чтобы фронт мог обращаться к /version
+app.get('/version', (_req, res) => {
   try {
     const pkgPath = path.resolve(__dirname, '..', 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
@@ -876,19 +1055,21 @@ app.get('/', (_req, res) => {
       'HH proxy is up ✅',
       'Useful endpoints:',
       ' - /healthz',
-      ' - /api/version',
+      ' - /api/version  (и /version)',
       ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5',
       ' - /api/hh/areas?host=hh.kz',
       ' - /api/hh/me',
       ' - /api/hh/resumes',
       ' - POST /api/hh/respond { vacancy_id, resume_id?, message? }',
+      ' - POST /api/translate { text, sourceLang="auto", targetLang }  -> { translated }',
+      ' - POST /api/translate/batch { texts[], sourceLang?, targetLang } -> { translations[] }',
       ' - /api/polish   (POST {text, lang, mode})',
       ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
       ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
       ' - /api/recommendations/generate   (POST {profile})',
       ' - /api/recommendations/improve    (POST {profile})',
       '',
-      '⚠️ Hint: do not call "/" with search params — use /api/hh/jobs/search',
+      '⚠️ Hint: use /api/hh/jobs/search for vacancy queries',
     ].join('\n')
   );
 });
@@ -901,7 +1082,6 @@ app.use((err, _req, res, _next) => {
 });
 
 /* ================================== Start ================================== */
-// ИСПРАВЛЕНИЕ 4: Явный bind на 0.0.0.0 + расширенные логи
 const port = Number(PORT) || 10000;
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`✅ BFF running on 0.0.0.0:${port} (env: ${NODE_ENV})`);
@@ -909,6 +1089,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log('🌐 Allowed CORS:', ALLOWED.join(', '));
   console.log('🔑 HH_CLIENT_ID:', HH_CLIENT_ID ? '✓ set' : '✗ missing');
   console.log('🔑 OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ set' : '✗ missing');
+  console.log('🈯 TRANSLATE provider:', TRANSLATE_PROVIDER, '| Libre URL:', LIBRE_URL ? '✓' : '—', '| Google key:', GOOGLE_TRANSLATE_KEY ? '✓' : '—');
 });
 
 // Грейсфул шатдаун

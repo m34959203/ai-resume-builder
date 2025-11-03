@@ -1,7 +1,12 @@
-// src/services/bff.js
 /* eslint-disable no-console */
 
-// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
+/**
+ * Клиентский слой для общения с BFF:
+ * - OAuth HH
+ * - вакансии / справочники
+ * - AI-инференс / рекомендации
+ * - переводы (batch + кэш)
+ */
 
 import { mockJobs, mockResumes } from './mocks';
 
@@ -16,8 +21,8 @@ function env(key, def = '') {
  * Строим абсолютный BASE:
  *  - если задан VITE_API_URL / window.__API_URL__ — используем его
  *  - если фронт локально (localhost/127.0.0.1) — dev-фолбэк http://localhost:8000
- *  - если Render-фронт на onrender.com — используем хардкод BFF-домена
- *  - иначе — текущий origin (прокси/ингресс на одном домене)
+ *  - если Render-фронт на onrender.com — используем хардкод BFF-домена (или VITE_RENDER_BFF_URL)
+ *  - иначе — текущий origin
  */
 function computeApiBase() {
   const prefixRaw = env('VITE_API_PREFIX', '/api').trim();
@@ -40,11 +45,10 @@ function computeApiBase() {
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
 
   // 3) Render: фронт и бэкенд на разных доменах
-  //    Пример: фронт → ai-resume-frontend-nepa.onrender.com
-  //            BFF  → ai-resume-bff.onrender.com
-  const isRenderFrontend = typeof host === 'string'
-    && host.includes('onrender.com')
-    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+  const isRenderFrontend =
+    typeof host === 'string' &&
+    host.includes('onrender.com') &&
+    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -73,16 +77,18 @@ export const API_BASE = computeApiBase();
 
 /* -------------------- Константы -------------------- */
 
-const USE_MOCKS      = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
+const USE_MOCKS = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
 const API_TIMEOUT_MS = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
-const HOST_DEFAULT   = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz').toLowerCase();
+const HOST_DEFAULT = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz').toLowerCase();
+const AREAS_TTL_MS = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
+const FORCE_KZ = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
+const UI_LANG_DEFAULT = (env('VITE_UI_LANG', 'ru') || 'ru').toLowerCase();
+const TRANSLATE_TIMEOUT_MS = Number(env('VITE_TRANSLATE_TIMEOUT_MS', '15000')) || 15000;
+
 console.log('[BFF] API_BASE =', API_BASE);
 console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
 
-const AREAS_TTL_MS   = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
-const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
-
-/* -------------------- Склейка URL и построение путей -------------------- */
+/* -------------------- Склейка URL -------------------- */
 
 const join = (...parts) =>
   parts
@@ -139,8 +145,9 @@ function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), timeoutMs);
 
-  return fetch(normalizedUrl, { credentials: 'include', signal: controller.signal, ...options })
-    .finally(() => clearTimeout(id));
+  return fetch(normalizedUrl, { credentials: 'include', signal: controller.signal, ...options }).finally(
+    () => clearTimeout(id),
+  );
 }
 
 async function parsePayload(res) {
@@ -171,8 +178,7 @@ export async function safeFetchJSON(url, options = {}) {
 
   let body = options.body;
   const hasJsonHeader =
-    headers['Content-Type']?.includes('application/json') ||
-    headers['content-type']?.includes('application/json');
+    headers['Content-Type']?.includes('application/json') || headers['content-type']?.includes('application/json');
 
   if (body != null && typeof body === 'object' && !(body instanceof FormData) && hasJsonHeader) {
     body = JSON.stringify(body);
@@ -194,10 +200,7 @@ export async function safeFetchJSON(url, options = {}) {
     if (normalizedUrl.includes('/hh/jobs/search')) {
       console.log('[BFF Client] Response status:', res.status);
       try {
-        console.log(
-          '[BFF Client] Response headers:',
-          Object.fromEntries([...res.headers.entries()])
-        );
+        console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()])); // eslint-disable-line
       } catch {
         // ignore
       }
@@ -208,7 +211,10 @@ export async function safeFetchJSON(url, options = {}) {
       const loc = res.headers.get('Location');
       if (loc && typeof window !== 'undefined') window.location.href = loc;
       throw new BFFHttpError(`Redirected ${res.status}`, {
-        status: res.status, url: normalizedUrl, method, body: null,
+        status: res.status,
+        url: normalizedUrl,
+        method,
+        body: null,
       });
     }
 
@@ -257,6 +263,323 @@ export async function safeFetchJSON(url, options = {}) {
   }
 }
 
+/* -------------------- Helpers: язык и перевод -------------------- */
+
+const normalizeLang = (l) => (l || '').toString().trim().toLowerCase();
+const isRu = (l) => /^ru(-|$)/.test(normalizeLang(l));
+const shouldTranslate = (lang) => {
+  const L = normalizeLang(lang || getUILang());
+  return !!L && !isRu(L);
+};
+
+/** Текущий язык UI: i18next -> window.__UI_LANG__ -> env -> ru */
+export function getUILang() {
+  try {
+    // i18next хранит ключ 'i18nextLng' в localStorage
+    const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('i18nextLng') : '';
+    if (stored) return normalizeLang(stored);
+  } catch {}
+  if (typeof window !== 'undefined' && window.__UI_LANG__) return normalizeLang(window.__UI_LANG__);
+  return normalizeLang(UI_LANG_DEFAULT);
+}
+
+function pickTranslated(resp, fallback) {
+  // Поддержка разных форматов ответа: string | {translated|result|text} | {data:{translated}}
+  if (resp == null) return fallback;
+  if (typeof resp === 'string') return resp;
+  if (typeof resp === 'object') {
+    if (resp.translated != null) return String(resp.translated);
+    if (resp.result != null) return String(resp.result);
+    if (resp.text != null) return String(resp.text);
+    if (resp.data?.translated != null) return String(resp.data.translated);
+  }
+  return fallback;
+}
+
+// Простой кэш переводов (в пределах сессии SPA)
+const _TR_CACHE = new Map(); // key -> string
+const makeTrKey = (text, target, source, html, mode) =>
+  `${target}|${source || ''}|${html ? 1 : 0}|${mode || ''}|${text}`;
+
+function putTrCache(key, value) {
+  try {
+    if (_TR_CACHE.size > 5000) _TR_CACHE.clear();
+    _TR_CACHE.set(key, value);
+  } catch {}
+}
+
+/** POST /api/translate (одна строка) */
+export async function apiTranslate(text, targetLang, options = {}) {
+  const t = (text ?? '').toString();
+  const L = normalizeLang(targetLang);
+  if (!t || !shouldTranslate(L)) return t;
+
+  const key = makeTrKey(t, L, normalizeLang(options.sourceLang), !!options.html, options.mode);
+  if (_TR_CACHE.has(key)) return _TR_CACHE.get(key);
+
+  try {
+    const out = await safeFetchJSON('/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        text: t,
+        targetLang: L,
+        ...(options.sourceLang ? { sourceLang: normalizeLang(options.sourceLang) } : {}),
+        ...(options.html ? { html: true } : {}),
+        ...(options.mode ? { mode: String(options.mode) } : {}),
+      },
+      noDedupe: true,
+      timeoutMs: TRANSLATE_TIMEOUT_MS,
+    });
+    const translated = pickTranslated(out, t);
+    putTrCache(key, translated);
+    return translated;
+  } catch (e) {
+    console.warn('[BFF Translate] fail, fallback original:', e?.message || e);
+    return t;
+  }
+}
+
+/** POST /api/translate/batch (массив строк), с кэшем и фолбэком на одиночные запросы */
+export async function apiTranslateBatch(texts = [], targetLang, options = {}) {
+  const L = normalizeLang(targetLang);
+  if (!Array.isArray(texts) || texts.length === 0 || !shouldTranslate(L)) return texts;
+
+  // Разделим на: уже в кэше / к переводу
+  const out = new Array(texts.length);
+  const toSend = [];
+  const indexes = [];
+  for (let i = 0; i < texts.length; i++) {
+    const t = (texts[i] ?? '').toString();
+    if (!t) {
+      out[i] = t;
+      continue;
+    }
+    const key = makeTrKey(t, L, normalizeLang(options.sourceLang), !!options.html, options.mode);
+    if (_TR_CACHE.has(key)) {
+      out[i] = _TR_CACHE.get(key);
+    } else {
+      indexes.push({ i, key });
+      toSend.push(t);
+    }
+  }
+  if (toSend.length === 0) return out;
+
+  try {
+    const resp = await safeFetchJSON('/translate/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        texts: toSend,
+        targetLang: L,
+        ...(options.sourceLang ? { sourceLang: normalizeLang(options.sourceLang) } : {}),
+        ...(options.html ? { html: true } : {}),
+        ...(options.mode ? { mode: String(options.mode) } : {}),
+      },
+      noDedupe: true,
+      timeoutMs: TRANSLATE_TIMEOUT_MS,
+    });
+
+    // Сервер должен вернуть { translations: string[] } или просто массив
+    const arr = Array.isArray(resp?.translations) ? resp.translations : Array.isArray(resp) ? resp : [];
+    if (arr.length === toSend.length) {
+      arr.forEach((val, j) => {
+        const { i, key } = indexes[j];
+        out[i] = String(val ?? '');
+        putTrCache(key, out[i]);
+      });
+      return out;
+    }
+
+    // Если формат неожиданный — валимся в одиночные
+    throw new Error('unexpected batch format');
+  } catch (e) {
+    console.warn('[BFF Translate] batch failed, fallback to single:', e?.message || e);
+    // Фолбэк: переводим по одной, попутно кладём в кэш
+    for (let j = 0; j < indexes.length; j++) {
+      const { i, key } = indexes[j];
+      try {
+        const s = await apiTranslate(texts[i], L, options);
+        out[i] = s;
+        putTrCache(key, s);
+      } catch {
+        out[i] = texts[i];
+      }
+    }
+    return out;
+  }
+}
+
+/**
+ * Перевод вакансии: title/name, description, snippet.{requirement,responsibility}, keySkills, employer.name
+ * Возвращает новый объект, не мутируя исходный. Использует batch-перевод.
+ */
+export async function translateVacancy(vacancy, targetLang, options = {}) {
+  if (!shouldTranslate(targetLang) || !vacancy || typeof vacancy !== 'object') return vacancy;
+
+  const v = { ...vacancy };
+  const setters = [];
+  const bucket = [];
+
+  const push = (getter, setter) => {
+    const text = getter();
+    if (text) {
+      bucket.push(String(text));
+      setters.push(setter);
+    }
+  };
+
+  const titleKey = Object.prototype.hasOwnProperty.call(v, 'title') ? 'title' : 'name';
+  push(() => v[titleKey], (val) => (v[titleKey] = val));
+  push(() => v.description, (val) => (v.description = val));
+
+  if (v.snippet && typeof v.snippet === 'object') {
+    const sn = { ...v.snippet };
+    push(() => sn.requirement, (val) => (sn.requirement = val));
+    push(() => sn.responsibility, (val) => (sn.responsibility = val));
+    v.snippet = sn;
+  }
+
+  if (Array.isArray(v.keySkills)) {
+    const out = [];
+    v.keySkills.forEach((s, i) => {
+      if (!s) return out.push(s);
+      if (typeof s === 'string') {
+        push(() => s, (val) => (out[i] = val));
+      } else if (s?.name) {
+        out[i] = { ...s };
+        push(() => s.name, (val) => (out[i].name = val));
+      } else {
+        out[i] = s;
+      }
+    });
+    v.keySkills = out;
+  }
+
+  if (v.employer?.name) {
+    v.employer = { ...v.employer };
+    push(() => v.employer.name, (val) => (v.employer.name = val));
+  }
+
+  if (bucket.length) {
+    const translated = await apiTranslateBatch(bucket, targetLang, options);
+    translated.forEach((val, idx) => setters[idx](val));
+  }
+
+  v._translated = normalizeLang(targetLang);
+  return v;
+}
+
+/**
+ * Перевод резюме (верхний уровень + вложенные разделы). Использует batch.
+ * Возвращает новый объект, не мутируя исходный.
+ */
+export async function translateResume(resume, targetLang, options = {}) {
+  if (!shouldTranslate(targetLang) || !resume || typeof resume !== 'object') return resume;
+
+  const r = { ...resume };
+  const setters = [];
+  const bucket = [];
+  const push = (getter, setter) => {
+    const text = getter();
+    if (text) {
+      bucket.push(String(text));
+      setters.push(setter);
+    }
+  };
+
+  // Верхний уровень
+  ['title', 'position', 'profession', 'summary', 'specialization'].forEach((k) => {
+    if (r[k]) push(() => r[k], (val) => (r[k] = val));
+  });
+
+  // Навыки
+  if (Array.isArray(r.skills)) {
+    const arr = new Array(r.skills.length);
+    r.skills.forEach((s, i) => {
+      if (!s) return (arr[i] = s);
+      if (typeof s === 'string') {
+        push(() => s, (val) => (arr[i] = val));
+      } else if (s?.name) {
+        arr[i] = { ...s };
+        push(() => s.name, (val) => (arr[i].name = val));
+      } else {
+        arr[i] = s;
+      }
+    });
+    r.skills = arr;
+  }
+
+  // Опыт
+  if (Array.isArray(r.experience)) {
+    r.experience = r.experience.map((e) => {
+      if (!e || typeof e !== 'object') return e;
+      const x = { ...e };
+      if (x.position) push(() => x.position, (val) => (x.position = val));
+      if (x.company) push(() => x.company, (val) => (x.company = val));
+      if (x.description) push(() => x.description, (val) => (x.description = val));
+      if (x.responsibilities) push(() => x.responsibilities, (val) => (x.responsibilities = val));
+      return x;
+    });
+  }
+
+  // Образование
+  if (Array.isArray(r.education)) {
+    r.education = r.education.map((ed) => {
+      if (!ed || typeof ed !== 'object') return ed;
+      const x = { ...ed };
+      if (x.level) push(() => x.level, (val) => (x.level = val));
+      if (x.institution) push(() => x.institution, (val) => (x.institution = val));
+      if (x.specialization) push(() => x.specialization, (val) => (x.specialization = val));
+      if (x.description) push(() => x.description, (val) => (x.description = val));
+      return x;
+    });
+  }
+
+  // Языки
+  if (Array.isArray(r.languages)) {
+    r.languages = r.languages.map((l) => {
+      if (!l) return l;
+      if (typeof l === 'string') {
+        push(() => l, (val) => val); // заменим позже
+        return null; // временная метка, восстановим после применений
+      }
+      const x = { ...l };
+      if (x.language) push(() => x.language, (val) => (x.language = val));
+      if (x.level) push(() => x.level, (val) => (x.level = val));
+      return x;
+    });
+    // После перевода восстановим строки вместо null, см. ниже.
+  }
+
+  if (bucket.length) {
+    const translated = await apiTranslateBatch(bucket, targetLang, options);
+    translated.forEach((val, idx) => setters[idx](val));
+  }
+
+  // Восстановление строк языков (если были)
+  if (Array.isArray(resume.languages) && Array.isArray(r.languages)) {
+    let cursor = 0;
+    r.languages = r.languages.map((l, i) => {
+      if (l !== null) return l;
+      // Найти переведённую строку по порядку — сдвигаем курсор до следующего строкового источника
+      for (; cursor < resume.languages.length; cursor++) {
+        if (typeof resume.languages[cursor] === 'string') {
+          const original = String(resume.languages[cursor]);
+          const key = makeTrKey(original, normalizeLang(targetLang), '', false, undefined);
+          const val = _TR_CACHE.get(key) || original;
+          cursor++;
+          return val;
+        }
+      }
+      return resume.languages[i] || '';
+    });
+  }
+
+  r._translated = normalizeLang(targetLang);
+  return r;
+}
+
 /* -------------------- Нормализация опыта -------------------- */
 
 const EXP_MAP = {
@@ -284,15 +607,15 @@ const normalizeHost = (h) => (FORCE_KZ ? 'hh.kz' : (h || HOST_DEFAULT)).toLowerC
 export const getDefaultHost = () => normalizeHost();
 
 /* -------------------- OAUTH (HeadHunter) -------------------- */
-
+/** NB: пути приведены к /api/hh/* (без промежуточного /auth), чтобы соответствовать серверу */
 export function startHHOAuth(host = normalizeHost()) {
-  const url = new URL(makeApiUrl('/auth/hh/login'));
+  const url = new URL(makeApiUrl('/hh/login'));
   if (host) url.searchParams.set('host', normalizeHost(host));
   window.location.href = url.toString();
 }
 
 export async function finishHHOAuth(code, host = normalizeHost()) {
-  const url = new URL(makeApiUrl('/auth/hh/callback'));
+  const url = new URL(makeApiUrl('/hh/callback'));
   url.searchParams.set('code', code);
   if (host) url.searchParams.set('host', normalizeHost(host));
   const resp = await safeFetchJSON(url.toString()).catch(() => null);
@@ -303,7 +626,7 @@ export async function finishHHOAuth(code, host = normalizeHost()) {
 
 export async function refreshHH() {
   try {
-    await safeFetchJSON('/auth/hh/refresh', { method: 'POST' });
+    await safeFetchJSON('/hh/refresh', { method: 'POST' });
     return true;
   } catch {
     return false;
@@ -311,7 +634,7 @@ export async function refreshHH() {
 }
 
 export async function logoutHH() {
-  await safeFetchJSON('/auth/hh/logout', { method: 'POST' });
+  await safeFetchJSON('/hh/logout', { method: 'POST' });
 }
 
 export async function getHHMe(options = {}) {
@@ -328,7 +651,10 @@ export async function hhIsAuthed() {
 }
 
 export async function hhListResumes(options = {}) {
-  return safeFetchJSON('/hh/resumes', { method: 'GET', ...options });
+  const lang = options.lang || getUILang();
+  const url = new URL(makeApiUrl('/hh/resumes'));
+  url.searchParams.set('lang', normalizeLang(lang));
+  return safeFetchJSON(url.toString(), { method: 'GET', ...options });
 }
 
 export async function hhRespond({ vacancyId, resumeId, message = '' }, options = {}) {
@@ -344,13 +670,13 @@ export async function hhRespond({ vacancyId, resumeId, message = '' }, options =
 
 /* -------------------- СПРАВОЧНИКИ (areas) с кэшем -------------------- */
 
-const _AREAS_CACHE = new Map();       // host -> { at:number, data:any }
-const _AREAS_LOADING = new Map();     // host -> Promise<any>
-const _COUNTRY_ROOT_CACHE = new Map();// host -> { id, name }
+const _AREAS_CACHE = new Map(); // host -> { at:number, data:any }
+const _AREAS_LOADING = new Map(); // host -> Promise<any>
+const _COUNTRY_ROOT_CACHE = new Map(); // host -> { id, name }
 
 async function _loadAreasRaw(host = normalizeHost(), options = {}) {
   const h = normalizeHost(host);
-  const url = `/hh/areas?host=${encodeURIComponent(h)}`;
+  const url = `/hh/areas?${new URLSearchParams({ host: h }).toString()}`;
   return safeFetchJSON(url, options);
 }
 
@@ -419,7 +745,10 @@ export async function resolveAreaId(cityName, host = normalizeHost()) {
     let kzNode = null;
     while (stackFind.length && !kzNode) {
       const node = stackFind.pop();
-      if (String(node?.id) === String(kz.id)) { kzNode = node; break; }
+      if (String(node?.id) === String(kz.id)) {
+        kzNode = node;
+        break;
+      }
       if (Array.isArray(node?.areas)) stackFind.push(...node.areas);
     }
     if (!kzNode) return null;
@@ -444,7 +773,10 @@ export async function resolveAreaId(cityName, host = normalizeHost()) {
 }
 
 /** Подсказки городов (typeahead) */
-export async function suggestCities(query, { host = normalizeHost(), limit = 8, excludeRU = true } = {}) {
+export async function suggestCities(
+  query,
+  { host = normalizeHost(), limit = 8, excludeRU = true } = {},
+) {
   const h = normalizeHost(host);
   const q = (query || '').toString().trim().toLowerCase();
   if (!q) return [];
@@ -461,7 +793,10 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
       let kzNode = null;
       while (find.length && !kzNode) {
         const node = find.pop();
-        if (String(node?.id) === String(kz.id)) { kzNode = node; break; }
+        if (String(node?.id) === String(kz.id)) {
+          kzNode = node;
+          break;
+        }
         if (Array.isArray(node?.areas)) find.push(...node.areas);
       }
       if (kzNode) stack.push({ node: kzNode, country: kz.name || 'Казахстан' });
@@ -527,6 +862,10 @@ export async function searchJobs(params = {}) {
   const exp = normalizeExperience(params.experience);
   if (exp) q.set('experience', exp);
 
+  // Язык для серверной стороны (если поддерживается)
+  const langQuery = normalizeLang(params.lang || getUILang());
+  q.set('lang', langQuery);
+
   const url = `/hh/jobs/search?${q.toString()}`;
   const data = await safeFetchJSON(url, {
     method: 'GET',
@@ -538,6 +877,10 @@ export async function searchJobs(params = {}) {
   return data;
 }
 
+/**
+ * Умный поиск + динамический перевод результатов, если params.lang != 'ru'
+ * @param {{lang?: string}} params
+ */
 export async function searchJobsSmart(params = {}) {
   const host = normalizeHost(params.host);
 
@@ -550,7 +893,34 @@ export async function searchJobsSmart(params = {}) {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
     if (kz?.id) area = String(kz.id);
   }
-  return searchJobs({ ...params, area, host });
+
+  const lang = normalizeLang(params.lang || getUILang());
+
+  const data = await searchJobs({ ...params, area, host, lang });
+
+  if (!shouldTranslate(lang) || !data) return data;
+
+  // Поддерживаем структуры {items: []} и {vacancies: []}
+  const itemsKey = Array.isArray(data?.items)
+    ? 'items'
+    : Array.isArray(data?.vacancies)
+    ? 'vacancies'
+    : null;
+
+  if (!itemsKey) return data;
+
+  const list = data[itemsKey] || [];
+  const translated = [];
+  for (const v of list) {
+    try {
+      translated.push(await translateVacancy(v, lang));
+    } catch (e) {
+      console.warn('[BFF Translate] vacancy translate failed, passthrough:', e?.message || e);
+      translated.push(v);
+    }
+  }
+
+  return { ...data, [itemsKey]: translated, _lang: normalizeLang(lang) };
 }
 
 export async function searchVacanciesRaw(params = {}) {
@@ -564,18 +934,34 @@ export async function searchVacanciesRaw(params = {}) {
   if (params.salary != null) q.set('salary', stripCurrency(params.salary) || '');
   if (params.only_with_salary) q.set('only_with_salary', 'true');
   q.set('host', host);
+  q.set('lang', normalizeLang(params.lang || getUILang()));
   const url = `/hh/vacancies?${q.toString()}`;
   return safeFetchJSON(url, { method: 'GET' });
 }
 
+/** Карточка вакансии (детально) с учётом языка, с фолбэком на клиентский перевод */
+export async function getVacancyById(id, { lang = getUILang() } = {}) {
+  const url = new URL(makeApiUrl(`/hh/vacancies/${encodeURIComponent(id)}`));
+  url.searchParams.set('lang', normalizeLang(lang));
+  const vac = await safeFetchJSON(url.toString(), { method: 'GET' }).catch(() => null);
+  if (!vac) return null;
+  if (!shouldTranslate(lang)) return vac;
+  try {
+    return await translateVacancy(vac, lang);
+  } catch {
+    return vac;
+  }
+}
+
 /* -------------------- AI: инференс и полировка -------------------- */
 
-export async function inferSearchFromProfile(profile, { lang = 'ru', overrideModel } = {}) {
-  const url = '/ai/infer-search';
-  const payload = { profile, lang, overrideModel };
+export async function inferSearchFromProfile(profile, { lang = getUILang(), overrideModel } = {}) {
+  const url = new URL(makeApiUrl('/ai/infer-search'));
+  url.searchParams.set('lang', normalizeLang(lang));
+  const payload = { profile, lang: normalizeLang(lang), overrideModel };
   if (!overrideModel) delete payload.overrideModel;
 
-  const out = await safeFetchJSON(url, {
+  const out = await safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: { ...payload },
@@ -588,22 +974,24 @@ export async function inferSearchFromProfile(profile, { lang = 'ru', overrideMod
   return out;
 }
 
-export async function polishText(text, { lang = 'ru', mode = 'auto' } = {}) {
-  const url = '/polish';
-  return safeFetchJSON(url, {
+export async function polishText(text, { lang = getUILang(), mode = 'auto' } = {}) {
+  const url = new URL(makeApiUrl('/polish'));
+  url.searchParams.set('lang', normalizeLang(lang));
+  return safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { text, lang, mode },
+    body: { text, lang: normalizeLang(lang), mode },
     noDedupe: true,
   });
 }
 
-export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {}) {
-  const url = '/polish/batch';
-  return safeFetchJSON(url, {
+export async function polishBatch(texts = [], { lang = getUILang(), mode = 'auto' } = {}) {
+  const url = new URL(makeApiUrl('/polish/batch'));
+  url.searchParams.set('lang', normalizeLang(lang));
+  return safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { texts, lang, mode },
+    body: { texts, lang: normalizeLang(lang), mode },
     noDedupe: true,
   });
 }
@@ -616,39 +1004,88 @@ export async function fetchRecommendations(profile, opts = {}) {
     const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
     if (resolved?.id) areaId = resolved.id;
   }
-  return safeFetchJSON('/recommendations/analyze', {
+  const lang = normalizeLang(opts.lang || getUILang());
+  const url = new URL(makeApiUrl('/recommendations/analyze'));
+  url.searchParams.set('lang', lang);
+  return safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: areaId ?? null },
+    body: { profile, areaId: areaId ?? null, lang },
     noDedupe: true,
   });
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  return safeFetchJSON('/recommendations/generate', {
+  const lang = normalizeLang(opts.lang || getUILang());
+  const url = new URL(makeApiUrl('/recommendations/generate'));
+  url.searchParams.set('lang', lang);
+  return safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: opts.areaId ?? null },
+    body: { profile, areaId: opts.areaId ?? null, lang },
     noDedupe: true,
   });
 }
 
-export async function improveProfileAI(profile) {
-  return safeFetchJSON('/recommendations/improve', {
+export async function improveProfileAI(profile, { lang = getUILang() } = {}) {
+  const url = new URL(makeApiUrl('/recommendations/improve'));
+  url.searchParams.set('lang', normalizeLang(lang));
+  return safeFetchJSON(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile },
+    body: { profile, lang: normalizeLang(lang) },
     noDedupe: true,
   });
 }
 
 /* -------------------- РЕЗЮМЕ ПОЛЬЗОВАТЕЛЯ -------------------- */
 
+/**
+ * Получить резюме пользователя и при необходимости перевести.
+ * @param {{lang?: string}} options
+ */
 export async function getUserResumes(options = {}) {
-  const data = await safeFetchJSON('/hh/resumes', { method: 'GET', ...options });
+  const lang = normalizeLang(options.lang || getUILang());
+  const url = new URL(makeApiUrl('/hh/resumes'));
+  url.searchParams.set('lang', lang);
+
+  const data = await safeFetchJSON(url.toString(), { method: 'GET', ...options });
   if (data == null && USE_MOCKS) return [...mockResumes];
+
+  if (!shouldTranslate(lang) || !data) return data;
+
+  // В HH обычно массив резюме; но оставим поддержку {items:[]}
+  if (Array.isArray(data)) {
+    const out = [];
+    for (const r of data) {
+      try {
+        out.push(await translateResume(r, lang));
+      } catch (e) {
+        console.warn('[BFF Translate] resume translate failed, passthrough:', e?.message || e);
+        out.push(r);
+      }
+    }
+    return out;
+  }
+
+  if (Array.isArray(data?.items)) {
+    const out = [];
+    for (const r of data.items) {
+      try {
+        out.push(await translateResume(r, lang));
+      } catch (e) {
+        console.warn('[BFF Translate] resume translate failed, passthrough:', e?.message || e);
+        out.push(r);
+      }
+    }
+    return { ...data, items: out, _lang: normalizeLang(lang) };
+  }
+
   return data;
 }
+
+// Алиас под ожидаемое имя из требования (если где-то зовут getResumes)
+export const getResumes = getUserResumes;
 
 // Этот маршрут может отсутствовать на вашем BFF — оставлен для совместимости, если появится.
 // Сейчас импорт из HH выполняется сервером напрямую после выбора резюме пользователем.
@@ -668,3 +1105,5 @@ export async function ping(options = {}) {
 export async function getServerVersion(options = {}) {
   return safeFetchJSON('/version', options).catch(() => null);
 }
+
+export { HOST_DEFAULT };
