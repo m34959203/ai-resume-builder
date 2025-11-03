@@ -1,14 +1,13 @@
-import { useTranslation as useI18n } from 'react-i18next';
+// src/hooks/useTranslation.js
+// Хук-обёртка над контекстом языка: возвращает { t, lang, setLang, has }
 
+import { useLanguage } from '../context/LanguageContext';
+
+/**
+ * useTranslation — удобный доступ к переводам и языковым настройкам.
+ * @returns {{ t: (key: string, vars?: Record<string, string|number>) => string, lang: 'ru'|'kk'|'en', setLang: (code: 'ru'|'kk'|'en') => void, has: (key: string) => boolean }}
+ */
 export default function useTranslation() {
-  const { t, i18n } = useI18n();
-  const lang = i18n.resolvedLanguage || i18n.language;
-
-  const setLang = (code) => {
-    i18n.changeLanguage(code);               // <-- переключаем i18next
-    localStorage.setItem('lang', code);
-    document.documentElement.lang = code;
-  };
-
-  return { t, lang, setLang };
+  const { t, lang, setLang, has } = useLanguage();
+  return { t, lang, setLang, has };
 }
