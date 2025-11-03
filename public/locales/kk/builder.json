@@ -1,0 +1,61 @@
+{
+  "builder": {
+    "personal": {
+      "about": "Өзі туралы",
+      "city": "Қала",
+      "photoHint": "Файлды сүйреп әкеліңіз немесе жүктеңіз"
+    },
+    "placeholders": {
+      "fullName": "Аты-жөні",
+      "city": "Қала",
+      "skills": "Дағдыларды енгізіңіз",
+      "children": "Балалар",
+      "maritalStatus": "Отбасы жағдайы",
+      "driversLicense": "Жүргізуші куәлігі",
+      "about": "Қысқаша өзіңіз туралы",
+      "resp1": "Міндет 1",
+      "resp2": "Міндет 2",
+      "institution": "Оқу орны",
+      "specialization": "Мамандығы",
+      "language": "Тіл"
+    },
+    "experience": {
+      "addTitle": "Жұмыс тәжірибесі",
+      "position": "Лауазым",
+      "company": "Компания",
+      "start": "Басталу күні",
+      "end": "Аяқталу күні",
+      "responsibilities": "Міндеттер",
+      "currentlyWorking": "Қазіргі жұмыс"
+    },
+    "education": {
+      "addTitle": "Білім",
+      "level": "Деңгей",
+      "graduationYear": "Бітіру жылы",
+      "addBtn": "Қосу"
+    },
+    "skills": {
+      "aiSuggestTitle": "AI ұсынған дағдылар"
+    },
+    "languages": {
+      "title": "Тілдер",
+      "language": "Тіл",
+      "level": "Деңгей",
+      "addBtn": "Қосу",
+      "levels": { "a1": "A1 — Бастапқы" }
+    },
+    "templates": {
+      "title": "Үлгілер",
+      "modern": { "name": "Қазіргі" },
+      "minimal": { "name": "Минимал" }
+    },
+    "preview": {
+      "title": "Алдын ала қарау",
+      "defaultName": "Түйіндеме"
+    },
+    "buttons": {
+      "fillRequired": "Міндетті өрістерді толтырыңыз"
+    },
+    "labels": { "required": "Міндетті" }
+  }
+}

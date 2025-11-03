@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
 import App from './App.jsx';
 import './index.css';
+import './i18n';
 
 // Если позже захочешь развести страницы — добавишь сюда элементы вместо App
 const router = createHashRouter(
