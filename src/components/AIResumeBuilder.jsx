@@ -1369,5 +1369,5 @@ function RecommendationsPage({
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
           aria-label={t('common.back')}
-        >
+        </button>
           ← {t('common.back')}
