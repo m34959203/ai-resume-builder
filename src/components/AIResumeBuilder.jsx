@@ -1,3 +1,6 @@
+Готово: закрыл теги у back-кнопок и дописал `RecommendationsPage`. Ниже **целиком обновлённый** `src/components/AIResumeBuilder.jsx` без синтаксических ошибок.
+
+```jsx
 // src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -293,7 +296,7 @@ function CitySelect({ value, onChange }) {
 
 /* ================================= Основной компонент ================================= */
 
-const AIResumeBuilder = () => {
+function AIResumeBuilder() {
   const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState('home');
 
@@ -456,7 +459,7 @@ const AIResumeBuilder = () => {
               >
                 <TrendingUp size={18} /> {t('nav.recommendations')}
               </button>
-              
+
               <LanguageSwitcher />
             </div>
           </div>
@@ -572,9 +575,227 @@ const AIResumeBuilder = () => {
       </footer>
     </div>
   );
-};
+}
 
-// Добавить в AIResumeBuilder.jsx в конец файла перед export default
+/* ========================== Вспомогательные страницы ========================== */
+
+function HomePage({ onCreate, onFindJobs }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="max-w-6xl mx-auto px-4 py-12">
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full mb-6">
+            <Sparkles size={16} />
+            <span className="text-sm font-medium">{t('home.badge')}</span>
+          </div>
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+            {t('home.title')}
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            {t('home.subtitle')}
+          </p>
+
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={onCreate}
+              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg"
+            >
+              <FileText size={20} /> {t('home.createButton')}
+            </button>
+            <button
+              onClick={onFindJobs}
+              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
+            >
+              <Briefcase size={20} /> {t('home.findJobsButton')}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-8 mb-16">
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+              <FileText className="text-blue-600" size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-2">{t('home.features.ai.title')}</h3>
+            <p className="text-gray-600">{t('home.features.ai.description')}</p>
+          </div>
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+              <Briefcase className="text-purple-600" size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-2">{t('home.features.vacancies.title')}</h3>
+            <p className="text-gray-600">{t('home.features.vacancies.description')}</p>
+          </div>
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+              <TrendingUp className="text-green-600" size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-2">{t('home.features.recommendations.title')}</h3>
+            <p className="text-gray-600">{t('home.features.recommendations.description')}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecommendationsPage({
+  onBack,
+  recommendations,
+  isGenerating,
+  generateRecommendations,
+  onFindVacancies,
+  onImproveResume,
+  setSearchQuery,
+  profile
+}) {
+  const { t } = useTranslation();
+  const profileOk = hasProfileForRecs(profile);
+  const missing = profileOk ? [] : missingProfileSections(profile, t);
+
+  useEffect(() => {
+    if (!recommendations && profileOk) generateRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileOk]);
+
+  const applyProfession = (p) => {
+    const q = String(p || '').trim();
+    if (!q) return;
+    setSearchQuery(q);
+    onFindVacancies?.();
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12">
+      <div className="max-w-6xl mx-auto px-4">
+        <button
+          onClick={onBack}
+          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
+          aria-label={t('common.back')}
+          type="button"
+        >
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+          <span>{t('common.back')}</span>
+        </button>
+
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <h2 className="text-3xl font-bold mb-6">{t('recommendations.title')}</h2>
+
+          {!profileOk && (
+            <div className="mb-6 p-5 rounded-lg bg-amber-50 border border-amber-200">
+              <div className="font-semibold mb-2">{t('recommendations.needMoreData')}</div>
+              <div className="text-sm text-amber-900 mb-3">
+                {t('recommendations.missingSections')}:
+              </div>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {missing.map((m, i) => (
+                  <span key={i} className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-xs">
+                    {m}
+                  </span>
+                ))}
+              </div>
+              <button
+                onClick={onImproveResume}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                {t('recommendations.improveResume')}
+              </button>
+            </div>
+          )}
+
+          {profileOk && (
+            <>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                  <Sparkles className="text-purple-600" size={20} />
+                </div>
+                <div className="text-gray-700">
+                  {t('recommendations.hint')}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <button
+                  onClick={generateRecommendations}
+                  disabled={isGenerating}
+                  className={`px-4 py-2 rounded-lg text-white font-medium ${isGenerating ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                  {isGenerating ? t('recommendations.generating') : t('recommendations.generate')}
+                </button>
+              </div>
+
+              {isGenerating && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
+                  <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                  {t('common.loading')}
+                </div>
+              )}
+
+              {recommendations && !isGenerating && (
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div className="p-5 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <TrendingUp size={18} className="text-green-600" />
+                      <div className="font-semibold">{t('recommendations.professions')}</div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {(recommendations.professions || []).map((p, i) => (
+                        <button
+                          key={i}
+                          onClick={() => applyProfession(p)}
+                          className="text-left px-3 py-2 rounded-lg hover:bg-gray-50 border"
+                          title={t('recommendations.searchVacancies')}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <BookOpen size={18} className="text-blue-600" />
+                      <div className="font-semibold">{t('recommendations.skillsToLearn')}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(recommendations.skillsToLearn || []).map((s, i) => (
+                        <span key={i} className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ExternalLink size={18} className="text-purple-600" />
+                      <div className="font-semibold">{t('recommendations.courses')}</div>
+                    </div>
+                    <ul className="space-y-2 text-sm">
+                      {(recommendations.courses || []).map((c, i) => (
+                        <li key={i} className="flex flex-col">
+                          <span className="font-medium">{c.name}</span>
+                          <span className="text-gray-500">{c.duration}</span>
+                          {c.url ? (
+                            <a href={c.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                              {t('recommendations.openCourse')}
+                            </a>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function VacanciesPage({
   onBack,
@@ -916,8 +1137,10 @@ function VacanciesPage({
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
           aria-label={t('common.back')}
+          type="button"
         >
-          ← {t('common.back')}
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+          <span>{t('common.back')}</span>
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
@@ -959,22 +1182,13 @@ function VacanciesPage({
                         {aiSuggestion.experience ? (
                           <>
                             {' '}
-                            • {t('builder.experience.label')}:{' '}
-                            <b>
-                              {prettyExp(aiSuggestion.experience, t)}
-                            </b>
+                            • {t('builder.experience.label')}: <b>{prettyExp(aiSuggestion.experience, t)}</b>
                           </>
                         ) : null}
                         {typeof aiSuggestion.confidence === 'number' ? (
                           <>
                             {' '}
-                            • {t('vacancies.aiConfidence')}:{' '}
-                            <b>
-                              {Math.round(
-                                aiSuggestion.confidence * 100
-                              )}
-                              %
-                            </b>
+                            • {t('vacancies.aiConfidence')}: <b>{Math.round(aiSuggestion.confidence * 100)}%</b>
                           </>
                         ) : null}
 
@@ -1027,9 +1241,7 @@ function VacanciesPage({
                         setAiLoading(true);
                         inferSearchFromProfile(profile, { lang: 'ru' })
                           .then((s) => setAiSuggestion(s))
-                          .catch(() =>
-                            setAiError(t('vacancies.aiError'))
-                          )
+                          .catch(() => setAiError(t('vacancies.aiError')))
                           .finally(() => setAiLoading(false));
                       }}
                       className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
@@ -1048,10 +1260,7 @@ function VacanciesPage({
             <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
               {t('vacancies.rateLimited')}{' '}
               <b>
-                {Math.max(
-                  1,
-                  Math.ceil((retryAfter - Date.now()) / 1000)
-                )}{' '}
+                {Math.max(1, Math.ceil((retryAfter - Date.now()) / 1000))}{' '}
                 {t('vacancies.sec')}
               </b>
             </div>
@@ -1157,11 +1366,8 @@ function VacanciesPage({
                 ? t('vacancies.loading')
                 : (
                   <>
-                    {t('vacancies.found')}:{' '}
-                    <span className="font-semibold">{found}</span>
-                    {pages
-                      ? ` • ${t('vacancies.page')} ${page + 1} ${t('vacancies.of')} ${pages}`
-                      : ''}
+                    {t('vacancies.found')}: <span className="font-semibold">{found}</span>
+                    {pages ? ` • ${t('vacancies.page')} ${page + 1} ${t('vacancies.of')} ${pages}` : ''}
                   </>
                 )}
             </div>
@@ -1171,9 +1377,7 @@ function VacanciesPage({
                 disabled={!canPrev || loading}
                 onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
                 className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
-                  !canPrev || loading
-                    ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:bg-gray-50'
+                  !canPrev || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                 }`}
                 title={t('vacancies.previous')}
                 aria-label={t('vacancies.previous')}
@@ -1184,9 +1388,7 @@ function VacanciesPage({
                 disabled={!canNext || loading}
                 onClick={() => canNext && setPage((p) => p + 1)}
                 className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
-                  !canNext || loading
-                    ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:bg-gray-50'
+                  !canNext || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                 }`}
                 title={t('vacancies.next')}
                 aria-label={t('vacancies.next')}
@@ -1278,96 +1480,4 @@ function VacanciesPage({
 }
 
 export default AIResumeBuilder;
-
-/* ========================== Вспомогательные страницы ========================== */
-
-function HomePage({ onCreate, onFindJobs }) {
-  const { t } = useTranslation();
-  
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full mb-6">
-            <Sparkles size={16} />
-            <span className="text-sm font-medium">{t('home.badge')}</span>
-          </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            {t('home.title')}
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            {t('home.subtitle')}
-          </p>
-
-          <div className="flex gap-4 justify-center">
-            <button
-              onClick={onCreate}
-              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg"
-            >
-              <FileText size={20} /> {t('home.createButton')}
-            </button>
-            <button
-              onClick={onFindJobs}
-              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
-            >
-              <Briefcase size={20} /> {t('home.findJobsButton')}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-8 mb-16">
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-              <FileText className="text-blue-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.ai.title')}</h3>
-            <p className="text-gray-600">{t('home.features.ai.description')}</p>
-          </div>
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-              <Briefcase className="text-purple-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.vacancies.title')}</h3>
-            <p className="text-gray-600">{t('home.features.vacancies.description')}</p>
-          </div>
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-              <TrendingUp className="text-green-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.recommendations.title')}</h3>
-            <p className="text-gray-600">{t('home.features.recommendations.description')}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RecommendationsPage({
-  onBack,
-  recommendations,
-  isGenerating,
-  generateRecommendations,
-  onFindVacancies,
-  onImproveResume,
-  setSearchQuery,
-  profile
-}) {
-  const { t } = useTranslation();
-  const profileOk = hasProfileForRecs(profile);
-  const missing = profileOk ? [] : missingProfileSections(profile, t);
-
-  useEffect(() => {
-    if (!recommendations && profileOk) generateRecommendations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileOk]);
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-6xl mx-auto px-4">
-        <button
-          onClick={onBack}
-          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
-          aria-label={t('common.back')}
-        </button>
-          ← {t('common.back')}
+```
