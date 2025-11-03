@@ -1,6 +1,3 @@
-Готово: закрыл теги у back-кнопок и дописал `RecommendationsPage`. Ниже **целиком обновлённый** `src/components/AIResumeBuilder.jsx` без синтаксических ошибок.
-
-```jsx
 // src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -1480,4 +1477,3 @@ function VacanciesPage({
 }
 
 export default AIResumeBuilder;
-```
