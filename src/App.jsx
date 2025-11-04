@@ -1,4 +1,4 @@
-// src/App.jsx - Production-ready Application with i18n
+// src/App.jsx — Production-ready Application with i18n (Vite)
 import React, { Suspense, lazy, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -6,43 +6,44 @@ import SEO from './components/SEO';
 import { PageLoader } from './components/LoadingStates';
 import { LanguageProvider } from './context/LanguageContext';
 import { initGA, trackPageView, trackPerformance, initSessionTracking } from './utils/analytics';
+// Рекомендуемый способ для vite-plugin-pwa
+import { registerSW } from 'virtual:pwa-register';
 
-// Lazy load main component for better initial load
+// Ленивая подгрузка главного экрана
 const AIResumeBuilder = lazy(() => import('./components/AIResumeBuilder'));
 
 function AppContent() {
   const location = useLocation();
 
+  // Инициализация аналитики (только прод)
   useEffect(() => {
-    // Initialize analytics (production only)
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.PROD) {
       initGA();
       initSessionTracking();
       trackPerformance();
     }
   }, []);
 
+  // Трекинг просмотров и скролл к началу
   useEffect(() => {
-    // Track page views
-    trackPageView(location.pathname + location.search, document.title);
-    
-    // Scroll to top on page change
-    window.scrollTo(0, 0);
+    trackPageView(location.pathname + location.search, document?.title || '');
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, [location]);
 
+  // Регистрация сервис-воркера (vite-plugin-pwa)
   useEffect(() => {
-    // Register service worker for PWA (production only)
-    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(
-          (registration) => {
-            console.log('[SW] Service Worker registered:', registration.scope);
-          },
-          (error) => {
-            console.error('[SW] Service Worker registration failed:', error);
-          }
-        );
+    if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+      const updateSW = registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          // можно показать тост/кнопку для обновления
+          console.log('[PWA] New content available; will update on reload.');
+        },
+        onOfflineReady() {
+          console.log('[PWA] App is ready to work offline.');
+        },
       });
+      // updateSW() можно вызвать по кнопке для форс-обновления SW
     }
   }, []);
 
@@ -56,7 +57,7 @@ function AppContent() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <ErrorBoundary>
       <LanguageProvider>
@@ -65,5 +66,3 @@ function App() {
     </ErrorBoundary>
   );
 }
-
-export default App;

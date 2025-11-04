@@ -1,31 +1,21 @@
-import { useContext } from 'react';
-import LanguageProvider, { LanguageContext } from '../context/LanguageContext';
-import { translations } from '../locales/translations';
+import { useContext, useMemo } from 'react';
+import { LanguageContext } from '../context/LanguageContext';
 
-function getByPath(obj, path) {
-  return path.split('.').reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), obj);
-}
-
-function format(str, params) {
-  if (!params) return str;
-  return String(str).replace(/\{(\w+)\}/g, (_, k) => (k in params ? params[k] : `{${k}}`));
-}
-
+// Хук возвращает { t, lang, setLang }
 export function useTranslation() {
-  const { lang, setLang } = useContext(LanguageContext);
-  const dict = translations[lang] || translations.ru;
+  const ctx = useContext(LanguageContext);
 
-  const t = (key, params) => {
-    let val = getByPath(dict, key);
-    if (val == null) val = getByPath(translations.ru, key);
-    if (val == null) return key;
-    if (typeof val === 'string') return format(val, params);
-    return key; // если в словаре объект — вернём ключ
-  };
+  // Оборачиваем t, чтобы всегда был стабилен по ссылке для мемо-хуков компонентов
+  const t = ctx?.t || ((k) => k);
 
-  return { t, lang, setLang };
+  return useMemo(
+    () => ({
+      t,
+      lang: ctx?.lang || 'ru',
+      setLang: ctx?.setLang || (() => {}),
+    }),
+    [t, ctx?.lang, ctx?.setLang],
+  );
 }
 
-// Экспортируем провайдер, чтобы было удобно подключать
-export { LanguageProvider };
 export default useTranslation;
