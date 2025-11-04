@@ -9,6 +9,7 @@
  * - Кеш справочников, rate-limit, helmet, morgan, compression
  * - Дополнительно: passthrough к HH
  * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
+ * - /api/translate — перевод текста через DeepSeek API (чанкинг + кэш)
  * - /api/ai/infer-search — эвристика/LLM (опционально)
  * - /api/recommendations — AI рекомендации/улучшение резюме (опционально)
  * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
@@ -64,11 +65,32 @@ const {
   // инфо-логи о секретах
   HH_CLIENT_ID,
   OPENROUTER_API_KEY,
+
+  // DeepSeek прямой ключ (основной)
+  API_KEY_DEEPSEEK,
+  DEEPSEEK_API_KEY,             // поддержим альтернативное имя переменной
+  DEEPSEEK_MODEL,               // опционально: кастомная модель deepseek (по умолчанию deepseek-chat)
+
+  // Параметры перевода
+  TRANSLATE_TTL_MS = String(24 * 3600 * 1000),      // 24 часа кэш
+  TRANSLATE_MAX_CHARS = '200000',                   // общий лимит на вход
+  TRANSLATE_CHUNK_CHARS = '3500',                   // размер чанка для LLM
+  TRANSLATE_TEMP = '0.2',                           // температура
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
 const TIMEOUT_MS = Math.max(1000, Number(HH_TIMEOUT_MS) || 15000);
 const HH_API = 'https://api.hh.ru';
+
+// DeepSeek
+const DS_API_KEY = API_KEY_DEEPSEEK || DEEPSEEK_API_KEY || '';
+const DS_MODEL = DEEPSEEK_MODEL || 'deepseek-chat';
+const DS_ENDPOINT = 'https://api.deepseek.com/chat/completions';
+
+const TX_TTL = Math.max(60_000, Number(TRANSLATE_TTL_MS) || 24 * 3600 * 1000);
+const TX_MAX_INPUT = Math.max(10_000, Number(TRANSLATE_MAX_CHARS) || 200_000);
+const TX_CHUNK = Math.max(1000, Number(TRANSLATE_CHUNK_CHARS) || 3500);
+const TX_TEMP = Math.max(0, Math.min(1, Number(TRANSLATE_TEMP) || 0.2));
 
 /* ==================================== APP =================================== */
 const app = express();
@@ -214,6 +236,14 @@ const cache = (() => {
       const value = await producer();
       m.set(key, { value, expires: now + ttlMs });
       return value;
+    },
+    get(key) {
+      const v = m.get(key);
+      if (v && v.expires > Date.now()) return v.value;
+      return undefined;
+    },
+    set(key, value, ttlMs) {
+      m.set(key, { value, expires: Date.now() + ttlMs });
     },
     clear: (k) => m.delete(k),
   };
@@ -390,7 +420,7 @@ function putCache(key, value) {
 
 /* =============================== RateLimit API ============================== */
 app.use(
-  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations'],
+  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations', '/api/translate'],
   rateLimit({
     windowMs: 60 * 1000,
     max: 60,
@@ -809,6 +839,227 @@ app.post('/api/ai/infer-search', async (req, res) => {
   }
 });
 
+/* ============================= /api/translate (DeepSeek) ==================== */
+/**
+ * POST /api/translate
+ * body: { text: string, target: 'ru'|'kk'|'en'|..., source?: 'auto'|code, html?: boolean, temperature?: number, domain?: string }
+ * resp: { ok: true, translated, provider: 'deepseek', cached?: boolean, chunks: number, fallback?: boolean }
+ */
+
+const LANG_NAME = {
+  ru: 'Russian',
+  en: 'English',
+  kk: 'Kazakh',
+  kz: 'Kazakh',
+  tr: 'Turkish',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  it: 'Italian',
+  pt: 'Portuguese',
+  pl: 'Polish',
+  uk: 'Ukrainian',
+  ar: 'Arabic',
+  zh: 'Chinese',
+  'zh-cn': 'Chinese (Simplified)',
+  'zh-tw': 'Chinese (Traditional)',
+};
+
+function langToName(codeOrName = '') {
+  const c = String(codeOrName || '').toLowerCase().trim();
+  if (!c) return '';
+  return LANG_NAME[c] || c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+function splitIntoChunks(text, maxChars = TX_CHUNK) {
+  const t = String(text || '');
+  if (t.length <= maxChars) return [t];
+
+  const parts = [];
+  const paras = t.split(/\n{2,}/);
+  let buf = '';
+
+  const pushBuf = () => {
+    if (buf) {
+      parts.push(buf);
+      buf = '';
+    }
+  };
+
+  for (const p of paras) {
+    if ((buf + '\n\n' + p).length > maxChars) {
+      if (buf) pushBuf();
+      if (p.length <= maxChars) {
+        buf = p;
+      } else {
+        // Дробим слишком длинный абзац по предложениям/точкам
+        const sentences = p.split(/(?<=[.!?])\s+/);
+        let cur = '';
+        for (const s of sentences) {
+          if ((cur + ' ' + s).length > maxChars) {
+            if (cur) parts.push(cur);
+            cur = s;
+          } else {
+            cur = cur ? cur + ' ' + s : s;
+          }
+        }
+        if (cur) parts.push(cur);
+        buf = '';
+      }
+    } else {
+      buf = buf ? buf + '\n\n' + p : p;
+    }
+  }
+  pushBuf();
+  return parts;
+}
+
+async function deepseekTranslateChunk(text, { sourceName, targetName, html, temperature }) {
+  if (!DS_API_KEY) {
+    // Мягкий фолбэк без ключа: отдаём исходный текст
+    return { content: String(text || ''), provider: 'fallback', fallback: true };
+  }
+
+  const sys = [
+    'You are a professional translator.',
+    'Translate the user text to the requested target language.',
+    'Preserve meaning, tone, numbers, names, and layout.',
+    html
+      ? 'The input may contain HTML markup. Keep tags/attributes intact and translate only human-readable text.'
+      : 'Plain text input. Keep line breaks.',
+    'Return ONLY the translated text without explanations.',
+  ].join(' ');
+
+  const user = [
+    sourceName && sourceName.toLowerCase() !== 'auto' ? `Source language: ${sourceName}` : 'Source language: auto',
+    `Target language: ${targetName}`,
+    'Text:',
+    '<<<',
+    String(text || ''),
+    '>>>',
+  ].join('\n');
+
+  const body = {
+    model: DS_MODEL,
+    temperature: typeof temperature === 'number' ? temperature : TX_TEMP,
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: user },
+    ],
+  };
+
+  const r = await fetchWithTimeout(DS_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${DS_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }, Math.max(TIMEOUT_MS, 25_000));
+
+  const txt = await r.text();
+  if (!r.ok) {
+    const detail = txt.slice(0, 500);
+    throw Object.assign(new Error(`deepseek_error ${r.status}`), { status: r.status, detail });
+  }
+
+  let json = null;
+  try { json = JSON.parse(txt); } catch {
+    throw Object.assign(new Error('deepseek_bad_json'), { status: 502, detail: txt.slice(0, 300) });
+  }
+
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw Object.assign(new Error('deepseek_empty'), { status: 502, detail: txt.slice(0, 300) });
+  }
+  return { content, provider: 'deepseek', fallback: false };
+}
+
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text = '', target = 'ru', source = 'auto', html = false, temperature, domain = '' } = req.body || {};
+    const input = String(text ?? '');
+
+    if (!input.trim()) {
+      return res.status(400).json({ error: 'text_required' });
+    }
+    if (input.length > TX_MAX_INPUT) {
+      return res.status(413).json({ error: 'text_too_long', max: TX_MAX_INPUT });
+    }
+
+    const targetName = langToName(target);
+    if (!targetName) {
+      return res.status(400).json({ error: 'target_invalid' });
+    }
+
+    const srcName = source && String(source).toLowerCase() !== 'auto' ? langToName(source) : 'auto';
+    if (srcName !== 'auto' && srcName.toLowerCase() === targetName.toLowerCase()) {
+      // Нет смысла переводить в тот же язык
+      return res.json({ ok: true, translated: input, provider: DS_API_KEY ? 'noop' : 'fallback', chunks: 1, cached: false });
+    }
+
+    // Ключ кэша
+    const key = crypto
+      .createHash('sha1')
+      .update([srcName, targetName, html ? 'html' : 'plain', input].join('|'))
+      .digest('hex');
+
+    const cached = cache.get(`tx:${key}`);
+    if (cached) {
+      return res.json({ ok: true, translated: cached, provider: 'cache', chunks: cached.split('\n').length, cached: true });
+    }
+
+    const chunks = splitIntoChunks(input, TX_CHUNK);
+    const out = [];
+    for (let i = 0; i < chunks.length; i += 1) {
+      const piece = chunks[i];
+      try {
+        const r = await deepseekTranslateChunk(piece, {
+          sourceName: srcName,
+          targetName,
+          html: !!html,
+          temperature,
+        });
+        out.push(r.content);
+      } catch (e) {
+        // Если упали на одном из кусков — завернём понятную ошибку, но вернём уже переведённые части (частичный результат)
+        console.error('[translate:chunk]', i, e?.status || '', e?.message || e, e?.detail || '');
+        if (out.length) {
+          const partial = out.join('\n\n');
+          return res.status(206).json({
+            ok: false,
+            partial,
+            error: 'translate_partial_failure',
+            chunk_index: i,
+            status: e?.status || 502,
+          });
+        }
+        // Полный фэйл — мягкий фолбэк: отдать исходник (чтобы UI не ломался)
+        return res.status(e?.status || 502).json({
+          ok: false,
+          error: 'translate_failed',
+          message: e?.message || 'DeepSeek error',
+          detail: e?.detail || '',
+        });
+      }
+    }
+
+    const translated = out.join('\n\n');
+    cache.set(`tx:${key}`, translated, TX_TTL);
+
+    return res.json({
+      ok: true,
+      translated,
+      provider: DS_API_KEY ? 'deepseek' : 'fallback',
+      chunks: chunks.length,
+      cached: false,
+    });
+  } catch (e) {
+    console.error('[translate]', e);
+    return res.status(500).json({ error: 'translate_internal', message: e?.message || String(e) });
+  }
+});
+
 /* ============================ AI Рекомендации (опц.) ======================== */
 /** Подключаем, только если файл существует, чтобы избежать ошибки MODULE_NOT_FOUND */
 (() => {
@@ -884,6 +1135,7 @@ app.get('/', (_req, res) => {
       ' - POST /api/hh/respond { vacancy_id, resume_id?, message? }',
       ' - /api/polish   (POST {text, lang, mode})',
       ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
+      ' - /api/translate   (POST {text, target, source?, html?, temperature?, domain?})',
       ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
       ' - /api/recommendations/generate   (POST {profile})',
       ' - /api/recommendations/improve    (POST {profile})',
@@ -909,6 +1161,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log('🌐 Allowed CORS:', ALLOWED.join(', '));
   console.log('🔑 HH_CLIENT_ID:', HH_CLIENT_ID ? '✓ set' : '✗ missing');
   console.log('🔑 OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ set' : '✗ missing');
+  console.log('🔑 API_KEY_DEEPSEEK / DEEPSEEK_API_KEY:', DS_API_KEY ? '✓ set' : '✗ missing');
 });
 
 // Грейсфул шатдаун

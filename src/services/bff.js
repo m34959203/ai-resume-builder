@@ -1,7 +1,7 @@
 // src/services/bff.js
 /* eslint-disable no-console */
 
-// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
+// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации + Переводы DeepSeek).
 
 import { mockJobs, mockResumes } from './mocks';
 
@@ -667,4 +667,292 @@ export async function ping(options = {}) {
 
 export async function getServerVersion(options = {}) {
   return safeFetchJSON('/version', options).catch(() => null);
+}
+
+/* =========================== ПЕРЕВОДЫ (DeepSeek) ============================ */
+
+/**
+ * Внутренний батч-перевод через BFF /translate.
+ * Поддерживает различные форматы ответа сервера и гарантирует сохранение длины массива.
+ */
+async function _translateTexts(texts = [], {
+  target = 'ru',
+  source = 'auto',
+  html = false,
+  timeoutMs = API_TIMEOUT_MS,
+} = {}) {
+  const arr = Array.isArray(texts) ? texts.map((t) => (t == null ? '' : String(t))) : [];
+  if (!arr.length) return [];
+
+  // Разбиваем на пачки — на случай ограничений сервера/модели
+  const MAX_PER_REQ = 64;
+  const out = [];
+
+  const extract = (resp, expectedCount, originalChunk) => {
+    let list = [];
+    if (Array.isArray(resp?.results)) list = resp.results.map((x) => x?.translated ?? x?.text ?? x?.target ?? '');
+    else if (Array.isArray(resp?.translations)) list = resp.translations.map(String);
+    else if (Array.isArray(resp?.data)) list = resp.data.map(String);
+    else if (Array.isArray(resp)) list = resp.map(String);
+    else if (typeof resp?.translated === 'string' && expectedCount === 1) list = [resp.translated];
+
+    if (list.length !== expectedCount) {
+      const filled = Array.from({ length: expectedCount }, (_, i) => list[i] ?? String(originalChunk[i] ?? ''));
+      return filled;
+    }
+    return list.map((s) => (typeof s === 'string' ? s : String(s ?? '')));
+  };
+
+  for (let i = 0; i < arr.length; i += MAX_PER_REQ) {
+    const chunk = arr.slice(i, i + MAX_PER_REQ);
+    const payload = { texts: chunk, target, source, html: !!html };
+    const resp = await safeFetchJSON('/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      noDedupe: true,
+      timeoutMs,
+    }).catch(() => null);
+
+    const translated = extract(resp, chunk.length, chunk);
+    out.push(...translated);
+  }
+  return out;
+}
+
+/**
+ * Перевод одной строки через BFF /translate.
+ */
+export async function translateTextClient(text, opts = {}) {
+  const arr = await _translateTexts([text], opts);
+  return arr[0] ?? String(text ?? '');
+}
+
+/**
+ * Перевод нескольких строк через BFF /translate (с сохранением порядка).
+ */
+export async function translateManyClient(texts = [], opts = {}) {
+  return _translateTexts(texts, opts);
+}
+
+/**
+ * Перевод нормализованной вакансии (из /api/hh/jobs/search) на нужный язык.
+ * Возвращает КОПИЮ объекта с переведёнными полями.
+ *
+ * options:
+ *  - target: 'kk' | 'ru' | 'en' ...
+ *  - source: 'auto' | 'ru' | ...
+ *  - html:   true/false (по умолчанию false)
+ *  - fields: список полей для перевода (по умолчанию ['title','description','employer','area'])
+ *  - keepOriginal: если true — добавит поле _orig с исходными текстами
+ */
+export async function translateVacancy(vacancy, {
+  target = 'ru',
+  source = 'auto',
+  html = false,
+  fields = ['title', 'description', 'employer', 'area'],
+  keepOriginal = false,
+} = {}) {
+  if (!vacancy || typeof vacancy !== 'object') return vacancy;
+
+  const clone = JSON.parse(JSON.stringify(vacancy));
+  const order = [];
+  const texts = [];
+
+  const pushField = (key) => {
+    if (!(key in clone)) return;
+    const val = clone[key];
+    if (typeof val !== 'string') return;
+    order.push(key);
+    texts.push(val);
+  };
+
+  fields.forEach(pushField);
+
+  if (!texts.length) return clone;
+
+  const translated = await _translateTexts(texts, { target, source, html }).catch(() => null);
+  if (!translated || translated.length !== texts.length) return clone;
+
+  if (keepOriginal) {
+    clone._orig = clone._orig || {};
+    order.forEach((k, i) => { clone._orig[k] = texts[i]; });
+  }
+  order.forEach((k, i) => { clone[k] = translated[i]; });
+
+  return clone;
+}
+
+/**
+ * Глубокая копия простых JSON-объектов (без функций/дат/карт).
+ */
+function deepClone(obj) {
+  try {
+    return JSON.parse(JSON.stringify(obj));
+  } catch {
+    return obj;
+  }
+}
+
+/**
+ * Перевод резюме пользователя.
+ * Поддерживает структуру нашего профиля (fullName, position, summary, experience[], education[], skills[] и т.д.)
+ * и «похожие» объекты (HH-резюме после нормализации).
+ *
+ * options:
+ *  - target: 'kk' | 'ru' | 'en'
+ *  - source: 'auto'
+ *  - html: false
+ *  - keepOriginal: добавить _orig с исходными значениями
+ *  - include: набор "секции" для перевода (по умолчанию: ['header','experience','education','projects','skills','languages','certs','awards'])
+ */
+export async function translateResume(resume, {
+  target = 'ru',
+  source = 'auto',
+  html = false,
+  keepOriginal = false,
+  include = ['header', 'experience', 'education', 'projects', 'skills', 'languages', 'certs', 'awards'],
+} = {}) {
+  if (!resume || typeof resume !== 'object') return resume;
+
+  const r = deepClone(resume);
+
+  // Указатели на поля, которые надо перевести
+  /** @type {{obj:any, key:string, orig:string}[]} */
+  const slots = [];
+
+  const addIfString = (obj, key) => {
+    if (!obj || typeof obj !== 'object') return;
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim() !== '') slots.push({ obj, key, orig: v });
+  };
+
+  // header
+  if (include.includes('header')) {
+    addIfString(r, 'fullName');
+    addIfString(r, 'name');           // на всякий
+    addIfString(r, 'position');
+    addIfString(r, 'title');          // возможный алиас
+    addIfString(r, 'summary');
+    addIfString(r, 'about');
+    addIfString(r, 'location');
+    addIfString(r, 'city');
+    addIfString(r, 'maritalStatus');
+    addIfString(r, 'driversLicense');
+  }
+
+  // experience[]
+  if (include.includes('experience') && Array.isArray(r.experience)) {
+    r.experience.forEach((it) => {
+      addIfString(it, 'company');
+      addIfString(it, 'position');
+      addIfString(it, 'title');
+      addIfString(it, 'description');
+      addIfString(it, 'responsibilities');
+      addIfString(it, 'achievements');
+      addIfString(it, 'city');
+    });
+  }
+
+  // education[]
+  if (include.includes('education') && Array.isArray(r.education)) {
+    r.education.forEach((ed) => {
+      addIfString(ed, 'institution');
+      addIfString(ed, 'university');
+      addIfString(ed, 'faculty');
+      addIfString(ed, 'department');
+      addIfString(ed, 'degree');
+      addIfString(ed, 'field');
+      addIfString(ed, 'specialization');
+      addIfString(ed, 'city');
+    });
+  }
+
+  // projects[]
+  if (include.includes('projects') && Array.isArray(r.projects)) {
+    r.projects.forEach((p) => {
+      addIfString(p, 'name');
+      addIfString(p, 'title');
+      addIfString(p, 'role');
+      addIfString(p, 'description');
+      addIfString(p, 'stack');
+    });
+  }
+
+  // skills[] (строки)
+  const skillsPointers = [];
+  if (include.includes('skills') && Array.isArray(r.skills)) {
+    r.skills.forEach((s, idx) => {
+      if (typeof s === 'string' && s.trim() !== '') {
+        skillsPointers.push({ arr: r.skills, idx, orig: s });
+      }
+    });
+  }
+
+  // languages[] — переводим названия и уровни, если они строковые
+  if (include.includes('languages') && Array.isArray(r.languages)) {
+    r.languages.forEach((lng) => {
+      addIfString(lng, 'name');
+      addIfString(lng, 'language');
+      addIfString(lng, 'level');
+      addIfString(lng, 'certificate');
+    });
+  }
+
+  // certificates[]
+  if (include.includes('certs') && Array.isArray(r.certificates)) {
+    r.certificates.forEach((c) => {
+      addIfString(c, 'name');
+      addIfString(c, 'title');
+      addIfString(c, 'issuer');
+      addIfString(c, 'description');
+    });
+  }
+
+  // awards[]
+  if (include.includes('awards') && Array.isArray(r.awards)) {
+    r.awards.forEach((a) => {
+      addIfString(a, 'name');
+      addIfString(a, 'title');
+      addIfString(a, 'description');
+    });
+  }
+
+  // Строим единый батч текстов (сначала slots, затем skills)
+  const batchTexts = [
+    ...slots.map((s) => s.orig),
+    ...skillsPointers.map((p) => p.orig),
+  ];
+
+  if (!batchTexts.length) return r;
+
+  const translated = await _translateTexts(batchTexts, { target, source, html }).catch(() => null);
+  if (!translated || translated.length !== batchTexts.length) return r;
+
+  // Применяем переводы
+  if (keepOriginal) r._orig = r._orig || {};
+
+  let cursor = 0;
+
+  // slots
+  for (const s of slots) {
+    const t = translated[cursor++];
+    if (keepOriginal) {
+      r._orig[s.key] = r._orig[s.key] ?? s.obj[s.key];
+    }
+    s.obj[s.key] = t;
+  }
+
+  // skills
+  for (const p of skillsPointers) {
+    const t = translated[cursor++];
+    if (keepOriginal) {
+      if (!Array.isArray(r._orig?.skills)) {
+        r._orig.skills = JSON.parse(JSON.stringify(r.skills || []));
+      }
+    }
+    p.arr[p.idx] = t;
+  }
+
+  return r;
 }
