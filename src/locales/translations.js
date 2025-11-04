@@ -1,4 +1,3 @@
-// src/locales/translations.js
 export const translations = {
   ru: {
     // Навигация
@@ -6,10 +5,10 @@ export const translations = {
       home: 'Главная',
       builder: 'Резюме',
       vacancies: 'Вакансии',
-      recommendations: 'Рекомендации',
+      recommendations: 'Рекомендации'
     },
-
-    // Главная
+    
+    // Главная страница
     home: {
       badge: 'AI-powered Resume Builder',
       title: 'Создайте идеальное резюме за минуты',
@@ -17,12 +16,21 @@ export const translations = {
       createButton: 'Создать резюме',
       findJobsButton: 'Найти вакансии',
       features: {
-        ai: { title: 'Умное резюме', description: 'Подсказки по улучшению каждого раздела' },
-        vacancies: { title: 'Поиск вакансий', description: 'Интеграция с HeadHunter для релевантных предложений' },
-        recommendations: { title: 'Рекомендации', description: 'Навыки, роли и курсы для роста' },
-      },
+        ai: {
+          title: 'Умное резюме',
+          description: 'Подсказки по улучшению каждого раздела'
+        },
+        vacancies: {
+          title: 'Поиск вакансий',
+          description: 'Интеграция с HeadHunter для релевантных предложений'
+        },
+        recommendations: {
+          title: 'Рекомендации',
+          description: 'Навыки, роли и курсы для роста'
+        }
+      }
     },
-
+    
     // Рекомендации
     recommendations: {
       title: 'AI Рекомендации',
@@ -40,9 +48,9 @@ export const translations = {
       duration: 'Длительность',
       details: 'Подробнее',
       findVacanciesButton: 'Найти вакансии',
-      improveResume: 'Улучшить резюме',
+      improveResume: 'Улучшить резюме'
     },
-
+    
     // Вакансии
     vacancies: {
       title: 'Поиск вакансий',
@@ -78,9 +86,13 @@ export const translations = {
         noExperience: 'Без опыта',
         between1And3: '1–3 года',
         between3And6: '3–6 лет',
-        moreThan6: '6+ лет',
+        moreThan6: '6+ лет'
       },
-      cities: { almaty: 'Алматы', astana: 'Астана', shymkent: 'Шымкент' },
+      cities: {
+        almaty: 'Алматы',
+        astana: 'Астана',
+        shymkent: 'Шымкент'
+      },
       mockDescription1: 'Разработка современных веб-приложений на React',
       mockDescription2: 'Создание интуитивных интерфейсов',
       mockDescription3: 'Анализ данных и отчётность',
@@ -91,10 +103,10 @@ export const translations = {
       addToSearch: 'Добавить в запрос',
       aiError: 'Не удалось получить подсказку ИИ.',
       searchError: 'Поиск недоступен',
-      loadError: 'Ошибка загрузки вакансий.',
+      loadError: 'Ошибка загрузки вакансий.'
     },
-
-    // Конструктор
+    
+    // Страница конструктора
     builder: {
       title: 'Конструктор резюме',
       steps: {
@@ -104,67 +116,49 @@ export const translations = {
         skills: 'Навыки',
         languages: 'Языки',
         template: 'Шаблон',
-        preview: 'Предварительный просмотр',
+        preview: 'Предварительный просмотр'
       },
-
+      
       // Личные данные
       personal: {
-        uploadPhoto: 'Загрузить фото',
         fullName: 'Полное имя',
         fullNamePlaceholder: 'Иванов Иван Иванович',
-        // Алиас: используем и position, и title
-        position: 'Должность',
-        positionPlaceholder: 'Frontend разработчик',
-        title: 'Должность',
-        titlePlaceholder: 'Frontend разработчик',
         email: 'Email',
         emailPlaceholder: 'example@email.com',
         phone: 'Телефон',
         phonePlaceholder: '+7 (777) 123-45-67',
         location: 'Город',
         locationPlaceholder: 'Алматы, Казахстан',
-        age: 'Возраст',
-        maritalStatus: 'Семейное положение',
-        children: 'Дети',
-        driversLicense: 'Водительские права',
+        title: 'Должность',
+        titlePlaceholder: 'Frontend разработчик',
         summary: 'О себе',
-        summaryPlaceholder: 'Опишите ваш опыт и цели...',
+        summaryPlaceholder: 'Опишите ваш опыт и цели...'
       },
-
-      // Опыт
+      
+      // Опыт работы
       experience: {
-        title: 'Опыт работы',
         addExperience: 'Добавить опыт',
         addedExperience: 'Добавленный опыт:',
-        label: 'Опыт',
         company: 'Компания',
         companyPlaceholder: 'ТОО "Tech Corp"',
         position: 'Должность',
         positionPlaceholder: 'Frontend Developer',
-        start: 'Начало',
         startDate: 'Начало работы',
-        end: 'Окончание',
         endDate: 'Окончание работы',
-        tillNow: 'По настоящее время',
         current: 'Работаю в настоящее время',
-        // Алиас responsibilities ↔ description
-        responsibilities: 'Обязанности и достижения',
         description: 'Обязанности и достижения',
-        descriptionPlaceholder:
-          '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров',
-        add: 'Добавить место работы',
+        descriptionPlaceholder: '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров',
         remove: 'Удалить',
-        empty: 'Пока нет записей об опыте.',
+        label: 'Опыт'
       },
-
+      
       // Образование
       education: {
-        title: 'Образование',
         addEducation: 'Добавить образование',
         addedEducation: 'Добавленное образование:',
         institution: 'Учебное заведение',
         institutionPlaceholder: 'Жезказганский университет имени О.А. Байконурова',
-        level: 'Степень / уровень',
+        level: 'Уровень',
         levelPlaceholder: 'Выберите',
         levelOptions: {
           secondary: 'Среднее',
@@ -175,38 +169,31 @@ export const translations = {
           master: 'Магистр',
           mba: 'MBA',
           candidate: 'Кандидат наук',
-          doctor: 'Доктор наук',
+          doctor: 'Доктор наук'
         },
         year: 'Год окончания',
         yearPlaceholder: '2024',
         specialization: 'Специальность',
         specializationPlaceholder: 'Программная инженерия',
-        add: 'Добавить образование',
-        remove: 'Удалить',
-        empty: 'Пока нет записей об образовании.',
+        remove: 'Удалить'
       },
-
+      
       // Навыки
       skills: {
         title: 'Навыки',
         addSkill: 'Добавить навык',
-        addBtn: 'Добавить навык',
         skillPlaceholder: 'Например: React, JavaScript, Python',
-        addPlaceholder: 'Например: React, SQL, Figma…',
         yourSkills: 'Ваши навыки:',
         aiRecommends: 'AI рекомендует добавить:',
-        aiHints: 'Рекомендуемые навыки',
         aiLoading: 'Подбираем навыки…',
         aiEmpty: 'Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.',
         aiRefresh: 'Обновить рекомендации',
-        refresh: 'Ещё варианты',
-        remove: 'Удалить',
-        empty: 'Добавьте 3–10 ключевых навыков.',
+        remove: 'Удалить'
       },
-
+      
       // Языки
       languages: {
-        title: 'Языки',
+        title: 'Знание языков',
         addLanguage: 'Добавить язык',
         language: 'Язык',
         languagePlaceholder: 'Английский',
@@ -217,36 +204,25 @@ export const translations = {
           b1: 'B1 — Средний',
           b2: 'B2 — Средне-продвинутый',
           c1: 'C1 — Продвинутый',
-          c2: 'C2 — В совершенстве',
+          c2: 'C2 — В совершенстве'
         },
-        // Набор, который использует компонент с A1..C2
-        levels: {
-          A1: 'A1 — Начальный',
-          A2: 'A2 — Элементарный',
-          B1: 'B1 — Средний',
-          B2: 'B2 — Выше среднего',
-          C1: 'C1 — Продвинутый',
-          C2: 'C2 — Владение',
-        },
-        add: 'Добавить язык',
-        remove: 'Удалить',
-        empty: 'Добавьте языки и уровни владения.',
+        remove: 'Удалить'
       },
-
+      
       // Шаблоны
       templates: {
         modern: 'Современный',
-        minimal: 'Минималистичный',
+        minimal: 'Минималистичный'
       },
-
-      // Выбор шаблона
+      
+      // Шаблон
       template: {
         title: 'Выберите шаблон резюме:',
         select: 'Выбрать шаблон',
         description: 'Стильный и профессиональный дизайн',
-        selected: 'Выбрано',
+        selected: 'Выбрано'
       },
-
+      
       // Предпросмотр
       preview: {
         title: 'Предпросмотр резюме',
@@ -254,9 +230,9 @@ export const translations = {
         yourName: 'Ваше имя',
         jobsCount: 'мест работы',
         educationCount: 'образование',
-        languagesCount: 'языков',
+        languagesCount: 'языков'
       },
-
+      
       // Кнопки
       buttons: {
         previous: 'Назад',
@@ -267,14 +243,27 @@ export const translations = {
         downloadingPDF: 'Готовим PDF…',
         fillRequired: 'Заполните обязательные поля',
         save: 'Сохранить',
-        cancel: 'Отмена',
+        cancel: 'Отмена'
       },
-
-      // Сообщения / PDF
-      messages: { saving: 'Сохранение...', saved: 'Сохранено', generating: 'Генерация с помощью ИИ...', error: 'Произошла ошибка', fillRequired: 'Заполните обязательные поля', requiredFields: 'Необходимо:' },
-      pdf: { generateError: 'Не удалось сформировать PDF.', emptyError: 'Пустой PDF (blob.size === 0)', unknownError: 'Неизвестная ошибка' },
+      
+      // Сообщения
+      messages: {
+        saving: 'Сохранение...',
+        saved: 'Сохранено',
+        generating: 'Генерация с помощью ИИ...',
+        error: 'Произошла ошибка',
+        fillRequired: 'Заполните обязательные поля',
+        requiredFields: 'Необходимо:'
+      },
+      
+      // PDF
+      pdf: {
+        generateError: 'Не удалось сформировать PDF.',
+        emptyError: 'Пустой PDF (blob.size === 0)',
+        unknownError: 'Неизвестная ошибка'
+      }
     },
-
+    
     // Футер
     footer: {
       description: 'Создавайте профессиональные резюме с помощью ИИ',
@@ -293,9 +282,9 @@ export const translations = {
       terms: 'Условия использования',
       privacy: 'Политика конфиденциальности',
       copyright: '© 2025 AI Resume Builder. Все права защищены.',
-      integration: 'Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика',
+      integration: 'Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика'
     },
-
+    
     // Общие
     common: {
       loading: 'Загрузка...',
@@ -307,18 +296,20 @@ export const translations = {
       delete: 'Удалить',
       edit: 'Редактировать',
       save: 'Сохранить',
-      back: 'Назад',
+      back: 'Назад'
     },
-
-    // Страницы ошибок
+    
+    // Состояния загрузки
     loading: {
       page: 'Загружаем приложение...',
       pleaseWait: 'Пожалуйста, подождите',
       component: 'Загрузка...',
       processing: 'Обработка...',
       progress: 'Прогресс',
-      aiGenerating: 'ИИ генерирует контент...',
+      aiGenerating: 'ИИ генерирует контент...'
     },
+    
+    // Ошибки
     errors: {
       title: 'Что-то пошло не так',
       criticalTitle: 'Критическая ошибка',
@@ -339,13 +330,20 @@ export const translations = {
       tip2: 'Очистите кэш браузера',
       tip3: 'Попробуйте использовать режим инкогнито',
       tip4: 'Проверьте подключение к интернету',
-      tip5: 'Обновите браузер до последней версии',
-    },
+      tip5: 'Обновите браузер до последней версии'
+    }
   },
-
+  
   kk: {
-    nav: { home: 'Басты бет', builder: 'Түйіндеме', vacancies: 'Вакансиялар', recommendations: 'Ұсыныстар' },
-
+    // Навигация
+    nav: {
+      home: 'Басты бет',
+      builder: 'Түйіндеме',
+      vacancies: 'Вакансиялар',
+      recommendations: 'Ұсыныстар'
+    },
+    
+    // Главная страница
     home: {
       badge: 'AI-қолдаумен Түйіндеме Құрастырушы',
       title: 'Бірнеше минутта керемет түйіндеме жасаңыз',
@@ -353,12 +351,22 @@ export const translations = {
       createButton: 'Түйіндеме жасау',
       findJobsButton: 'Вакансия іздеу',
       features: {
-        ai: { title: 'Ақылды түйіндеме', description: 'Әр бөлімді жақсарту бойынша кеңестер' },
-        vacancies: { title: 'Вакансия іздеу', description: 'HeadHunter-мен интеграция арқылы қолайлы ұсыныстар' },
-        recommendations: { title: 'Ұсыныстар', description: 'Өсу үшін дағдылар, рөлдер және курстар' },
-      },
+        ai: {
+          title: 'Ақылды түйіндеме',
+          description: 'Әр бөлімді жақсарту бойынша кеңестер'
+        },
+        vacancies: {
+          title: 'Вакансия іздеу',
+          description: 'HeadHunter-мен интеграция арқылы қолайлы ұсыныстар'
+        },
+        recommendations: {
+          title: 'Ұсыныстар',
+          description: 'Өсу үшін дағдылар, рөлдер және курстар'
+        }
+      }
     },
-
+    
+    // Рекомендации
     recommendations: {
       title: 'AI Ұсыныстары',
       subtitle: 'Түйіндемеңізге негізделген кеңестер',
@@ -375,9 +383,10 @@ export const translations = {
       duration: 'Ұзақтығы',
       details: 'Толығырақ',
       findVacanciesButton: 'Вакансия табу',
-      improveResume: 'Түйіндемені жақсарту',
+      improveResume: 'Түйіндемені жақсарту'
     },
-
+    
+    // Вакансии
     vacancies: {
       title: 'Вакансия іздеу',
       searchPlaceholder: 'Лауазым немесе компания бойынша іздеу...',
@@ -412,9 +421,13 @@ export const translations = {
         noExperience: 'Тәжірибесіз',
         between1And3: '1–3 жыл',
         between3And6: '3–6 жыл',
-        moreThan6: '6+ жыл',
+        moreThan6: '6+ жыл'
       },
-      cities: { almaty: 'Алматы', astana: 'Астана', shymkent: 'Шымкент' },
+      cities: {
+        almaty: 'Алматы',
+        astana: 'Астана',
+        shymkent: 'Шымкент'
+      },
       mockDescription1: 'React-те заманауи веб-қосымшаларды әзірлеу',
       mockDescription2: 'Интуитивті интерфейстерді жасау',
       mockDescription3: 'Деректерді талдау және есеп беру',
@@ -425,9 +438,10 @@ export const translations = {
       addToSearch: 'Іздеуге қосу',
       aiError: 'AI кеңесін алу мүмкін болмады.',
       searchError: 'Іздеу қолжетімсіз',
-      loadError: 'Вакансияларды жүктеу қатесі.',
+      loadError: 'Вакансияларды жүктеу қатесі.'
     },
-
+    
+    // Страница конструктора
     builder: {
       title: 'Түйіндеме құрастырушысы',
       steps: {
@@ -435,133 +449,83 @@ export const translations = {
         experience: 'Жұмыс тәжірибесі',
         education: 'Білім',
         skills: 'Дағдылар',
-        languages: 'Тілдер',
-        template: 'Үлгі',
-        preview: 'Алдын ала қарау',
+        preview: 'Алдын ала қарау'
       },
-
+      
+      // Личные данные
       personal: {
-        uploadPhoto: 'Фото жүктеу',
         fullName: 'Толық аты-жөні',
         fullNamePlaceholder: 'Иванов Иван Иванович',
-        // Алиас: position ↔ title
-        position: 'Лауазымы',
-        positionPlaceholder: 'Frontend әзірлеуші',
-        title: 'Лауазымы',
-        titlePlaceholder: 'Frontend әзірлеуші',
         email: 'Email',
         emailPlaceholder: 'example@email.com',
         phone: 'Телефон',
         phonePlaceholder: '+7 (777) 123-45-67',
         location: 'Қала',
         locationPlaceholder: 'Алматы, Қазақстан',
-        age: 'Жасы',
-        maritalStatus: 'Отбасы жағдайы',
-        children: 'Балалар',
-        driversLicense: 'Жүргізуші куәлігі',
-        summary: 'Өзі туралы',
-        summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...',
+        title: 'Лауазымы',
+        titlePlaceholder: 'Frontend әзірлеуші',
+        summary: 'Өзім туралы',
+        summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...'
       },
-
+      
+      // Опыт работы
       experience: {
-        title: 'Жұмыс тәжірибесі',
         addExperience: 'Тәжірибе қосу',
         company: 'Компания',
         companyPlaceholder: 'ЖШС "Компания"',
-        position: 'Лауазым',
+        position: 'Лауазымы',
         positionPlaceholder: 'Senior Developer',
-        start: 'Басталу',
         startDate: 'Басталуы',
-        end: 'Аяқталу',
         endDate: 'Аяқталуы',
-        tillNow: 'Қазіргі уақытқа дейін',
         current: 'Қазіргі уақытта',
-        responsibilities: 'Міндеттер мен жетістіктер',
-        description: 'Міндеттер мен жетістіктер',
+        description: 'Міндеттер сипаттамасы',
         descriptionPlaceholder: 'Жетістіктеріңіз бен міндеттеріңізді сипаттаңыз...',
-        add: 'Жазба қосу',
-        remove: 'Жою',
-        empty: 'Әзірге жазбалар жоқ.',
+        remove: 'Жою'
       },
-
+      
+      // Образование
       education: {
-        title: 'Білім',
         addEducation: 'Білім қосу',
         institution: 'Оқу орны',
         institutionPlaceholder: 'Әл-Фараби атындағы ҚазҰУ',
-        level: 'Деңгей',
-        levelPlaceholder: 'Таңдаңыз',
-        year: 'Бітіру жылы',
-        yearPlaceholder: '2024',
-        specialization: 'Мамандану',
-        specializationPlaceholder: 'Ақпараттық жүйелер',
-        add: 'Жазба қосу',
-        remove: 'Жою',
-        empty: 'Әзірге жазбалар жоқ.',
+        degree: 'Дәреже',
+        degreePlaceholder: 'Бакалавр',
+        fieldOfStudy: 'Мамандық',
+        fieldOfStudyPlaceholder: 'Ақпараттық жүйелер',
+        startDate: 'Басталуы',
+        endDate: 'Аяқталуы',
+        remove: 'Жою'
       },
-
+      
+      // Навыки
       skills: {
         title: 'Дағдылар',
         addSkill: 'Дағды қосу',
-        addBtn: 'Дағды қосу',
         skillPlaceholder: 'JavaScript, React, Node.js...',
-        addPlaceholder: 'Мысалы: React, SQL…',
-        yourSkills: 'Сіздің дағдылар:',
-        aiRecommends: 'AI ұсынады:',
-        aiHints: 'Ұсынылатын дағдылар',
-        aiLoading: 'Дағдылар таңдалуда…',
-        aiEmpty: 'Кемінде 2–3 негізгі дағды қосыңыз немесе лауазымды көрсетіңіз.',
-        aiRefresh: 'Тағы нұсқалар',
-        refresh: 'Тағы нұсқалар',
-        remove: 'Жою',
-        empty: '3–10 негізгі дағды қосыңыз.',
+        remove: 'Жою'
       },
-
-      languages: {
-        title: 'Тілдер',
-        addLanguage: 'Тіл қосу',
-        language: 'Тіл',
-        languagePlaceholder: 'Ағылшын',
-        level: 'Деңгей',
-        levelOptions: {
-          a1: 'A1 — Бастапқы',
-          a2: 'A2 — Бастапқы+',
-          b1: 'B1 — Орта',
-          b2: 'B2 — Орта+',
-          c1: 'C1 — Жоғары',
-          c2: 'C2 — Еркін',
-        },
-        levels: {
-          A1: 'A1 — Бастапқы',
-          A2: 'A2 — Бастапқы+',
-          B1: 'B1 — Орта',
-          B2: 'B2 — Орта+',
-          C1: 'C1 — Жоғары',
-          C2: 'C2 — Еркін',
-        },
-        add: 'Тіл қосу',
-        remove: 'Жою',
-        empty: 'Тілдер қосыңыз.',
-      },
-
-      templates: { modern: 'Қазіргі', minimal: 'Минимал' },
-      template: { title: 'Үлгіні таңдаңыз', select: 'Үлгіні таңдау', description: 'Оқылымы жоғары үлгі', selected: 'Таңдалды' },
-      preview: { title: 'Алдын ала қарау', photo: 'Фото', yourName: 'Атыңыз', jobsCount: 'жұмыс', educationCount: 'білім', languagesCount: 'тіл' },
+      
+      // Кнопки
       buttons: {
         previous: 'Артқа',
-        next: 'Әрі қарай',
-        back: 'Артқа',
+        next: 'Алға',
         generateWithAI: 'AI көмегімен жасау',
         downloadPDF: 'PDF жүктеу',
-        downloadingPDF: 'PDF жасалуда…',
-        fillRequired: 'Міндетті өрістерді толтырыңыз',
         save: 'Сақтау',
-        cancel: 'Болдырмау',
+        cancel: 'Болдырмау'
       },
-      messages: { saving: 'Сақталуда...', saved: 'Сақталды', generating: 'AI көмегімен жасалуда...', error: 'Қате орын алды', fillRequired: 'Міндетті өрістерді толтырыңыз', requiredFields: 'Міндетті өрістер:' },
-      pdf: { generateError: 'PDF жасау қатесі.', emptyError: 'PDF үшін деректер жоқ.', unknownError: 'Белгісіз қате.' },
+      
+      // Сообщения
+      messages: {
+        saving: 'Сақталуда...',
+        saved: 'Сақталды',
+        generating: 'AI көмегімен жасалуда...',
+        error: 'Қате орын алды',
+        fillRequired: 'Міндетті өрістерді толтырыңыз'
+      }
     },
-
+    
+    // Футер
     footer: {
       description: 'AI көмегімен кәсіби түйіндемелер жасаңыз',
       product: 'Өнім',
@@ -579,11 +543,34 @@ export const translations = {
       terms: 'Пайдалану шарттары',
       privacy: 'Құпиялылық саясаты',
       copyright: '© 2025 AI Resume Builder. Барлық құқықтар қорғалған.',
-      integration: 'HeadHunter-мен интеграция: вакансияларды іздеу және жауап беру үшін HH-ге өту',
+      integration: 'HeadHunter-мен интеграция: вакансияларды іздеу және жауап беру үшін HH-ге өту'
     },
-
-    common: { loading: 'Жүктелуде...', error: 'Қате', success: 'Сәтті', confirm: 'Растау', cancel: 'Болдырмау', close: 'Жабу', delete: 'Жою', edit: 'Өңдеу', save: 'Сақтау', back: 'Артқа' },
-    loading: { page: 'Қосымшаны жүктеп жатырмыз...', pleaseWait: 'Күтіңіз', component: 'Жүктелуде...', processing: 'Өңдеу...', progress: 'Прогресс', aiGenerating: 'AI мазмұн жасап жатыр...' },
+    
+    // Общие
+    common: {
+      loading: 'Жүктелуде...',
+      error: 'Қате',
+      success: 'Сәтті',
+      confirm: 'Растау',
+      cancel: 'Болдырмау',
+      close: 'Жабу',
+      delete: 'Жою',
+      edit: 'Өңдеу',
+      save: 'Сақтау',
+      back: 'Артқа'
+    },
+    
+    // Состояния загрузки
+    loading: {
+      page: 'Қосымшаны жүктеп жатырмыз...',
+      pleaseWait: 'Күтіңіз',
+      component: 'Жүктелуде...',
+      processing: 'Өңдеу...',
+      progress: 'Прогресс',
+      aiGenerating: 'AI мазмұн жасап жатыр...'
+    },
+    
+    // Ошибки
     errors: {
       title: 'Бірдеңе дұрыс болмады',
       criticalTitle: 'Сыни қате',
@@ -604,13 +591,20 @@ export const translations = {
       tip2: 'Браузер кэшін тазалаңыз',
       tip3: 'Жасырын режимді пайдаланып көріңіз',
       tip4: 'Интернет байланысын тексеріңіз',
-      tip5: 'Браузерді соңғы нұсқаға дейін жаңартыңыз',
-    },
+      tip5: 'Браузерді соңғы нұсқаға дейін жаңартыңыз'
+    }
   },
-
+  
   en: {
-    nav: { home: 'Home', builder: 'Resume', vacancies: 'Jobs', recommendations: 'Recommendations' },
-
+    // Navigation
+    nav: {
+      home: 'Home',
+      builder: 'Resume',
+      vacancies: 'Jobs',
+      recommendations: 'Recommendations'
+    },
+    
+    // Home page
     home: {
       badge: 'AI-powered Resume Builder',
       title: 'Create the perfect resume in minutes',
@@ -618,12 +612,22 @@ export const translations = {
       createButton: 'Create Resume',
       findJobsButton: 'Find Jobs',
       features: {
-        ai: { title: 'Smart Resume', description: 'Tips to improve each section' },
-        vacancies: { title: 'Job Search', description: 'Integration with HeadHunter for relevant offers' },
-        recommendations: { title: 'Recommendations', description: 'Skills, roles and courses for growth' },
-      },
+        ai: {
+          title: 'Smart Resume',
+          description: 'Tips to improve each section'
+        },
+        vacancies: {
+          title: 'Job Search',
+          description: 'Integration with HeadHunter for relevant offers'
+        },
+        recommendations: {
+          title: 'Recommendations',
+          description: 'Skills, roles and courses for growth'
+        }
+      }
     },
-
+    
+    // Recommendations
     recommendations: {
       title: 'AI Recommendations',
       subtitle: 'Tips based on your resume',
@@ -640,9 +644,10 @@ export const translations = {
       duration: 'Duration',
       details: 'Details',
       findVacanciesButton: 'Find Jobs',
-      improveResume: 'Improve Resume',
+      improveResume: 'Improve Resume'
     },
-
+    
+    // Vacancies
     vacancies: {
       title: 'Job Search',
       searchPlaceholder: 'Search by position or company...',
@@ -677,9 +682,13 @@ export const translations = {
         noExperience: 'No experience',
         between1And3: '1–3 years',
         between3And6: '3–6 years',
-        moreThan6: '6+ years',
+        moreThan6: '6+ years'
       },
-      cities: { almaty: 'Almaty', astana: 'Astana', shymkent: 'Shymkent' },
+      cities: {
+        almaty: 'Almaty',
+        astana: 'Astana',
+        shymkent: 'Shymkent'
+      },
       mockDescription1: 'Development of modern web applications with React',
       mockDescription2: 'Creating intuitive interfaces',
       mockDescription3: 'Data analysis and reporting',
@@ -690,9 +699,10 @@ export const translations = {
       addToSearch: 'Add to search',
       aiError: 'Could not get AI suggestion.',
       searchError: 'Search unavailable',
-      loadError: 'Error loading vacancies.',
+      loadError: 'Error loading vacancies.'
     },
-
+    
+    // Builder page
     builder: {
       title: 'Resume Builder',
       steps: {
@@ -700,133 +710,83 @@ export const translations = {
         experience: 'Work Experience',
         education: 'Education',
         skills: 'Skills',
-        languages: 'Languages',
-        template: 'Template',
-        preview: 'Preview',
+        preview: 'Preview'
       },
-
+      
+      // Personal info
       personal: {
-        uploadPhoto: 'Upload photo',
         fullName: 'Full Name',
         fullNamePlaceholder: 'John Smith',
-        // Aliases: position ↔ title
-        position: 'Job Title',
-        positionPlaceholder: 'Frontend Developer',
-        title: 'Job Title',
-        titlePlaceholder: 'Frontend Developer',
         email: 'Email',
         emailPlaceholder: 'example@email.com',
         phone: 'Phone',
         phonePlaceholder: '+1 (555) 123-4567',
         location: 'Location',
         locationPlaceholder: 'New York, USA',
-        age: 'Age',
-        maritalStatus: 'Marital status',
-        children: 'Children',
-        driversLicense: 'Driver’s license',
+        title: 'Job Title',
+        titlePlaceholder: 'Frontend Developer',
         summary: 'About',
-        summaryPlaceholder: 'Describe your experience and goals...',
+        summaryPlaceholder: 'Describe your experience and goals...'
       },
-
+      
+      // Work experience
       experience: {
-        title: 'Work experience',
         addExperience: 'Add Experience',
         company: 'Company',
         companyPlaceholder: 'Company LLC',
         position: 'Position',
         positionPlaceholder: 'Senior Developer',
-        start: 'Start',
         startDate: 'Start Date',
-        end: 'End',
         endDate: 'End Date',
-        tillNow: 'Present',
         current: 'Present',
-        responsibilities: 'Responsibilities & achievements',
-        description: 'Responsibilities & achievements',
+        description: 'Job Description',
         descriptionPlaceholder: 'Describe your achievements and responsibilities...',
-        add: 'Add job',
-        remove: 'Remove',
-        empty: 'No experience entries yet.',
+        remove: 'Remove'
       },
-
+      
+      // Education
       education: {
-        title: 'Education',
         addEducation: 'Add Education',
         institution: 'Institution',
         institutionPlaceholder: 'University Name',
-        level: 'Level / degree',
-        levelPlaceholder: 'Select',
-        year: 'Graduation year',
-        yearPlaceholder: '2024',
-        specialization: 'Specialization',
-        specializationPlaceholder: 'Computer Science',
-        add: 'Add education',
-        remove: 'Remove',
-        empty: 'No education entries yet.',
+        degree: 'Degree',
+        degreePlaceholder: 'Bachelor',
+        fieldOfStudy: 'Field of Study',
+        fieldOfStudyPlaceholder: 'Computer Science',
+        startDate: 'Start Date',
+        endDate: 'End Date',
+        remove: 'Remove'
       },
-
+      
+      // Skills
       skills: {
         title: 'Skills',
         addSkill: 'Add Skill',
-        addBtn: 'Add Skill',
-        skillPlaceholder: 'JavaScript, React, Python…',
-        addPlaceholder: 'e.g. React, SQL, Figma…',
-        yourSkills: 'Your skills:',
-        aiRecommends: 'AI suggests:',
-        aiHints: 'Suggested skills',
-        aiLoading: 'Picking skills…',
-        aiEmpty: 'Add a couple of core skills or specify a job title.',
-        aiRefresh: 'More ideas',
-        refresh: 'More ideas',
-        remove: 'Remove',
-        empty: 'Add 3–10 key skills.',
+        skillPlaceholder: 'JavaScript, React, Node.js...',
+        remove: 'Remove'
       },
-
-      languages: {
-        title: 'Languages',
-        addLanguage: 'Add language',
-        language: 'Language',
-        languagePlaceholder: 'English',
-        level: 'Level',
-        levelOptions: {
-          a1: 'A1 — Beginner',
-          a2: 'A2 — Elementary',
-          b1: 'B1 — Intermediate',
-          b2: 'B2 — Upper-intermediate',
-          c1: 'C1 — Advanced',
-          c2: 'C2 — Proficiency',
-        },
-        levels: {
-          A1: 'A1 — Beginner',
-          A2: 'A2 — Elementary',
-          B1: 'B1 — Intermediate',
-          B2: 'B2 — Upper-intermediate',
-          C1: 'C1 — Advanced',
-          C2: 'C2 — Proficiency',
-        },
-        add: 'Add language',
-        remove: 'Remove',
-        empty: 'Add languages and levels.',
-      },
-
-      templates: { modern: 'Modern', minimal: 'Minimal' },
-      template: { title: 'Choose template', select: 'Select template', description: 'Clean, professional layout', selected: 'Selected' },
-      preview: { title: 'Preview', photo: 'Photo', yourName: 'Your name', jobsCount: 'positions', educationCount: 'education', languagesCount: 'languages' },
+      
+      // Buttons
       buttons: {
         previous: 'Previous',
         next: 'Next',
-        back: 'Back',
         generateWithAI: 'Generate with AI',
         downloadPDF: 'Download PDF',
-        downloadingPDF: 'Generating PDF…',
-        fillRequired: 'Fill required fields',
         save: 'Save',
-        cancel: 'Cancel',
+        cancel: 'Cancel'
       },
-      messages: { saving: 'Saving...', saved: 'Saved', generating: 'Generating with AI...', error: 'An error occurred', fillRequired: 'Fill in required fields', requiredFields: 'Missing:' },
-      pdf: { generateError: 'Failed to generate PDF.', emptyError: 'Nothing to export.', unknownError: 'Unknown error' },
+      
+      // Messages
+      messages: {
+        saving: 'Saving...',
+        saved: 'Saved',
+        generating: 'Generating with AI...',
+        error: 'An error occurred',
+        fillRequired: 'Fill in required fields'
+      }
     },
-
+    
+    // Footer
     footer: {
       description: 'Create professional resumes with AI',
       product: 'Product',
@@ -844,11 +804,34 @@ export const translations = {
       terms: 'Terms of Service',
       privacy: 'Privacy Policy',
       copyright: '© 2025 AI Resume Builder. All rights reserved.',
-      integration: 'HeadHunter integration: job search and transition to HH for application',
+      integration: 'HeadHunter integration: job search and transition to HH for application'
     },
-
-    common: { loading: 'Loading...', error: 'Error', success: 'Success', confirm: 'Confirm', cancel: 'Cancel', close: 'Close', delete: 'Delete', edit: 'Edit', save: 'Save', back: 'Back' },
-    loading: { page: 'Loading application...', pleaseWait: 'Please wait', component: 'Loading...', processing: 'Processing...', progress: 'Progress', aiGenerating: 'AI is generating content...' },
+    
+    // Common
+    common: {
+      loading: 'Loading...',
+      error: 'Error',
+      success: 'Success',
+      confirm: 'Confirm',
+      cancel: 'Cancel',
+      close: 'Close',
+      delete: 'Delete',
+      edit: 'Edit',
+      save: 'Save',
+      back: 'Back'
+    },
+    
+    // Loading states
+    loading: {
+      page: 'Loading application...',
+      pleaseWait: 'Please wait',
+      component: 'Loading...',
+      processing: 'Processing...',
+      progress: 'Progress',
+      aiGenerating: 'AI is generating content...'
+    },
+    
+    // Errors
     errors: {
       title: 'Something went wrong',
       criticalTitle: 'Critical error',
@@ -869,7 +852,7 @@ export const translations = {
       tip2: 'Clear browser cache',
       tip3: 'Try using incognito mode',
       tip4: 'Check internet connection',
-      tip5: 'Update browser to the latest version',
-    },
-  },
+      tip5: 'Update browser to the latest version'
+    }
+  }
 };
