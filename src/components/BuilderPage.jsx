@@ -15,7 +15,8 @@ import {
   Globe,
   RefreshCw,
 } from 'lucide-react';
-import { useTranslation } from '../hooks/useTranslation';
+
+// import ResumePDF from './ResumePDF'; // динамически импортируется при скачивании
 
 /* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
@@ -26,14 +27,36 @@ const DEFAULT_PROFILE = {
   location: '',
   summary: '',
   photo: null,
+
   age: '',
   maritalStatus: '',
   children: '',
-  driverLicense: '',       // <- единое имя поля
+  driversLicense: '',
+
   experience: [],
   education: [],
   skills: [],
   languages: [],
+};
+
+const STEPS = [
+  'Личная информация',
+  'Опыт работы',
+  'Образование',
+  'Навыки',
+  'Языки',
+  'Шаблон',
+];
+
+// ОСТАВИЛИ ТОЛЬКО ДВА ШАБЛОНА
+const TEMPLATES = [
+  { id: 'modern', name: 'Современный', color: 'blue' },
+  { id: 'minimal', name: 'Минималистичный', color: 'green' },
+];
+
+const COLOR_BG = {
+  blue: 'bg-blue-100',
+  green: 'bg-green-100',
 };
 
 /* ---------- helpers ---------- */
@@ -233,9 +256,9 @@ const Textarea = React.memo(({ label, rows = 3, className = '', ...rest }) => (
   </div>
 ));
 
-const Stepper = React.memo(({ current, steps }) => (
+const Stepper = React.memo(({ current }) => (
   <div className="flex justify-between items-center mb-4">
-    {steps.map((_, idx) => (
+    {STEPS.map((_, idx) => (
       <div key={idx} className="flex items-center">
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
@@ -248,7 +271,7 @@ const Stepper = React.memo(({ current, steps }) => (
         >
           {idx < current ? <Check size={20} /> : idx + 1}
         </div>
-        {idx < steps.length - 1 && (
+        {idx < STEPS.length - 1 && (
           <div className={`w-20 h-1 mx-2 ${idx < current ? 'bg-green-500' : 'bg-gray-200'}`} />
         )}
       </div>
@@ -256,37 +279,30 @@ const Stepper = React.memo(({ current, steps }) => (
   </div>
 ));
 
-/* Только 2 шаблона */
-const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect, templates }) {
-  const { t } = useTranslation();
-  
-  const COLOR_BG = {
-    blue: 'bg-blue-100',
-    green: 'bg-green-100',
-  };
-  
+/* Только 2 шаблона: Современный и Минималистичный */
+const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }) {
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      {templates.map((tmpl) => (
+      {TEMPLATES.map((t) => (
         <div
-          key={tmpl.id}
-          onClick={() => onSelect(tmpl.id)}
+          key={t.id}
+          onClick={() => onSelect(t.id)}
           className={`border-2 rounded-lg p-6 cursor-pointer transition ${
-            selected === tmpl.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+            selected === t.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
           }`}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onSelect(tmpl.id)}
-          aria-pressed={selected === tmpl.id}
-          aria-label={`${t('builder.template.select') || 'Выбрать шаблон'} ${tmpl.name}`}
+          onKeyDown={(e) => e.key === 'Enter' && onSelect(t.id)}
+          aria-pressed={selected === t.id}
+          aria-label={`Выбрать шаблон ${t.name}`}
         >
-          <div className={`${COLOR_BG[tmpl.color]} w-12 h-12 rounded-lg mb-3`} />
-          <h4 className="font-semibold mb-1">{tmpl.name}</h4>
-          <p className="text-sm text-gray-600">{t('builder.template.description') || 'Описание шаблона'}</p>
-          {selected === tmpl.id && (
+          <div className={`${COLOR_BG[t.color]} w-12 h-12 rounded-lg mb-3`} />
+          <h4 className="font-semibold mb-1">{t.name}</h4>
+          <p className="text-sm text-gray-600">Стильный и профессиональный дизайн</p>
+          {selected === t.id && (
             <div className="mt-3 flex items-center gap-2 text-blue-600">
               <Check size={16} />
-              <span className="text-sm font-medium">{t('builder.template.selected') || 'Выбран'}</span>
+              <span className="text-sm font-medium">Выбрано</span>
             </div>
           )}
         </div>
@@ -296,7 +312,6 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect, 
 });
 
 const ResumePreview = React.memo(function ResumePreview({ profile }) {
-  const { t } = useTranslation();
   const topSkills = useMemo(() => (profile.skills || []).slice(0, 8), [profile.skills]);
   const expCount = (profile.experience || []).length;
   const eduCount = (profile.education || []).length;
@@ -304,19 +319,19 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
 
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-      <h4 className="font-semibold mb-3 text-green-900">{t('builder.preview.title') || 'Предпросмотр'}</h4>
+      <h4 className="font-semibold mb-3 text-green-900">Предпросмотр резюме</h4>
       <div className="bg-white rounded-lg p-6 border shadow-sm">
         <div className="mb-4 flex gap-4">
           {profile.photo && (
             <img
               src={profile.photo}
-              alt={t('builder.preview.photo') || 'Фото'}
+              alt="Фото"
               className="w-16 h-16 rounded-full object-cover border"
             />
           )}
 
           <div>
-            <h2 className="text-2xl font-bold">{profile.fullName || (t('builder.preview.yourName') || 'Ваше имя')}</h2>
+            <h2 className="text-2xl font-bold">{profile.fullName || 'Ваше имя'}</h2>
 
             {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
 
@@ -342,17 +357,17 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
             </div>
 
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
-              {profile.age && <span>{(t('builder.personal.age') || 'Возраст')}: {profile.age}</span>}
-              {profile.maritalStatus && <span>{(t('builder.personal.maritalStatus') || 'Семейное положение')}: {profile.maritalStatus}</span>}
-              {profile.children && <span>{(t('builder.personal.children') || 'Дети')}: {profile.children}</span>}
-              {profile.driverLicense && <span>{(t('builder.personal.driverLicense') || 'Права')}: {profile.driverLicense}</span>}
+              {profile.age && <span>Возраст: {profile.age}</span>}
+              {profile.maritalStatus && <span>Семейное положение: {profile.maritalStatus}</span>}
+              {profile.children && <span>Дети: {profile.children}</span>}
+              {profile.driversLicense && <span>Права: {profile.driversLicense}</span>}
             </div>
           </div>
         </div>
 
         {profile.summary && (
           <div className="mb-4">
-            <h3 className="font-semibold mb-2">{t('builder.personal.summary') || 'О себе'}</h3>
+            <h3 className="font-semibold mb-2">О себе</h3>
             <p className="text-sm text-gray-700">{profile.summary}</p>
           </div>
         )}
@@ -361,23 +376,23 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
           <div className="text-center p-3 bg-blue-50 rounded-lg">
             <Briefcase size={20} className="mx-auto mb-1 text-blue-600" />
             <div className="font-semibold text-gray-900">{expCount}</div>
-            <div className="text-gray-600">{t('builder.preview.jobsCount') || 'Места работы'}</div>
+            <div className="text-gray-600">мест работы</div>
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg">
             <BookOpen size={20} className="mx-auto mb-1 text-purple-600" />
             <div className="font-semibold text-gray-900">{eduCount}</div>
-            <div className="text-gray-600">{t('builder.preview.educationCount') || 'Образование'}</div>
+            <div className="text-gray-600">образование</div>
           </div>
           <div className="text-center p-3 bg-indigo-50 rounded-lg">
             <Globe size={20} className="mx-auto mb-1 text-indigo-600" />
             <div className="font-semibold text-gray-900">{langCount}</div>
-            <div className="text-gray-600">{t('builder.preview.languagesCount') || 'Языки'}</div>
+            <div className="text-gray-600">языков</div>
           </div>
         </div>
 
         {topSkills.length > 0 && (
           <div className="mb-0">
-            <h3 className="font-semibold mb-2">{t('builder.steps.skills') || 'Навыки'}</h3>
+            <h3 className="font-semibold mb-2">Навыки</h3>
             <div className="flex flex-wrap gap-2">
               {topSkills.map((skill, idx) => (
                 <span
@@ -395,7 +410,6 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
   );
 });
 
-
 /* ---------- Основной компонент ---------- */
 function BuilderPage({
   profile = DEFAULT_PROFILE,
@@ -404,26 +418,9 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
 
   const headingRef = useRef(null);
-
-  // Динамически формируем шаги на основе переводов
-  const STEPS = useMemo(() => [
-    t('builder.steps.personal') || 'Личная информация',
-    t('builder.steps.experience') || 'Опыт работы',
-    t('builder.steps.education') || 'Образование',
-    t('builder.steps.skills') || 'Навыки',
-    t('builder.steps.languages') || 'Языки',
-    t('builder.steps.template') || 'Шаблон',
-  ], [t]);
-
-  // Шаблоны с переводами
-  const TEMPLATES = useMemo(() => [
-    { id: 'modern', name: t('builder.templates.modern') || 'Современный', color: 'blue' },
-    { id: 'minimal', name: t('builder.templates.minimal') || 'Минималистичный', color: 'green' },
-  ], [t]);
 
   const [form, setForm] = useState(() => ({
     ...DEFAULT_PROFILE,
@@ -448,17 +445,17 @@ function BuilderPage({
     profile?.age,
     profile?.maritalStatus,
     profile?.children,
-    profile?.driverLicense,
+    profile?.driversLicense,
     profile?.experience,
     profile?.education,
     profile?.skills,
   ]);
 
   useEffect(() => {
-    const tm = setTimeout(() => {
+    const t = setTimeout(() => {
       setProfile?.(form);
     }, 250);
-    return () => clearTimeout(tm);
+    return () => clearTimeout(t);
   }, [form, setProfile]);
 
   useEffect(() => {
@@ -558,6 +555,7 @@ function BuilderPage({
   };
   const [newExperience, setNewExperience] = useState(blankExperience);
 
+  const isBlank = (v) => !v || !String(v).trim();
   const isExperienceDraftFilled = useCallback(
     (e) =>
       !!e &&
@@ -684,11 +682,11 @@ function BuilderPage({
   /* --- Проверка обязательных --- */
   const requiredMissing = useMemo(() => {
     const miss = [];
-    if (!form.fullName?.trim()) miss.push(t('builder.personal.fullName') || 'ФИО');
-    if (!form.email?.trim()) miss.push(t('builder.personal.email') || 'Email');
-    if (!form.phone?.trim()) miss.push(t('builder.personal.phone') || 'Телефон');
+    if (!form.fullName?.trim()) miss.push('ФИО');
+    if (!form.email?.trim()) miss.push('Email');
+    if (!form.phone?.trim()) miss.push('Телефон');
     return miss;
-  }, [form.fullName, form.email, form.phone, t]);
+  }, [form.fullName, form.email, form.phone]);
   const canDownload = requiredMissing.length === 0;
 
   const goNext = useCallback(() => {
@@ -696,7 +694,7 @@ function BuilderPage({
     if (currentStep === 2) commitEducationDraft();
     if (currentStep === 4) commitLanguageDraft();
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft, STEPS.length]);
+  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft]);
 
   /* --- Профиль для PDF --- */
   const buildExportProfile = useCallback(() => {
@@ -720,11 +718,13 @@ function BuilderPage({
       experience: exp,
       education: edu,
       languages: langs,
+
       photoUrl: form.photo || form.photoUrl || null,
+
       age: form.age || '',
       maritalStatus: form.maritalStatus || '',
       children: form.children || '',
-      driverLicense: form.driverLicense || '',
+      driversLicense: form.driversLicense || '',
     };
   }, [
     form,
@@ -762,7 +762,7 @@ function BuilderPage({
       ]);
 
       const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
-      if (!blob || blob.size === 0) throw new Error(t('builder.pdf.emptyError') || 'Пустой PDF');
+      if (!blob || blob.size === 0) throw new Error('Пустой PDF (blob.size === 0)');
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -774,8 +774,8 @@ function BuilderPage({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('PDF generate error:', err);
-      const msg = (err && (err.message || err.toString())) || t('builder.pdf.unknownError') || 'Неизвестная ошибка';
-      setDownloadError(`${t('builder.pdf.generateError') || 'Ошибка генерации PDF:'} ${msg}`);
+      const msg = (err && (err.message || err.toString())) || 'Неизвестная ошибка';
+      setDownloadError(`Не удалось сформировать PDF. ${msg}`);
     } finally {
       setDownloading(false);
     }
@@ -789,24 +789,22 @@ function BuilderPage({
     buildExportProfile,
     selectedTemplate,
     fileName,
-    t,
   ]);
 
-/* --- RENDER --- */
+  /* --- RENDER --- */
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-5xl mx-auto px-4">
         <button
           onClick={() => setCurrentPage('home')}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
-          aria-label={t('common.back') || 'Назад'}
         >
-          ← {t('common.back') || 'Назад'}
+          ← Назад
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="mb-8">
-            <Stepper current={currentStep} steps={STEPS} />
+            <Stepper current={currentStep} />
             <h2
               ref={headingRef}
               tabIndex={-1}
@@ -817,93 +815,543 @@ function BuilderPage({
           </div>
 
           <div className="mb-8">
-            {/* ШАГ 0: Личная информация */}
             {currentStep === 0 && (
-              <PersonalInfoStep
-                form={form}
-                onChangeField={onChangeField}
-                handlePhotoUpload={handlePhotoUpload}
-                t={t}
-              />
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="inline-block relative">
+                    {form.photo ? (
+                      <img
+                        src={form.photo}
+                        alt="Фото"
+                        className="w-28 h-28 rounded-full object-cover border-4 border-blue-100"
+                      />
+                    ) : (
+                      <div className="w-28 h-28 rounded-full bg-gray-100 flex items-center justify-center border-4 border-gray-200">
+                        <Upload className="text-gray-400" size={28} />
+                      </div>
+                    )}
+
+                    <label className="absolute bottom-0 right-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition shadow">
+                      <Upload size={18} className="text-white" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">Рекомендуется загрузить фото</p>
+                </div>
+
+                <Input
+                  label="Полное имя *"
+                  type="text"
+                  value={form.fullName}
+                  onChange={onChangeField('fullName')}
+                  placeholder="Иван Иванов"
+                  autoComplete="name"
+                />
+
+                <Input
+                  label="Желаемая должность"
+                  type="text"
+                  value={form.position}
+                  onChange={onChangeField('position')}
+                  placeholder="Frontend Developer"
+                  autoComplete="organization-title"
+                />
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    label="Email *"
+                    type="email"
+                    value={form.email}
+                    onChange={onChangeField('email')}
+                    placeholder="ivan@example.com"
+                    autoComplete="email"
+                    inputMode="email"
+                  />
+                  <Input
+                    label="Телефон *"
+                    type="tel"
+                    value={form.phone}
+                    onChange={onChangeField('phone')}
+                    placeholder="+7 (777) 123-45-67"
+                    autoComplete="tel"
+                    inputMode="tel"
+                  />
+                </div>
+
+                <Input
+                  label="Город"
+                  type="text"
+                  value={form.location}
+                  onChange={onChangeField('location')}
+                  placeholder="Алматы"
+                  autoComplete="address-level2"
+                />
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    label="Возраст"
+                    type="number"
+                    min="14"
+                    max="80"
+                    value={form.age}
+                    onChange={onChangeField('age')}
+                    placeholder="30"
+                  />
+                  <Input
+                    label="Семейное положение"
+                    type="text"
+                    value={form.maritalStatus}
+                    onChange={onChangeField('maritalStatus')}
+                    placeholder="Женат / Замужем / Не женат"
+                  />
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    label="Дети"
+                    type="text"
+                    value={form.children}
+                    onChange={onChangeField('children')}
+                    placeholder="2 детей / нет"
+                  />
+                  <Input
+                    label="Водительские права"
+                    type="text"
+                    value={form.driversLicense}
+                    onChange={onChangeField('driversLicense')}
+                    placeholder="Категория B"
+                  />
+                </div>
+
+                <div>
+                  <Textarea
+                    label="О себе"
+                    rows={4}
+                    value={form.summary}
+                    onChange={onChangeField('summary')}
+                    placeholder="Расскажите о себе: 2–3 предложения о ключевых компетенциях и целях…"
+                  />
+                  <div className="mt-2 flex items-start gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded">
+                    <Sparkles size={16} className="mt-0.5" />
+                    <p>Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.</p>
+                  </div>
+                </div>
+              </div>
             )}
 
-            {/* ШАГ 1: Опыт работы */}
             {currentStep === 1 && (
-              <ExperienceStep
-                form={form}
-                newExperience={newExperience}
-                setNewExperience={setNewExperience}
-                addExperience={addExperience}
-                removeExperience={removeExperience}
-                t={t}
-              />
+              <div className="space-y-6">
+                <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                    <Briefcase size={18} /> Добавить опыт
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label="Должность *"
+                      value={newExperience.position}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, position: e.target.value }))
+                      }
+                      placeholder="Frontend Developer"
+                    />
+                    <Input
+                      label="Компания *"
+                      value={newExperience.company}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, company: e.target.value }))
+                      }
+                      placeholder='ТОО "Tech Corp"'
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label="Начало работы *"
+                      type="month"
+                      value={newExperience.startDate}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, startDate: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Окончание работы"
+                      type="month"
+                      value={newExperience.endDate}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, endDate: e.target.value }))
+                      }
+                      disabled={newExperience.currentlyWorking}
+                      className={newExperience.currentlyWorking ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newExperience.currentlyWorking}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          currentlyWorking: e.target.checked,
+                          endDate: e.target.checked ? '' : p.endDate,
+                        }))
+                      }
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Работаю в настоящее время</span>
+                  </label>
+
+                  <Textarea
+                    label="Обязанности и достижения"
+                    rows={4}
+                    value={newExperience.responsibilities}
+                    onChange={(e) =>
+                      setNewExperience((p) => ({ ...p, responsibilities: e.target.value }))
+                    }
+                    placeholder={
+                      '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров'
+                    }
+                  />
+
+                  <button
+                    onClick={addExperience}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Добавить опыт
+                  </button>
+                </div>
+
+                {form.experience.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold">Добавленный опыт:</h3>
+                    {form.experience.map((exp, idx) => (
+                      <div key={exp.id || idx} className="border rounded-lg p-4 bg-white">
+                        <div className="flex justify-between items-start mb-1">
+                          <div>
+                            <h4 className="font-semibold">{exp.position}</h4>
+                            <p className="text-sm text-gray-600">
+                              {exp.company} • {fmtMonth(exp.startDate)} —{' '}
+                              {exp.currentlyWorking ? 'настоящее время' : fmtMonth(exp.endDate)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => removeExperience(exp.id ?? idx)}
+                            className="text-red-500 hover:text-red-700"
+                            aria-label="Удалить опыт"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        {exp.responsibilities && (
+                          <p className="text-sm text-gray-700 whitespace-pre-line">
+                            {exp.responsibilities}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* ШАГ 2: Образование */}
             {currentStep === 2 && (
-              <EducationStep
-                form={form}
-                newEducation={newEducation}
-                setNewEducation={setNewEducation}
-                addEducation={addEducation}
-                removeEducation={removeEducation}
-                t={t}
-              />
+              <div className="space-y-6">
+                <div className="space-y-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-purple-900 mb-1 flex items-center gap-2">
+                    <BookOpen size={18} /> Добавить образование
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Select
+                      label="Уровень *"
+                      value={newEducation.level}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, level: e.target.value }))
+                      }
+                    >
+                      <option value="">Выберите</option>
+                      {[
+                        'Среднее',
+                        'Среднее специальное',
+                        'Неоконченное высшее',
+                        'Высшее',
+                        'Бакалавр',
+                        'Магистр',
+                        'MBA',
+                        'Кандидат наук',
+                        'Доктор наук',
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      label="Учебное заведение *"
+                      value={newEducation.institution}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, institution: e.target.value }))
+                      }
+                      placeholder="Жезказганский университет имени О.А. Байконурова"
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label="Год окончания"
+                      type="number"
+                      min="1950"
+                      max="2035"
+                      value={newEducation.year}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, year: e.target.value }))
+                      }
+                      placeholder="2024"
+                    />
+                    <Input
+                      label="Специальность"
+                      value={newEducation.specialization}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, specialization: e.target.value }))
+                      }
+                      placeholder="Программная инженерия"
+                    />
+                  </div>
+
+                  <button
+                    onClick={addEducation}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Добавить образование
+                  </button>
+                </div>
+
+                {form.education.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold">Добавленное образование:</h3>
+                    {form.education.map((edu, idx) => (
+                      <div key={edu.id || idx} className="border rounded-lg p-4 bg-white">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{edu.level}</h4>
+                            <p className="text-sm text-gray-600">
+                              {edu.institution}
+                              {edu.year ? ` • ${edu.year}` : ''}
+                            </p>
+                            {edu.specialization && (
+                              <p className="text-sm text-gray-700">{edu.specialization}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removeEducation(edu.id ?? idx)}
+                            className="text-red-500 hover:text-red-700"
+                            aria-label="Удалить образование"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* ШАГ 3: Навыки */}
             {currentStep === 3 && (
-              <SkillsStep
-                form={form}
-                newSkill={newSkill}
-                setNewSkill={setNewSkill}
-                addSkill={addSkill}
-                removeSkill={removeSkill}
-                aiSkillHints={aiSkillHints}
-                aiLoading={aiLoading}
-                rebuildHints={rebuildHints}
-                setForm={setForm}
-                uniqCaseInsensitive={uniqCaseInsensitive}
-                t={t}
-              />
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Добавить навык</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newSkill}
+                      onChange={(e) => setNewSkill(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+                      className="flex-1 px-4 py-2 border rounded-lg"
+                      placeholder="Например: React, JavaScript, Python"
+                    />
+                    <button
+                      onClick={addSkill}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                {form.skills.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-3">Ваши навыки:</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {form.skills.map((skill, idx) => (
+                        <span
+                          key={`${skill}-${idx}`}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center gap-2"
+                        >
+                          {skill}
+                          <button
+                            onClick={() => removeSkill(idx)}
+                            className="hover:text-blue-900"
+                            aria-label={`Удалить навык ${skill}`}
+                          >
+                            <X size={14} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="text-purple-600 mt-0.5" size={16} />
+                      <div>
+                        <h4 className="font-semibold text-purple-900">AI рекомендует добавить:</h4>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {aiLoading ? (
+                            <span className="text-sm text-gray-600">Подбираем навыки…</span>
+                          ) : aiSkillHints.length ? (
+                            aiSkillHints.map((skill) => (
+                              <button
+                                key={skill}
+                                onClick={() =>
+                                  setForm((p) =>
+                                    p.skills.includes(skill)
+                                      ? p
+                                      : {
+                                          ...p,
+                                          skills: uniqCaseInsensitive([...p.skills, skill]),
+                                        }
+                                  )
+                                }
+                                className="px-3 py-1 bg-white border border-purple-300 text-purple-700 rounded-full text-sm hover:bg-purple-100"
+                              >
+                                + {skill}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-600">
+                              Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => rebuildHints(1)}
+                      className="px-3 py-2 text-sm border rounded-lg hover:bg-purple-100 disabled:opacity-50"
+                      disabled={aiLoading}
+                      title="Обновить рекомендации"
+                    >
+                      <RefreshCw size={16} className={aiLoading ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
-            {/* ШАГ 4: Языки */}
             {currentStep === 4 && (
-              <LanguagesStep
-                form={form}
-                newLanguage={newLanguage}
-                setNewLanguage={setNewLanguage}
-                addLanguage={addLanguage}
-                removeLanguage={removeLanguage}
-                t={t}
-              />
+              <div className="space-y-6">
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                    <Globe size={18} /> Знание языков
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label="Язык *"
+                      value={newLanguage.language}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({ ...p, language: e.target.value }))
+                      }
+                      placeholder="Английский"
+                    />
+                    <Select
+                      label="Уровень *"
+                      value={newLanguage.level}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({ ...p, level: e.target.value }))
+                      }
+                    >
+                      {[
+                        'A1 — Начальный',
+                        'A2 — Элементарный',
+                        'B1 — Средний',
+                        'B2 — Средне-продвинутый',
+                        'C1 — Продвинутый',
+                        'C2 — В совершенстве',
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <button
+                    onClick={addLanguage}
+                    className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Добавить язык
+                  </button>
+                </div>
+
+                {(form.languages || []).length > 0 && (
+                  <div className="space-y-2">
+                    {form.languages.map((l, idx) => (
+                      <div
+                        key={l.id || idx}
+                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white"
+                      >
+                        <div>
+                          <span className="font-medium text-gray-900">{l.language}</span>
+                          <span className="text-gray-500 text-sm ml-2">— {l.level}</span>
+                        </div>
+                        <button
+                          onClick={() => removeLanguage(l.id ?? idx)}
+                          className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                          aria-label={`Удалить язык ${l.language}`}
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* ШАГ 5: Шаблон */}
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-4">{t('builder.template.title') || 'Выбор шаблона'}</h3>
-                  <TemplateSelect
-                    selected={selectedTemplate}
-                    onSelect={handleSelectTemplate}
-                    templates={TEMPLATES}
-                  />
+                  <h3 className="font-semibold mb-4">Выберите шаблон резюме:</h3>
+                  <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} />
                 </div>
+
                 <ResumePreview profile={form} />
               </div>
             )}
           </div>
 
-          {/* Кнопки навигации */}
           <div className="flex justify-between items-start">
             {currentStep > 0 && (
               <button
                 onClick={() => setCurrentStep((s) => s - 1)}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                {t('builder.buttons.previous') || 'Назад'}
+                Назад
               </button>
             )}
 
@@ -912,7 +1360,7 @@ function BuilderPage({
                 onClick={goNext}
                 className="ml-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                {t('builder.buttons.next') || 'Дальше'}
+                Далее
               </button>
             ) : canDownload ? (
               <div className="ml-auto flex flex-col items-end gap-2">
@@ -926,7 +1374,7 @@ function BuilderPage({
                   }`}
                 >
                   <Download size={20} />
-                  {downloading ? (t('builder.buttons.downloadingPDF') || 'Скачиваем PDF…') : (t('builder.buttons.downloadPDF') || 'Скачать PDF')}
+                  {downloading ? 'Готовим PDF…' : 'Скачать PDF'}
                 </button>
                 {downloadError && <p className="text-sm text-red-600">{downloadError}</p>}
               </div>
@@ -935,13 +1383,13 @@ function BuilderPage({
                 <button
                   disabled
                   className="px-6 py-2 bg-gray-300 text-gray-600 rounded-lg cursor-not-allowed flex items-center gap-2"
-                  title={`${t('builder.buttons.fillRequired') || 'Заполните поля'}: ${requiredMissing.join(', ')}`}
+                  title={`Заполните: ${requiredMissing.join(', ')}`}
                 >
                   <Download size={20} />
-                  {t('builder.buttons.fillRequired') || 'Заполните обязательные поля'}
+                  Заполните обязательные поля
                 </button>
                 <p className="text-xs text-gray-500">
-                  {(t('builder.messages.requiredFields') || 'Нужно заполнить:')} {requiredMissing.join(', ')}
+                  Необходимо: {requiredMissing.join(', ')}
                 </p>
               </div>
             )}
@@ -953,453 +1401,3 @@ function BuilderPage({
 }
 
 export default React.memo(BuilderPage);
-
-/* ================================== ШАГИ ================================== */
-
-function PersonalInfoStep({ form, onChangeField, handlePhotoUpload, t }) {
-  return (
-    <div className="grid md:grid-cols-2 gap-6">
-      <div className="md:col-span-2">
-        <div className="flex items-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border">
-            {form.photo ? (
-              <img src={form.photo} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <Upload className="text-gray-400" size={26} />
-            )}
-          </div>
-          <div>
-            <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-              <Upload size={18} />
-              <span>{t('builder.personal.uploadPhoto') || 'Загрузить фото'}</span>
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-            </label>
-            {form.photo && (
-              <p className="text-xs text-gray-500 mt-1">{t('builder.personal.photoHint') || 'Рекомендуется квадрат 400×400'}</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Input
-        label={t('builder.personal.fullName') || 'ФИО'}
-        value={form.fullName}
-        onChange={onChangeField('fullName')}
-        placeholder="Иванов Иван"
-      />
-      <Input
-        label={t('builder.personal.position') || 'Желаемая должность'}
-        value={form.position}
-        onChange={onChangeField('position')}
-        placeholder="Frontend Developer"
-      />
-
-      <Input
-        label={t('builder.personal.email') || 'Email'}
-        type="email"
-        value={form.email}
-        onChange={onChangeField('email')}
-        placeholder="name@mail.com"
-      />
-      <Input
-        label={t('builder.personal.phone') || 'Телефон'}
-        value={form.phone}
-        onChange={onChangeField('phone')}
-        placeholder="+7 777 000 00 00"
-      />
-
-      <Input
-        label={t('builder.personal.location') || 'Город'}
-        value={form.location}
-        onChange={onChangeField('location')}
-        placeholder="Алматы"
-      />
-      <Input
-        label={t('builder.personal.age') || 'Возраст'}
-        type="number"
-        value={form.age}
-        onChange={onChangeField('age')}
-        placeholder="28"
-      />
-
-      <Input
-        label={t('builder.personal.maritalStatus') || 'Семейное положение'}
-        value={form.maritalStatus}
-        onChange={onChangeField('maritalStatus')}
-        placeholder="женат / замужем / холост"
-      />
-      <Input
-        label={t('builder.personal.children') || 'Дети'}
-        value={form.children}
-        onChange={onChangeField('children')}
-        placeholder="есть / нет"
-      />
-
-      <Input
-        label={t('builder.personal.driverLicense') || 'Водительские права'}
-        value={form.driverLicense}
-        onChange={onChangeField('driverLicense')}
-        placeholder="B, B1"
-      />
-
-      <div className="md:col-span-2">
-        <Textarea
-          label={t('builder.personal.summary') || 'Кратко о себе'}
-          value={form.summary}
-          onChange={onChangeField('summary')}
-          rows={5}
-          placeholder={t('builder.personal.summaryPlaceholder') || 'Опишите опыт и сильные стороны'}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ExperienceStep({
-  form,
-  newExperience,
-  setNewExperience,
-  addExperience,
-  removeExperience,
-  t,
-}) {
-  const canAdd = !isBlank(newExperience.position) && !isBlank(newExperience.company);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-2 gap-4">
-        <Input
-          label={t('builder.experience.position') || 'Должность'}
-          value={newExperience.position}
-          onChange={(e) => setNewExperience({ ...newExperience, position: e.target.value })}
-          placeholder="React Developer"
-        />
-        <Input
-          label={t('builder.experience.company') || 'Компания'}
-          value={newExperience.company}
-          onChange={(e) => setNewExperience({ ...newExperience, company: e.target.value })}
-          placeholder="Tech Corp"
-        />
-        <Input
-          label={t('builder.experience.start') || 'Начало'}
-          type="month"
-          value={newExperience.startDate}
-          onChange={(e) => setNewExperience({ ...newExperience, startDate: e.target.value })}
-        />
-        <div className="grid grid-cols-1 gap-2">
-          <Input
-            label={t('builder.experience.end') || 'Окончание'}
-            type="month"
-            value={newExperience.endDate}
-            onChange={(e) => setNewExperience({ ...newExperience, endDate: e.target.value })}
-            disabled={newExperience.currentlyWorking}
-          />
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={newExperience.currentlyWorking}
-              onChange={(e) =>
-                setNewExperience({
-                  ...newExperience,
-                  currentlyWorking: e.target.checked,
-                  endDate: e.target.checked ? '' : newExperience.endDate,
-                })
-              }
-            />
-            {t('builder.experience.currentlyWorking') || 'Работаю по настоящее время'}
-          </label>
-        </div>
-        <div className="md:col-span-2">
-          <Textarea
-            label={t('builder.experience.responsibilities') || 'Обязанности / достижения'}
-            rows={4}
-            value={newExperience.responsibilities}
-            onChange={(e) => setNewExperience({ ...newExperience, responsibilities: e.target.value })}
-            placeholder="Ключевые обязанности и результаты…"
-          />
-        </div>
-      </div>
-
-      <button
-        onClick={addExperience}
-        disabled={!canAdd}
-        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
-          canAdd ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-        }`}
-      >
-        <Plus size={18} />
-        {t('builder.experience.add') || 'Добавить место работы'}
-      </button>
-
-      <div className="space-y-3">
-        {(form.experience || []).map((e, idx) => (
-          <div key={e.id || idx} className="border rounded-lg p-4 flex items-start justify-between gap-4">
-            <div>
-              <div className="font-semibold">
-                {e.position || '—'} <span className="text-gray-500">•</span> {e.company || '—'}
-              </div>
-              <div className="text-sm text-gray-600">
-                {fmtMonth(e.startDate)} — {e.currentlyWorking ? (t('builder.experience.now') || 'по наст. время') : (fmtMonth(e.endDate) || '—')}
-              </div>
-              {e.responsibilities && (
-                <div className="mt-2 text-sm text-gray-700 whitespace-pre-line">{e.responsibilities}</div>
-              )}
-            </div>
-            <button
-              onClick={() => removeExperience(e.id ?? idx)}
-              className="shrink-0 p-2 rounded-lg border hover:bg-gray-50"
-              title={t('builder.remove') || 'Удалить'}
-              aria-label={t('builder.remove') || 'Удалить'}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EducationStep({
-  form,
-  newEducation,
-  setNewEducation,
-  addEducation,
-  removeEducation,
-  t,
-}) {
-  const canAdd = !isBlank(newEducation.institution) && !isBlank(newEducation.level);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-2 gap-4">
-        <Input
-          label={t('builder.education.institution') || 'Учреждение'}
-          value={newEducation.institution}
-          onChange={(e) => setNewEducation({ ...newEducation, institution: e.target.value })}
-          placeholder="КазНУ / KBTU …"
-        />
-        <Input
-          label={t('builder.education.level') || 'Степень / уровень'}
-          value={newEducation.level}
-          onChange={(e) => setNewEducation({ ...newEducation, level: e.target.value })}
-          placeholder="Бакалавр / Магистр …"
-        />
-        <Input
-          label={t('builder.education.year') || 'Год окончания'}
-          value={newEducation.year}
-          onChange={(e) => setNewEducation({ ...newEducation, year: e.target.value })}
-          placeholder="2024"
-        />
-        <Input
-          label={t('builder.education.specialization') || 'Специализация'}
-          value={newEducation.specialization}
-          onChange={(e) => setNewEducation({ ...newEducation, specialization: e.target.value })}
-          placeholder="Информатика / Экономика …"
-        />
-      </div>
-
-      <button
-        onClick={addEducation}
-        disabled={!canAdd}
-        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
-          canAdd ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-        }`}
-      >
-        <Plus size={18} />
-        {t('builder.education.add') || 'Добавить образование'}
-      </button>
-
-      <div className="space-y-3">
-        {(form.education || []).map((e, idx) => (
-          <div key={e.id || idx} className="border rounded-lg p-4 flex items-start justify-between gap-4">
-            <div>
-              <div className="font-semibold">
-                {e.institution || '—'} <span className="text-gray-500">•</span> {e.level || '—'}
-              </div>
-              <div className="text-sm text-gray-600">
-                {e.specialization || '—'}
-                {e.year ? ` • ${e.year}` : ''}
-              </div>
-            </div>
-            <button
-              onClick={() => removeEducation(e.id ?? idx)}
-              className="shrink-0 p-2 rounded-lg border hover:bg-gray-50"
-              title={t('builder.remove') || 'Удалить'}
-              aria-label={t('builder.remove') || 'Удалить'}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SkillsStep({
-  form,
-  newSkill,
-  setNewSkill,
-  addSkill,
-  removeSkill,
-  aiSkillHints,
-  aiLoading,
-  rebuildHints,
-  setForm,
-  uniqCaseInsensitive,
-  t,
-}) {
-  const addFromHint = (s) => {
-    setForm((p) => ({ ...p, skills: uniqCaseInsensitive([...(p.skills || []), s]) }));
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex gap-2">
-        <Input
-          label={t('builder.skills.addLabel') || 'Добавить навык'}
-          value={newSkill}
-          onChange={(e) => setNewSkill(e.target.value)}
-          placeholder="React / SQL / Figma …"
-          className="flex-1"
-        />
-        <button
-          onClick={addSkill}
-          className="self-end px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-
-      {!!(form.skills || []).length && (
-        <div>
-          <div className="text-sm font-semibold mb-2">{t('builder.skills.list') || 'Ваши навыки'}</div>
-          <div className="flex flex-wrap gap-2">
-            {(form.skills || []).map((s, i) => (
-              <span key={`${s}-${i}`} className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">
-                {s}
-                <button
-                  onClick={() => removeSkill(i)}
-                  className="text-blue-700/70 hover:text-blue-900"
-                  title={t('builder.remove') || 'Удалить'}
-                  aria-label={t('builder.remove') || 'Удалить'}
-                >
-                  <X size={14} />
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-xl p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Sparkles className="text-purple-600" size={20} />
-            </div>
-            <div>
-              <div className="font-semibold mb-1">{t('builder.skills.aiTitle') || 'Подсказки по навыкам'}</div>
-              {aiLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span className="inline-block w-4 h-4 rounded-full border-2 border-purple-600 border-t-transparent animate-spin" />
-                  {t('builder.skills.aiLoading') || 'Анализируем профиль…'}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {aiSkillHints.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => addFromHint(s)}
-                      className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
-                      title={t('builder.skills.add') || 'Добавить'}
-                    >
-                      + {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={() => rebuildHints(1)}
-            className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
-            title={t('builder.skills.refresh') || 'Обновить подсказки'}
-            aria-label={t('builder.skills.refresh') || 'Обновить подсказки'}
-          >
-            <RefreshCw size={16} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LanguagesStep({
-  form,
-  newLanguage,
-  setNewLanguage,
-  addLanguage,
-  removeLanguage,
-  t,
-}) {
-  const levels = [
-    'A1 — Начальный',
-    'A2 — Элементарный',
-    'B1 — Средний',
-    'B2 — Выше среднего',
-    'C1 — Продвинутый',
-    'C2 — Свободный',
-  ];
-
-  const canAdd = !isBlank(newLanguage.language);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-4">
-        <Input
-          label={t('builder.languages.lang') || 'Язык'}
-          value={newLanguage.language}
-          onChange={(e) => setNewLanguage({ ...newLanguage, language: e.target.value })}
-          placeholder="English / Қазақ тілі / Русский"
-        />
-        <Select
-          label={t('builder.languages.level') || 'Уровень'}
-          value={newLanguage.level}
-          onChange={(e) => setNewLanguage({ ...newLanguage, level: e.target.value })}
-        >
-          {levels.map((lv) => (
-            <option key={lv} value={lv}>{lv}</option>
-          ))}
-        </Select>
-        <button
-          onClick={addLanguage}
-          disabled={!canAdd}
-          className={`self-end px-4 py-2 rounded-lg ${
-            canAdd ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-          }`}
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        {(form.languages || []).map((it, i) => (
-          <div key={it.id || i} className="flex items-center justify-between border rounded-lg px-3 py-2">
-            <div className="text-sm">
-              <b>{it.language}</b>{' '}
-              <span className="text-gray-600">{it.level}</span>
-            </div>
-            <button
-              onClick={() => removeLanguage(it.id ?? i)}
-              className="px-3 py-1 border rounded-lg hover:bg-gray-50"
-            >
-              {t('builder.remove') || 'Удалить'}
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
