@@ -1189,18 +1189,7 @@ function VacanciesPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // основной эффект поиска
-  const debouncedSearch = useDebouncedValue(searchQuery, 800);
-  const filtersKey = useMemo(
-    () => JSON.stringify({
-      location: filters.location,
-      experience: filters.experience,
-      salary: filters.salary,
-    }),
-    [filters.location, filters.experience, filters.salary]
-  );
-  const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
-
+ 
   useEffect(() => {
     if (blocked) return;
 
