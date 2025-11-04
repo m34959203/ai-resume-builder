@@ -15,8 +15,7 @@ import {
   Globe,
   RefreshCw,
 } from 'lucide-react';
-
-// import ResumePDF from './ResumePDF'; // динамически импортируется при скачивании
+import { useTranslation } from '../hooks/useTranslation';
 
 /* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
@@ -27,36 +26,14 @@ const DEFAULT_PROFILE = {
   location: '',
   summary: '',
   photo: null,
-
   age: '',
   maritalStatus: '',
   children: '',
   driversLicense: '',
-
   experience: [],
   education: [],
   skills: [],
   languages: [],
-};
-
-const STEPS = [
-  'Личная информация',
-  'Опыт работы',
-  'Образование',
-  'Навыки',
-  'Языки',
-  'Шаблон',
-];
-
-// ОСТАВИЛИ ТОЛЬКО ДВА ШАБЛОНА
-const TEMPLATES = [
-  { id: 'modern', name: 'Современный', color: 'blue' },
-  { id: 'minimal', name: 'Минималистичный', color: 'green' },
-];
-
-const COLOR_BG = {
-  blue: 'bg-blue-100',
-  green: 'bg-green-100',
 };
 
 /* ---------- helpers ---------- */
@@ -256,9 +233,9 @@ const Textarea = React.memo(({ label, rows = 3, className = '', ...rest }) => (
   </div>
 ));
 
-const Stepper = React.memo(({ current }) => (
+const Stepper = React.memo(({ current, steps }) => (
   <div className="flex justify-between items-center mb-4">
-    {STEPS.map((_, idx) => (
+    {steps.map((_, idx) => (
       <div key={idx} className="flex items-center">
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
@@ -271,7 +248,7 @@ const Stepper = React.memo(({ current }) => (
         >
           {idx < current ? <Check size={20} /> : idx + 1}
         </div>
-        {idx < STEPS.length - 1 && (
+        {idx < steps.length - 1 && (
           <div className={`w-20 h-1 mx-2 ${idx < current ? 'bg-green-500' : 'bg-gray-200'}`} />
         )}
       </div>
@@ -279,30 +256,37 @@ const Stepper = React.memo(({ current }) => (
   </div>
 ));
 
-/* Только 2 шаблона: Современный и Минималистичный */
-const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }) {
+/* Только 2 шаблона */
+const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect, templates }) {
+  const { t } = useTranslation();
+  
+  const COLOR_BG = {
+    blue: 'bg-blue-100',
+    green: 'bg-green-100',
+  };
+  
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      {TEMPLATES.map((t) => (
+      {templates.map((tmpl) => (
         <div
-          key={t.id}
-          onClick={() => onSelect(t.id)}
+          key={tmpl.id}
+          onClick={() => onSelect(tmpl.id)}
           className={`border-2 rounded-lg p-6 cursor-pointer transition ${
-            selected === t.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+            selected === tmpl.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
           }`}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onSelect(t.id)}
-          aria-pressed={selected === t.id}
-          aria-label={`Выбрать шаблон ${t.name}`}
+          onKeyDown={(e) => e.key === 'Enter' && onSelect(tmpl.id)}
+          aria-pressed={selected === tmpl.id}
+          aria-label={`${t('builder.template.select')} ${tmpl.name}`}
         >
-          <div className={`${COLOR_BG[t.color]} w-12 h-12 rounded-lg mb-3`} />
-          <h4 className="font-semibold mb-1">{t.name}</h4>
-          <p className="text-sm text-gray-600">Стильный и профессиональный дизайн</p>
-          {selected === t.id && (
+          <div className={`${COLOR_BG[tmpl.color]} w-12 h-12 rounded-lg mb-3`} />
+          <h4 className="font-semibold mb-1">{tmpl.name}</h4>
+          <p className="text-sm text-gray-600">{t('builder.template.description')}</p>
+          {selected === tmpl.id && (
             <div className="mt-3 flex items-center gap-2 text-blue-600">
               <Check size={16} />
-              <span className="text-sm font-medium">Выбрано</span>
+              <span className="text-sm font-medium">{t('builder.template.selected')}</span>
             </div>
           )}
         </div>
@@ -312,6 +296,7 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }
 });
 
 const ResumePreview = React.memo(function ResumePreview({ profile }) {
+  const { t } = useTranslation();
   const topSkills = useMemo(() => (profile.skills || []).slice(0, 8), [profile.skills]);
   const expCount = (profile.experience || []).length;
   const eduCount = (profile.education || []).length;
@@ -319,19 +304,19 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
 
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-      <h4 className="font-semibold mb-3 text-green-900">Предпросмотр резюме</h4>
+      <h4 className="font-semibold mb-3 text-green-900">{t('builder.preview.title')}</h4>
       <div className="bg-white rounded-lg p-6 border shadow-sm">
         <div className="mb-4 flex gap-4">
           {profile.photo && (
             <img
               src={profile.photo}
-              alt="Фото"
+              alt={t('builder.preview.photo')}
               className="w-16 h-16 rounded-full object-cover border"
             />
           )}
 
           <div>
-            <h2 className="text-2xl font-bold">{profile.fullName || 'Ваше имя'}</h2>
+            <h2 className="text-2xl font-bold">{profile.fullName || t('builder.preview.yourName')}</h2>
 
             {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
 
@@ -357,17 +342,17 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
             </div>
 
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
-              {profile.age && <span>Возраст: {profile.age}</span>}
-              {profile.maritalStatus && <span>Семейное положение: {profile.maritalStatus}</span>}
-              {profile.children && <span>Дети: {profile.children}</span>}
-              {profile.driversLicense && <span>Права: {profile.driversLicense}</span>}
+              {profile.age && <span>{t('builder.personal.age')}: {profile.age}</span>}
+              {profile.maritalStatus && <span>{t('builder.personal.maritalStatus')}: {profile.maritalStatus}</span>}
+              {profile.children && <span>{t('builder.personal.children')}: {profile.children}</span>}
+              {profile.driversLicense && <span>{t('builder.personal.driversLicense')}: {profile.driversLicense}</span>}
             </div>
           </div>
         </div>
 
         {profile.summary && (
           <div className="mb-4">
-            <h3 className="font-semibold mb-2">О себе</h3>
+            <h3 className="font-semibold mb-2">{t('builder.personal.summary')}</h3>
             <p className="text-sm text-gray-700">{profile.summary}</p>
           </div>
         )}
@@ -376,23 +361,23 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
           <div className="text-center p-3 bg-blue-50 rounded-lg">
             <Briefcase size={20} className="mx-auto mb-1 text-blue-600" />
             <div className="font-semibold text-gray-900">{expCount}</div>
-            <div className="text-gray-600">мест работы</div>
+            <div className="text-gray-600">{t('builder.preview.jobsCount')}</div>
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg">
             <BookOpen size={20} className="mx-auto mb-1 text-purple-600" />
             <div className="font-semibold text-gray-900">{eduCount}</div>
-            <div className="text-gray-600">образование</div>
+            <div className="text-gray-600">{t('builder.preview.educationCount')}</div>
           </div>
           <div className="text-center p-3 bg-indigo-50 rounded-lg">
             <Globe size={20} className="mx-auto mb-1 text-indigo-600" />
             <div className="font-semibold text-gray-900">{langCount}</div>
-            <div className="text-gray-600">языков</div>
+            <div className="text-gray-600">{t('builder.preview.languagesCount')}</div>
           </div>
         </div>
 
         {topSkills.length > 0 && (
           <div className="mb-0">
-            <h3 className="font-semibold mb-2">Навыки</h3>
+            <h3 className="font-semibold mb-2">{t('builder.steps.skills')}</h3>
             <div className="flex flex-wrap gap-2">
               {topSkills.map((skill, idx) => (
                 <span
@@ -410,6 +395,7 @@ const ResumePreview = React.memo(function ResumePreview({ profile }) {
   );
 });
 
+
 /* ---------- Основной компонент ---------- */
 function BuilderPage({
   profile = DEFAULT_PROFILE,
@@ -418,9 +404,26 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
+  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
 
   const headingRef = useRef(null);
+
+  // Динамически формируем шаги на основе переводов
+  const STEPS = useMemo(() => [
+    t('builder.steps.personal'),
+    t('builder.steps.experience'),
+    t('builder.steps.education'),
+    t('builder.steps.skills'),
+    t('builder.steps.languages'),
+    t('builder.steps.template'),
+  ], [t]);
+
+  // Шаблоны с переводами
+  const TEMPLATES = useMemo(() => [
+    { id: 'modern', name: t('builder.templates.modern'), color: 'blue' },
+    { id: 'minimal', name: t('builder.templates.minimal'), color: 'green' },
+  ], [t]);
 
   const [form, setForm] = useState(() => ({
     ...DEFAULT_PROFILE,
@@ -452,10 +455,10 @@ function BuilderPage({
   ]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
+    const tm = setTimeout(() => {
       setProfile?.(form);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tm);
   }, [form, setProfile]);
 
   useEffect(() => {
@@ -555,7 +558,6 @@ function BuilderPage({
   };
   const [newExperience, setNewExperience] = useState(blankExperience);
 
-  const isBlank = (v) => !v || !String(v).trim();
   const isExperienceDraftFilled = useCallback(
     (e) =>
       !!e &&
@@ -682,11 +684,11 @@ function BuilderPage({
   /* --- Проверка обязательных --- */
   const requiredMissing = useMemo(() => {
     const miss = [];
-    if (!form.fullName?.trim()) miss.push('ФИО');
-    if (!form.email?.trim()) miss.push('Email');
-    if (!form.phone?.trim()) miss.push('Телефон');
+    if (!form.fullName?.trim()) miss.push(t('builder.personal.fullName'));
+    if (!form.email?.trim()) miss.push(t('builder.personal.email'));
+    if (!form.phone?.trim()) miss.push(t('builder.personal.phone'));
     return miss;
-  }, [form.fullName, form.email, form.phone]);
+  }, [form.fullName, form.email, form.phone, t]);
   const canDownload = requiredMissing.length === 0;
 
   const goNext = useCallback(() => {
@@ -694,7 +696,7 @@ function BuilderPage({
     if (currentStep === 2) commitEducationDraft();
     if (currentStep === 4) commitLanguageDraft();
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft]);
+  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft, STEPS.length]);
 
   /* --- Профиль для PDF --- */
   const buildExportProfile = useCallback(() => {
@@ -718,9 +720,7 @@ function BuilderPage({
       experience: exp,
       education: edu,
       languages: langs,
-
       photoUrl: form.photo || form.photoUrl || null,
-
       age: form.age || '',
       maritalStatus: form.maritalStatus || '',
       children: form.children || '',
@@ -762,7 +762,7 @@ function BuilderPage({
       ]);
 
       const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
-      if (!blob || blob.size === 0) throw new Error('Пустой PDF (blob.size === 0)');
+      if (!blob || blob.size === 0) throw new Error(t('builder.pdf.emptyError'));
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -774,8 +774,8 @@ function BuilderPage({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('PDF generate error:', err);
-      const msg = (err && (err.message || err.toString())) || 'Неизвестная ошибка';
-      setDownloadError(`Не удалось сформировать PDF. ${msg}`);
+      const msg = (err && (err.message || err.toString())) || t('builder.pdf.unknownError');
+      setDownloadError(`${t('builder.pdf.generateError')} ${msg}`);
     } finally {
       setDownloading(false);
     }
@@ -789,9 +789,10 @@ function BuilderPage({
     buildExportProfile,
     selectedTemplate,
     fileName,
+    t,
   ]);
 
-  /* --- RENDER --- */
+/* --- RENDER --- */
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-5xl mx-auto px-4">
@@ -799,12 +800,12 @@ function BuilderPage({
           onClick={() => setCurrentPage('home')}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
         >
-          ← Назад
+          ← {t('common.back')}
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="mb-8">
-            <Stepper current={currentStep} />
+            <Stepper current={currentStep} steps={STEPS} />
             <h2
               ref={headingRef}
               tabIndex={-1}
@@ -815,543 +816,93 @@ function BuilderPage({
           </div>
 
           <div className="mb-8">
+            {/* ШАГ 0: Личная информация */}
             {currentStep === 0 && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="inline-block relative">
-                    {form.photo ? (
-                      <img
-                        src={form.photo}
-                        alt="Фото"
-                        className="w-28 h-28 rounded-full object-cover border-4 border-blue-100"
-                      />
-                    ) : (
-                      <div className="w-28 h-28 rounded-full bg-gray-100 flex items-center justify-center border-4 border-gray-200">
-                        <Upload className="text-gray-400" size={28} />
-                      </div>
-                    )}
-
-                    <label className="absolute bottom-0 right-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition shadow">
-                      <Upload size={18} className="text-white" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">Рекомендуется загрузить фото</p>
-                </div>
-
-                <Input
-                  label="Полное имя *"
-                  type="text"
-                  value={form.fullName}
-                  onChange={onChangeField('fullName')}
-                  placeholder="Иван Иванов"
-                  autoComplete="name"
-                />
-
-                <Input
-                  label="Желаемая должность"
-                  type="text"
-                  value={form.position}
-                  onChange={onChangeField('position')}
-                  placeholder="Frontend Developer"
-                  autoComplete="organization-title"
-                />
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    label="Email *"
-                    type="email"
-                    value={form.email}
-                    onChange={onChangeField('email')}
-                    placeholder="ivan@example.com"
-                    autoComplete="email"
-                    inputMode="email"
-                  />
-                  <Input
-                    label="Телефон *"
-                    type="tel"
-                    value={form.phone}
-                    onChange={onChangeField('phone')}
-                    placeholder="+7 (777) 123-45-67"
-                    autoComplete="tel"
-                    inputMode="tel"
-                  />
-                </div>
-
-                <Input
-                  label="Город"
-                  type="text"
-                  value={form.location}
-                  onChange={onChangeField('location')}
-                  placeholder="Алматы"
-                  autoComplete="address-level2"
-                />
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    label="Возраст"
-                    type="number"
-                    min="14"
-                    max="80"
-                    value={form.age}
-                    onChange={onChangeField('age')}
-                    placeholder="30"
-                  />
-                  <Input
-                    label="Семейное положение"
-                    type="text"
-                    value={form.maritalStatus}
-                    onChange={onChangeField('maritalStatus')}
-                    placeholder="Женат / Замужем / Не женат"
-                  />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    label="Дети"
-                    type="text"
-                    value={form.children}
-                    onChange={onChangeField('children')}
-                    placeholder="2 детей / нет"
-                  />
-                  <Input
-                    label="Водительские права"
-                    type="text"
-                    value={form.driversLicense}
-                    onChange={onChangeField('driversLicense')}
-                    placeholder="Категория B"
-                  />
-                </div>
-
-                <div>
-                  <Textarea
-                    label="О себе"
-                    rows={4}
-                    value={form.summary}
-                    onChange={onChangeField('summary')}
-                    placeholder="Расскажите о себе: 2–3 предложения о ключевых компетенциях и целях…"
-                  />
-                  <div className="mt-2 flex items-start gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded">
-                    <Sparkles size={16} className="mt-0.5" />
-                    <p>Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.</p>
-                  </div>
-                </div>
-              </div>
+              <PersonalInfoStep
+                form={form}
+                onChangeField={onChangeField}
+                handlePhotoUpload={handlePhotoUpload}
+                t={t}
+              />
             )}
 
+            {/* ШАГ 1: Опыт работы */}
             {currentStep === 1 && (
-              <div className="space-y-6">
-                <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
-                    <Briefcase size={18} /> Добавить опыт
-                  </h3>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Input
-                      label="Должность *"
-                      value={newExperience.position}
-                      onChange={(e) =>
-                        setNewExperience((p) => ({ ...p, position: e.target.value }))
-                      }
-                      placeholder="Frontend Developer"
-                    />
-                    <Input
-                      label="Компания *"
-                      value={newExperience.company}
-                      onChange={(e) =>
-                        setNewExperience((p) => ({ ...p, company: e.target.value }))
-                      }
-                      placeholder='ТОО "Tech Corp"'
-                    />
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Input
-                      label="Начало работы *"
-                      type="month"
-                      value={newExperience.startDate}
-                      onChange={(e) =>
-                        setNewExperience((p) => ({ ...p, startDate: e.target.value }))
-                      }
-                    />
-                    <Input
-                      label="Окончание работы"
-                      type="month"
-                      value={newExperience.endDate}
-                      onChange={(e) =>
-                        setNewExperience((p) => ({ ...p, endDate: e.target.value }))
-                      }
-                      disabled={newExperience.currentlyWorking}
-                      className={newExperience.currentlyWorking ? 'bg-gray-100 cursor-not-allowed' : ''}
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newExperience.currentlyWorking}
-                      onChange={(e) =>
-                        setNewExperience((p) => ({
-                          ...p,
-                          currentlyWorking: e.target.checked,
-                          endDate: e.target.checked ? '' : p.endDate,
-                        }))
-                      }
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Работаю в настоящее время</span>
-                  </label>
-
-                  <Textarea
-                    label="Обязанности и достижения"
-                    rows={4}
-                    value={newExperience.responsibilities}
-                    onChange={(e) =>
-                      setNewExperience((p) => ({ ...p, responsibilities: e.target.value }))
-                    }
-                    placeholder={
-                      '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров'
-                    }
-                  />
-
-                  <button
-                    onClick={addExperience}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                  >
-                    <Plus size={16} />
-                    Добавить опыт
-                  </button>
-                </div>
-
-                {form.experience.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-semibold">Добавленный опыт:</h3>
-                    {form.experience.map((exp, idx) => (
-                      <div key={exp.id || idx} className="border rounded-lg p-4 bg-white">
-                        <div className="flex justify-between items-start mb-1">
-                          <div>
-                            <h4 className="font-semibold">{exp.position}</h4>
-                            <p className="text-sm text-gray-600">
-                              {exp.company} • {fmtMonth(exp.startDate)} —{' '}
-                              {exp.currentlyWorking ? 'настоящее время' : fmtMonth(exp.endDate)}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => removeExperience(exp.id ?? idx)}
-                            className="text-red-500 hover:text-red-700"
-                            aria-label="Удалить опыт"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-
-                        {exp.responsibilities && (
-                          <p className="text-sm text-gray-700 whitespace-pre-line">
-                            {exp.responsibilities}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ExperienceStep
+                form={form}
+                newExperience={newExperience}
+                setNewExperience={setNewExperience}
+                addExperience={addExperience}
+                removeExperience={removeExperience}
+                t={t}
+              />
             )}
 
+            {/* ШАГ 2: Образование */}
             {currentStep === 2 && (
-              <div className="space-y-6">
-                <div className="space-y-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-purple-900 mb-1 flex items-center gap-2">
-                    <BookOpen size={18} /> Добавить образование
-                  </h3>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Select
-                      label="Уровень *"
-                      value={newEducation.level}
-                      onChange={(e) =>
-                        setNewEducation((p) => ({ ...p, level: e.target.value }))
-                      }
-                    >
-                      <option value="">Выберите</option>
-                      {[
-                        'Среднее',
-                        'Среднее специальное',
-                        'Неоконченное высшее',
-                        'Высшее',
-                        'Бакалавр',
-                        'Магистр',
-                        'MBA',
-                        'Кандидат наук',
-                        'Доктор наук',
-                      ].map((lvl) => (
-                        <option key={lvl} value={lvl}>
-                          {lvl}
-                        </option>
-                      ))}
-                    </Select>
-                    <Input
-                      label="Учебное заведение *"
-                      value={newEducation.institution}
-                      onChange={(e) =>
-                        setNewEducation((p) => ({ ...p, institution: e.target.value }))
-                      }
-                      placeholder="Жезказганский университет имени О.А. Байконурова"
-                    />
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Input
-                      label="Год окончания"
-                      type="number"
-                      min="1950"
-                      max="2035"
-                      value={newEducation.year}
-                      onChange={(e) =>
-                        setNewEducation((p) => ({ ...p, year: e.target.value }))
-                      }
-                      placeholder="2024"
-                    />
-                    <Input
-                      label="Специальность"
-                      value={newEducation.specialization}
-                      onChange={(e) =>
-                        setNewEducation((p) => ({ ...p, specialization: e.target.value }))
-                      }
-                      placeholder="Программная инженерия"
-                    />
-                  </div>
-
-                  <button
-                    onClick={addEducation}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                  >
-                    <Plus size={16} />
-                    Добавить образование
-                  </button>
-                </div>
-
-                {form.education.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="font-semibold">Добавленное образование:</h3>
-                    {form.education.map((edu, idx) => (
-                      <div key={edu.id || idx} className="border rounded-lg p-4 bg-white">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-semibold">{edu.level}</h4>
-                            <p className="text-sm text-gray-600">
-                              {edu.institution}
-                              {edu.year ? ` • ${edu.year}` : ''}
-                            </p>
-                            {edu.specialization && (
-                              <p className="text-sm text-gray-700">{edu.specialization}</p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => removeEducation(edu.id ?? idx)}
-                            className="text-red-500 hover:text-red-700"
-                            aria-label="Удалить образование"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <EducationStep
+                form={form}
+                newEducation={newEducation}
+                setNewEducation={setNewEducation}
+                addEducation={addEducation}
+                removeEducation={removeEducation}
+                t={t}
+              />
             )}
 
+            {/* ШАГ 3: Навыки */}
             {currentStep === 3 && (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Добавить навык</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newSkill}
-                      onChange={(e) => setNewSkill(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
-                      className="flex-1 px-4 py-2 border rounded-lg"
-                      placeholder="Например: React, JavaScript, Python"
-                    />
-                    <button
-                      onClick={addSkill}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <Plus size={20} />
-                    </button>
-                  </div>
-                </div>
-
-                {form.skills.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold mb-3">Ваши навыки:</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {form.skills.map((skill, idx) => (
-                        <span
-                          key={`${skill}-${idx}`}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center gap-2"
-                        >
-                          {skill}
-                          <button
-                            onClick={() => removeSkill(idx)}
-                            className="hover:text-blue-900"
-                            aria-label={`Удалить навык ${skill}`}
-                          >
-                            <X size={14} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2">
-                      <Sparkles className="text-purple-600 mt-0.5" size={16} />
-                      <div>
-                        <h4 className="font-semibold text-purple-900">AI рекомендует добавить:</h4>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {aiLoading ? (
-                            <span className="text-sm text-gray-600">Подбираем навыки…</span>
-                          ) : aiSkillHints.length ? (
-                            aiSkillHints.map((skill) => (
-                              <button
-                                key={skill}
-                                onClick={() =>
-                                  setForm((p) =>
-                                    p.skills.includes(skill)
-                                      ? p
-                                      : {
-                                          ...p,
-                                          skills: uniqCaseInsensitive([...p.skills, skill]),
-                                        }
-                                  )
-                                }
-                                className="px-3 py-1 bg-white border border-purple-300 text-purple-700 rounded-full text-sm hover:bg-purple-100"
-                              >
-                                + {skill}
-                              </button>
-                            ))
-                          ) : (
-                            <span className="text-sm text-gray-600">
-                              Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => rebuildHints(1)}
-                      className="px-3 py-2 text-sm border rounded-lg hover:bg-purple-100 disabled:opacity-50"
-                      disabled={aiLoading}
-                      title="Обновить рекомендации"
-                    >
-                      <RefreshCw size={16} className={aiLoading ? 'animate-spin' : ''} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <SkillsStep
+                form={form}
+                newSkill={newSkill}
+                setNewSkill={setNewSkill}
+                addSkill={addSkill}
+                removeSkill={removeSkill}
+                aiSkillHints={aiSkillHints}
+                aiLoading={aiLoading}
+                rebuildHints={rebuildHints}
+                setForm={setForm}
+                uniqCaseInsensitive={uniqCaseInsensitive}
+                t={t}
+              />
             )}
 
+            {/* ШАГ 4: Языки */}
             {currentStep === 4 && (
-              <div className="space-y-6">
-                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-                    <Globe size={18} /> Знание языков
-                  </h3>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Input
-                      label="Язык *"
-                      value={newLanguage.language}
-                      onChange={(e) =>
-                        setNewLanguage((p) => ({ ...p, language: e.target.value }))
-                      }
-                      placeholder="Английский"
-                    />
-                    <Select
-                      label="Уровень *"
-                      value={newLanguage.level}
-                      onChange={(e) =>
-                        setNewLanguage((p) => ({ ...p, level: e.target.value }))
-                      }
-                    >
-                      {[
-                        'A1 — Начальный',
-                        'A2 — Элементарный',
-                        'B1 — Средний',
-                        'B2 — Средне-продвинутый',
-                        'C1 — Продвинутый',
-                        'C2 — В совершенстве',
-                      ].map((lvl) => (
-                        <option key={lvl} value={lvl}>
-                          {lvl}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <button
-                    onClick={addLanguage}
-                    className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
-                  >
-                    <Plus size={16} />
-                    Добавить язык
-                  </button>
-                </div>
-
-                {(form.languages || []).length > 0 && (
-                  <div className="space-y-2">
-                    {form.languages.map((l, idx) => (
-                      <div
-                        key={l.id || idx}
-                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white"
-                      >
-                        <div>
-                          <span className="font-medium text-gray-900">{l.language}</span>
-                          <span className="text-gray-500 text-sm ml-2">— {l.level}</span>
-                        </div>
-                        <button
-                          onClick={() => removeLanguage(l.id ?? idx)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                          aria-label={`Удалить язык ${l.language}`}
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <LanguagesStep
+                form={form}
+                newLanguage={newLanguage}
+                setNewLanguage={setNewLanguage}
+                addLanguage={addLanguage}
+                removeLanguage={removeLanguage}
+                t={t}
+              />
             )}
 
+            {/* ШАГ 5: Шаблон */}
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-4">Выберите шаблон резюме:</h3>
-                  <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} />
+                  <h3 className="font-semibold mb-4">{t('builder.template.title')}</h3>
+                  <TemplateSelect
+                    selected={selectedTemplate}
+                    onSelect={handleSelectTemplate}
+                    templates={TEMPLATES}
+                  />
                 </div>
-
                 <ResumePreview profile={form} />
               </div>
             )}
           </div>
 
+          {/* Кнопки навигации */}
           <div className="flex justify-between items-start">
             {currentStep > 0 && (
               <button
                 onClick={() => setCurrentStep((s) => s - 1)}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Назад
+                {t('builder.buttons.previous')}
               </button>
             )}
 
@@ -1360,7 +911,7 @@ function BuilderPage({
                 onClick={goNext}
                 className="ml-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                Далее
+                {t('builder.buttons.next')}
               </button>
             ) : canDownload ? (
               <div className="ml-auto flex flex-col items-end gap-2">
@@ -1374,7 +925,7 @@ function BuilderPage({
                   }`}
                 >
                   <Download size={20} />
-                  {downloading ? 'Готовим PDF…' : 'Скачать PDF'}
+                  {downloading ? t('builder.buttons.downloadingPDF') : t('builder.buttons.downloadPDF')}
                 </button>
                 {downloadError && <p className="text-sm text-red-600">{downloadError}</p>}
               </div>
@@ -1383,13 +934,13 @@ function BuilderPage({
                 <button
                   disabled
                   className="px-6 py-2 bg-gray-300 text-gray-600 rounded-lg cursor-not-allowed flex items-center gap-2"
-                  title={`Заполните: ${requiredMissing.join(', ')}`}
+                  title={`${t('builder.buttons.fillRequired')}: ${requiredMissing.join(', ')}`}
                 >
                   <Download size={20} />
-                  Заполните обязательные поля
+                  {t('builder.buttons.fillRequired')}
                 </button>
                 <p className="text-xs text-gray-500">
-                  Необходимо: {requiredMissing.join(', ')}
+                  {t('builder.messages.requiredFields')} {requiredMissing.join(', ')}
                 </p>
               </div>
             )}

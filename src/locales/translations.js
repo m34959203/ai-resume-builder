@@ -110,10 +110,12 @@ export const translations = {
     builder: {
       title: 'Конструктор резюме',
       steps: {
-        personal: 'Личные данные',
+        personal: 'Личная информация',
         experience: 'Опыт работы',
         education: 'Образование',
         skills: 'Навыки',
+        languages: 'Языки',
+        template: 'Шаблон',
         preview: 'Предварительный просмотр'
       },
       
@@ -136,29 +138,43 @@ export const translations = {
       // Опыт работы
       experience: {
         addExperience: 'Добавить опыт',
+        addedExperience: 'Добавленный опыт:',
         company: 'Компания',
-        companyPlaceholder: 'ТОО "Компания"',
+        companyPlaceholder: 'ТОО "Tech Corp"',
         position: 'Должность',
-        positionPlaceholder: 'Senior Developer',
-        startDate: 'Начало',
-        endDate: 'Окончание',
-        current: 'По настоящее время',
-        description: 'Описание обязанностей',
-        descriptionPlaceholder: 'Опишите ваши достижения и обязанности...',
-        remove: 'Удалить'
+        positionPlaceholder: 'Frontend Developer',
+        startDate: 'Начало работы',
+        endDate: 'Окончание работы',
+        current: 'Работаю в настоящее время',
+        description: 'Обязанности и достижения',
+        descriptionPlaceholder: '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров',
+        remove: 'Удалить',
+        label: 'Опыт'
       },
       
       // Образование
       education: {
         addEducation: 'Добавить образование',
+        addedEducation: 'Добавленное образование:',
         institution: 'Учебное заведение',
-        institutionPlaceholder: 'КазНУ им. аль-Фараби',
-        degree: 'Степень',
-        degreePlaceholder: 'Бакалавр',
-        fieldOfStudy: 'Специальность',
-        fieldOfStudyPlaceholder: 'Информационные системы',
-        startDate: 'Начало',
-        endDate: 'Окончание',
+        institutionPlaceholder: 'Жезказганский университет имени О.А. Байконурова',
+        level: 'Уровень',
+        levelPlaceholder: 'Выберите',
+        levelOptions: {
+          secondary: 'Среднее',
+          secondarySpecial: 'Среднее специальное',
+          incompleteHigher: 'Неоконченное высшее',
+          higher: 'Высшее',
+          bachelor: 'Бакалавр',
+          master: 'Магистр',
+          mba: 'MBA',
+          candidate: 'Кандидат наук',
+          doctor: 'Доктор наук'
+        },
+        year: 'Год окончания',
+        yearPlaceholder: '2024',
+        specialization: 'Специальность',
+        specializationPlaceholder: 'Программная инженерия',
         remove: 'Удалить'
       },
       
@@ -166,16 +182,66 @@ export const translations = {
       skills: {
         title: 'Навыки',
         addSkill: 'Добавить навык',
-        skillPlaceholder: 'JavaScript, React, Node.js...',
+        skillPlaceholder: 'Например: React, JavaScript, Python',
+        yourSkills: 'Ваши навыки:',
+        aiRecommends: 'AI рекомендует добавить:',
+        aiLoading: 'Подбираем навыки…',
+        aiEmpty: 'Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.',
+        aiRefresh: 'Обновить рекомендации',
         remove: 'Удалить'
+      },
+      
+      // Языки
+      languages: {
+        title: 'Знание языков',
+        addLanguage: 'Добавить язык',
+        language: 'Язык',
+        languagePlaceholder: 'Английский',
+        level: 'Уровень',
+        levelOptions: {
+          a1: 'A1 — Начальный',
+          a2: 'A2 — Элементарный',
+          b1: 'B1 — Средний',
+          b2: 'B2 — Средне-продвинутый',
+          c1: 'C1 — Продвинутый',
+          c2: 'C2 — В совершенстве'
+        },
+        remove: 'Удалить'
+      },
+      
+      // Шаблоны
+      templates: {
+        modern: 'Современный',
+        minimal: 'Минималистичный'
+      },
+      
+      // Шаблон
+      template: {
+        title: 'Выберите шаблон резюме:',
+        select: 'Выбрать шаблон',
+        description: 'Стильный и профессиональный дизайн',
+        selected: 'Выбрано'
+      },
+      
+      // Предпросмотр
+      preview: {
+        title: 'Предпросмотр резюме',
+        photo: 'Фото',
+        yourName: 'Ваше имя',
+        jobsCount: 'мест работы',
+        educationCount: 'образование',
+        languagesCount: 'языков'
       },
       
       // Кнопки
       buttons: {
         previous: 'Назад',
         next: 'Далее',
+        back: 'Назад',
         generateWithAI: 'Генерировать с ИИ',
         downloadPDF: 'Скачать PDF',
+        downloadingPDF: 'Готовим PDF…',
+        fillRequired: 'Заполните обязательные поля',
         save: 'Сохранить',
         cancel: 'Отмена'
       },
@@ -186,7 +252,15 @@ export const translations = {
         saved: 'Сохранено',
         generating: 'Генерация с помощью ИИ...',
         error: 'Произошла ошибка',
-        fillRequired: 'Заполните обязательные поля'
+        fillRequired: 'Заполните обязательные поля',
+        requiredFields: 'Необходимо:'
+      },
+      
+      // PDF
+      pdf: {
+        generateError: 'Не удалось сформировать PDF.',
+        emptyError: 'Пустой PDF (blob.size === 0)',
+        unknownError: 'Неизвестная ошибка'
       }
     },
     
@@ -223,6 +297,40 @@ export const translations = {
       edit: 'Редактировать',
       save: 'Сохранить',
       back: 'Назад'
+    },
+    
+    // Состояния загрузки
+    loading: {
+      page: 'Загружаем приложение...',
+      pleaseWait: 'Пожалуйста, подождите',
+      component: 'Загрузка...',
+      processing: 'Обработка...',
+      progress: 'Прогресс',
+      aiGenerating: 'ИИ генерирует контент...'
+    },
+    
+    // Ошибки
+    errors: {
+      title: 'Что-то пошло не так',
+      criticalTitle: 'Критическая ошибка',
+      message: 'Мы зафиксировали ошибку и работаем над её устранением. Попробуйте обновить страницу.',
+      criticalMessage: 'Приложение столкнулось с критической ошибкой. Пожалуйста, перезагрузите страницу или вернитесь на главную.',
+      details: 'Детали ошибки',
+      devOnly: 'только в разработке',
+      errorMessage: 'Сообщение',
+      componentStack: 'Стек компонентов',
+      callStack: 'Стек вызовов',
+      tryAgain: 'Попробовать снова',
+      goHome: 'На главную',
+      contactSupport: 'Если проблема повторяется, пожалуйста, свяжитесь с поддержкой',
+      repeated: 'Ошибка повторилась',
+      times: 'раз',
+      whatToTry: 'Что можно попробовать',
+      tip1: 'Обновите страницу (Ctrl + F5 или Cmd + R)',
+      tip2: 'Очистите кэш браузера',
+      tip3: 'Попробуйте использовать режим инкогнито',
+      tip4: 'Проверьте подключение к интернету',
+      tip5: 'Обновите браузер до последней версии'
     }
   },
   
@@ -450,6 +558,40 @@ export const translations = {
       edit: 'Өңдеу',
       save: 'Сақтау',
       back: 'Артқа'
+    },
+    
+    // Состояния загрузки
+    loading: {
+      page: 'Қосымшаны жүктеп жатырмыз...',
+      pleaseWait: 'Күтіңіз',
+      component: 'Жүктелуде...',
+      processing: 'Өңдеу...',
+      progress: 'Прогресс',
+      aiGenerating: 'AI мазмұн жасап жатыр...'
+    },
+    
+    // Ошибки
+    errors: {
+      title: 'Бірдеңе дұрыс болмады',
+      criticalTitle: 'Сыни қате',
+      message: 'Біз қатені тіркедік және оны жою үстіндеміз. Бетті жаңартып көріңіз.',
+      criticalMessage: 'Қосымша сыни қатеге тап болды. Бетті қайта жүктеңіз немесе басты бетке оралыңыз.',
+      details: 'Қате туралы мәліметтер',
+      devOnly: 'тек әзірлеуде',
+      errorMessage: 'Хабарлама',
+      componentStack: 'Компоненттер стегі',
+      callStack: 'Шақырулар стегі',
+      tryAgain: 'Қайталап көру',
+      goHome: 'Басты бетке',
+      contactSupport: 'Мәселе қайталанса, қолдау қызметіне хабарласыңыз',
+      repeated: 'Қате қайталанды',
+      times: 'рет',
+      whatToTry: 'Не істеуге болады',
+      tip1: 'Бетті жаңартыңыз (Ctrl + F5 немесе Cmd + R)',
+      tip2: 'Браузер кэшін тазалаңыз',
+      tip3: 'Жасырын режимді пайдаланып көріңіз',
+      tip4: 'Интернет байланысын тексеріңіз',
+      tip5: 'Браузерді соңғы нұсқаға дейін жаңартыңыз'
     }
   },
   
@@ -677,6 +819,40 @@ export const translations = {
       edit: 'Edit',
       save: 'Save',
       back: 'Back'
+    },
+    
+    // Loading states
+    loading: {
+      page: 'Loading application...',
+      pleaseWait: 'Please wait',
+      component: 'Loading...',
+      processing: 'Processing...',
+      progress: 'Progress',
+      aiGenerating: 'AI is generating content...'
+    },
+    
+    // Errors
+    errors: {
+      title: 'Something went wrong',
+      criticalTitle: 'Critical error',
+      message: 'We have recorded the error and are working to fix it. Try refreshing the page.',
+      criticalMessage: 'The application encountered a critical error. Please reload the page or return to the home page.',
+      details: 'Error details',
+      devOnly: 'development only',
+      errorMessage: 'Message',
+      componentStack: 'Component stack',
+      callStack: 'Call stack',
+      tryAgain: 'Try again',
+      goHome: 'Go home',
+      contactSupport: 'If the problem persists, please contact support',
+      repeated: 'Error repeated',
+      times: 'times',
+      whatToTry: 'What you can try',
+      tip1: 'Refresh the page (Ctrl + F5 or Cmd + R)',
+      tip2: 'Clear browser cache',
+      tip3: 'Try using incognito mode',
+      tip4: 'Check internet connection',
+      tip5: 'Update browser to the latest version'
     }
   }
 };
