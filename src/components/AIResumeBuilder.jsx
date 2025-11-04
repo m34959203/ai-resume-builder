@@ -1,9 +1,8 @@
-// src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   FileText, Briefcase, TrendingUp, Search, MapPin,
   Award, BookOpen, Sparkles, ExternalLink, Filter,
-  ChevronLeft, ChevronRight, RefreshCw, X
+  ChevronLeft, ChevronRight, RefreshCw, X, Copy as CopyIcon
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -15,6 +14,7 @@ import {
   inferSearchFromProfile,
   getDefaultHost,
   fetchRecommendations,
+  safeFetchJSON, // для summarizeProfile через BFF
 } from '../services/bff';
 
 const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies']);
@@ -184,6 +184,44 @@ function missingProfileSections(p = {}, t) {
   return miss;
 }
 
+/* ===================== Сводка профиля через BFF ===================== */
+async function summarizeProfileViaBFF(profile, lang) {
+  // Пробуем несколько известных эндпоинтов BFF — берём первый рабочий
+  const endpoints = [
+    '/recommendations/summarize',
+    '/recommendations/summarize-profile',
+    '/profile/summarize',
+    '/ai/summarize-profile',
+  ];
+  let lastErr = null;
+  for (const url of endpoints) {
+    try {
+      const resp = await safeFetchJSON(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { profile, lang },
+        noDedupe: true,
+        lang,
+      });
+      if (resp && (resp.summary || resp.text || resp.bullets)) {
+        return {
+          summary: resp.summary || resp.text || '',
+          bullets: Array.isArray(resp.bullets) ? resp.bullets : (Array.isArray(resp.points) ? resp.points : null),
+          raw: resp,
+        };
+      }
+    } catch (e) {
+      lastErr = e;
+      // 404/501 — пробуем следующий
+      if (isHttpError(e) && (e.status === 404 || e.status === 501)) continue;
+      // Иные ошибки — тоже пробуем следующий, но запомним
+      continue;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return { summary: '', bullets: null, raw: null };
+}
+
 /* ===================== Выбор города (только KZ) ===================== */
 function CitySelect({ value, onChange }) {
   const { t } = useTranslation();
@@ -294,7 +332,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [currentPage, setCurrentPage] = useState('home');
 
   const [profile, setProfile] = useState({
@@ -368,7 +406,7 @@ function AIResumeBuilder() {
     setIsGenerating(true);
     try {
       const city = (profile?.location || '').trim();
-      const rec = await fetchRecommendations(profile, { city });
+      const rec = await fetchRecommendations(profile, { city, lang });
 
       const professions = (rec?.roles || rec?.professions || [])
         .map(r => (typeof r === 'string' ? r : (r?.title || '')))
@@ -491,6 +529,7 @@ function AIResumeBuilder() {
           onImproveResume={() => setCurrentPage('builder')}
           setSearchQuery={setSearchQuery}
           profile={profile}
+          lang={lang}
         />
       )}
 
@@ -503,6 +542,7 @@ function AIResumeBuilder() {
           setVacancies={setVacancies}
           mockVacancies={mockVacancies}
           profile={profile}
+          lang={lang}
         />
       )}
 
@@ -646,22 +686,63 @@ function RecommendationsPage({
   onFindVacancies,
   onImproveResume,
   setSearchQuery,
-  profile
+  profile,
+  lang,
 }) {
   const { t } = useTranslation();
   const profileOk = hasProfileForRecs(profile);
   const missing = profileOk ? [] : missingProfileSections(profile, t);
+
+  // Новое: краткое описание резюме
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [profileSummary, setProfileSummary] = useState(null);
+
+  const loadSummary = async () => {
+    if (!profileOk) return;
+    setSummaryLoading(true);
+    setSummaryError('');
+    try {
+      const resp = await summarizeProfileViaBFF(profile, lang);
+      // нормализуем вывод
+      const bullets = Array.isArray(resp?.bullets) ? resp.bullets.filter(Boolean) : null;
+      const text = String(resp?.summary || '').trim();
+      setProfileSummary({
+        bullets: bullets && bullets.length ? bullets.slice(0, 8) : null,
+        text: text || null,
+        raw: resp?.raw || null,
+      });
+    } catch (e) {
+      setSummaryError(t('recommendations.summaryError') || 'Не удалось сформировать краткое описание.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!recommendations && profileOk) generateRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOk]);
 
+  useEffect(() => {
+    // грузим сводку при входе и каждом существенном изменении профиля
+    if (profileOk) loadSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileOk, lang]);
+
   const applyProfession = (p) => {
     const q = String(p || '').trim();
     if (!q) return;
     setSearchQuery(q);
     onFindVacancies?.();
+  };
+
+  const copySummary = async () => {
+    const text = profileSummary?.bullets
+      ? profileSummary.bullets.map((b, i) => `• ${b}`).join('\n')
+      : (profileSummary?.text || '');
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); } catch {}
   };
 
   return (
@@ -704,12 +785,76 @@ function RecommendationsPage({
 
           {profileOk && (
             <>
+              {/* Подсказка */}
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
                   <Sparkles className="text-purple-600" size={20} />
                 </div>
                 <div className="text-gray-700">
                   {t('recommendations.hint')}
+                </div>
+              </div>
+
+              {/* Новое: Краткое описание резюме */}
+              <div className="p-5 rounded-lg border mb-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <FileText className="text-blue-600" size={20} />
+                    </div>
+                    <div>
+                      <div className="font-semibold mb-1">
+                        {t('recommendations.profileSummaryTitle') || 'Краткое описание резюме'}
+                      </div>
+
+                      {summaryLoading && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                          {t('common.loading')}
+                        </div>
+                      )}
+
+                      {summaryError && !summaryLoading && (
+                        <div className="text-sm text-red-600">{summaryError}</div>
+                      )}
+
+                      {!summaryLoading && !summaryError && profileSummary && (
+                        <>
+                          {profileSummary.bullets ? (
+                            <ul className="list-disc ml-5 text-gray-700 space-y-1">
+                              {profileSummary.bullets.map((b, i) => (
+                                <li key={i}>{b}</li>
+                              ))}
+                            </ul>
+                          ) : profileSummary.text ? (
+                            <p className="text-gray-700">{profileSummary.text}</p>
+                          ) : (
+                            <p className="text-gray-500">{t('recommendations.summaryEmpty') || 'Нет данных для краткой сводки.'}</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={loadSummary}
+                      className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                      title={t('recommendations.refreshSummary') || 'Обновить сводку'}
+                      aria-label={t('recommendations.refreshSummary') || 'Обновить сводку'}
+                    >
+                      <RefreshCw size={16} />
+                    </button>
+                    <button
+                      onClick={copySummary}
+                      disabled={!profileSummary || (!profileSummary.text && !profileSummary.bullets)}
+                      className={`px-3 py-2 border rounded-lg text-sm flex items-center gap-1 ${(!profileSummary || (!profileSummary.text && !profileSummary.bullets)) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                      title={t('recommendations.copySummary') || 'Копировать'}
+                      aria-label={t('recommendations.copySummary') || 'Копировать'}
+                    >
+                      <CopyIcon size={16} /> {t('common.copy') || 'Копировать'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -802,6 +947,7 @@ function VacanciesPage({
   setVacancies,
   mockVacancies,
   profile,
+  lang,
 }) {
   const { t } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
@@ -861,7 +1007,7 @@ function VacanciesPage({
       setPage(0);
       appliedRef.current = true;
     }
-  }, [useProfile, profile]);
+  }, [useProfile, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const hasProfileData =
@@ -879,7 +1025,7 @@ function VacanciesPage({
 
     (async () => {
       try {
-        const s = await inferSearchFromProfile(profile, { lang: 'ru' });
+        const s = await inferSearchFromProfile(profile, { lang });
         if (s && (s.role || s.city || (s.skills || []).length)) {
           setAiSuggestion(s);
         }
@@ -889,7 +1035,7 @@ function VacanciesPage({
         setAiLoading(false);
       }
     })();
-  }, [useProfile, profile, t]);
+  }, [useProfile, profile, t, lang]);
 
   useEffect(() => {
     if (!useProfile || aiAutoAppliedRef.current || !aiSuggestion || aiLoading) return;
@@ -982,6 +1128,7 @@ function VacanciesPage({
       per_page: perPageArg,
       signal: abortSignal,
       timeoutMs: 12000,
+      lang,
     };
 
     try {
@@ -1109,7 +1256,7 @@ function VacanciesPage({
     return () => {
       try { ac.abort(); } catch {}
     };
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (bootstrapped) return;
@@ -1236,7 +1383,7 @@ function VacanciesPage({
                         setAiSuggestion(null);
                         setAiError('');
                         setAiLoading(true);
-                        inferSearchFromProfile(profile, { lang: 'ru' })
+                        inferSearchFromProfile(profile, { lang })
                           .then((s) => setAiSuggestion(s))
                           .catch(() => setAiError(t('vacancies.aiError')))
                           .finally(() => setAiLoading(false));

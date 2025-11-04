@@ -1,424 +1,325 @@
 // server/services/ai.js
-// Node ESM. Требуется Node 18+ (в Node 22 есть встроенный fetch).
-// Работает через OpenRouter: https://openrouter.ai
-//
+// Node ESM (Node 18+). OpenRouter chat completions.
 // ENV:
-//   OPENROUTER_API_KEY=<ключ OpenRouter>
-//   OPENROUTER_MODEL_PRIMARY=google/gemma-3-12b-it:free     (опц. переопределение primary)
-//   OPENROUTER_MODEL_COMPLEX=deepseek/deepseek-r1:free      (опц. переопределение complex)
-//   ORIGIN_HEADER=<https://ваш-домен>                       (опционально — попадёт в HTTP-Referer)
-//   APP_TITLE=AI Resume Builder                              (опционально — попадёт в X-Title)
-//   OR_TIMEOUT_MS=30000                                      (опционально — таймаут, мс)
-//
-// Модели по умолчанию:
-//   - Быстрая/дешевая:  google/gemma-3-12b-it:free
-//   - «Сложная»/рассуждения: deepseek/deepseek-r1:free
-//
-// Экспортирует:
-//   MODELS, chatLLM, summarizeProfile, recommendFromProfile,
-//   generateCoverLetter, suggestSkills,
-//   polishText, polishMany,
-//   inferSearch  ← НОВОЕ: извлечение "должность • город (KZ) • навыки • опыт" из резюме
+//   OPENROUTER_API_KEY=...
+//   OPENROUTER_MODEL=deepseek/deepseek-chat-v3-0324:free
+//   ORIGIN_HEADER=https://your-domain
+//   APP_TITLE=AI Resume Builder
+//   OR_TIMEOUT_MS=30000
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-export const MODELS = {
-  primary: process.env.OPENROUTER_MODEL_PRIMARY || 'google/gemma-3-12b-it:free',
-  complex: process.env.OPENROUTER_MODEL_COMPLEX || 'deepseek/deepseek-r1:free',
-};
+export const MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324:free';
+export const MODELS = { primary: MODEL, complex: MODEL };
 
-const DEFAULT_TIMEOUT = Math.max(
-  5_000,
-  Number(process.env.OR_TIMEOUT_MS || 30_000) || 30_000
-);
+const DEFAULT_TIMEOUT = Math.max(5_000, Number(process.env.OR_TIMEOUT_MS || 30_000) || 30_000);
 
-// ------------------------- Вспомогательные утилиты ----------------------------
-
+// --------------------------- utils ---------------------------
 function ensureApiKey() {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) {
-    throw new Error(
-      'OPENROUTER_API_KEY is not set. Create .env with your key (OPENROUTER_API_KEY=...).'
-    );
-  }
+  if (!key) throw new Error('OPENROUTER_API_KEY is not set');
   return key;
 }
 
-function pickModel({ complex = false, override } = {}) {
-  return override || (complex ? MODELS.complex : MODELS.primary);
-}
-
 function baseHeaders() {
-  const headers = {
+  const h = {
     Authorization: `Bearer ${ensureApiKey()}`,
     'Content-Type': 'application/json',
   };
-  // Рекомендации OpenRouter для аналитики/квот:
-  if (process.env.ORIGIN_HEADER) headers['HTTP-Referer'] = process.env.ORIGIN_HEADER;
-  if (process.env.APP_TITLE) headers['X-Title'] = process.env.APP_TITLE;
-  return headers;
+  if (process.env.ORIGIN_HEADER) h['HTTP-Referer'] = process.env.ORIGIN_HEADER;
+  if (process.env.APP_TITLE) h['X-Title'] = process.env.APP_TITLE;
+  return h;
 }
 
-function delay(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function withTimeout(fetchFactory, ms = DEFAULT_TIMEOUT) {
+async function withTimeout(factory, ms = DEFAULT_TIMEOUT) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error('Timeout')), ms);
-  try {
-    const res = await fetchFactory(ctrl.signal);
-    return res;
-  } finally {
-    clearTimeout(t);
-  }
+  try { return await factory(ctrl.signal); } finally { clearTimeout(t); }
 }
 
-// Попытка распарсить JSON даже из «зашумленного» ответа
 function tryParseJSON(text) {
   if (!text) return null;
-
-  // как есть
-  try {
-    return JSON.parse(text);
-  } catch {}
-
-  // ```json ... ```
+  try { return JSON.parse(text); } catch {}
   const fence = /```json([\s\S]*?)```/i.exec(text);
-  if (fence?.[1]) {
-    try {
-      return JSON.parse(fence[1].trim());
-    } catch {}
-  }
-
-  // первый { .. последняя }
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch {}
-  }
+  if (fence?.[1]) { try { return JSON.parse(fence[1].trim()); } catch {} }
+  const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+  if (s !== -1 && e !== -1 && e > s) { try { return JSON.parse(text.slice(s, e + 1)); } catch {} }
   return null;
 }
 
-// ------------------------- Низкоуровневый вызов OpenRouter --------------------
+function normLang(lang) {
+  const v = String(lang || 'ru').toLowerCase();
+  if (v === 'kz') return 'kk';
+  if (v === 'en') return 'en';
+  return v === 'kk' ? 'kk' : 'ru';
+}
 
-/**
- * Внутренний запрос к OpenRouter с ретраями на 429/5xx и поддержкой response_format.
- */
+// RU/KK/EN selector with fallback to RU
+function sFor(lang, ru, kk, en) {
+  const L = normLang(lang);
+  if (L === 'kk') return kk;
+  if (L === 'en' && en != null) return en;
+  return ru;
+}
+
+// ---------------------- low-level OpenRouter ----------------------
 async function requestOpenRouter({ body, timeoutMs = DEFAULT_TIMEOUT }, { retries = 2 } = {}) {
   let attempt = 0;
-
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const resp = await withTimeout(
-      (signal) =>
-        fetch(OPENROUTER_URL, {
-          method: 'POST',
-          headers: baseHeaders(),
-          body: JSON.stringify(body),
-          signal,
-        }),
+      (signal) => fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: baseHeaders(),
+        body: JSON.stringify(body),
+        signal,
+      }),
       timeoutMs
     );
+    if (resp.ok) return resp;
 
-    if (resp.ok) {
-      return resp;
-    }
-
-    const status = resp.status;
+    const st = resp.status;
     const retryAfter = Number(resp.headers?.get?.('Retry-After') || 0);
-    const isRetriable = status === 429 || (status >= 500 && status < 600);
+    const retriable = st === 429 || (st >= 500 && st < 600);
 
-    if (attempt < retries && isRetriable) {
+    if (retriable && attempt < retries) {
       const backoff = retryAfter > 0 ? retryAfter * 1000 : Math.min(400 * 2 ** attempt, 3000);
-      await delay(backoff);
-      attempt += 1;
-      continue;
+      await delay(backoff); attempt += 1; continue;
     }
-
     const text = await resp.text().catch(() => '');
-    throw new Error(`OpenRouter error ${status}: ${text}`);
+    throw new Error(`OpenRouter error ${st}: ${text}`);
   }
 }
 
-/**
- * Низкоуровневый вызов OpenRouter (без стрима).
- * Если передан response_format и модель его не поддерживает (или вернула 400),
- * openrouterChatSafe() ниже отретраит без него.
- */
 async function openrouterChat({
   messages,
-  model,
+  model = MODEL,
   temperature = 0.2,
   max_tokens = 900,
   top_p = 0.9,
-  reasoning = undefined, // напр. { effort: 'medium' }
-  response_format = undefined, // напр. { type: 'json_object' }
+  response_format,
   timeoutMs = DEFAULT_TIMEOUT,
 }) {
-  const body = {
-    model,
-    messages,
-    temperature,
-    top_p,
-    max_tokens,
-    stream: false,
-  };
-  if (reasoning) body.reasoning = reasoning;
+  const body = { model, messages, temperature, top_p, max_tokens, stream: false };
   if (response_format) body.response_format = response_format;
-
   const resp = await requestOpenRouter({ body, timeoutMs });
   const data = await resp.json();
   const content = data?.choices?.[0]?.message?.content ?? '';
   return typeof content === 'string' ? content : JSON.stringify(content);
 }
 
-/** Безопасный вызов: пробуем JSON-формат, при ошибке ретраим без него */
 async function openrouterChatSafe(args) {
   try {
-    return await openrouterChat({
-      ...args,
-      response_format: args.response_format ?? { type: 'json_object' },
-    });
+    return await openrouterChat({ ...args, response_format: args.response_format ?? { type: 'json_object' } });
   } catch {
     return openrouterChat({ ...args, response_format: undefined });
   }
 }
 
-// ----------------------- Универсальная прокси-функция -------------------------
-
-export async function chatLLM({
-  messages,
-  complex = false,
-  overrideModel,
-  temperature,
-  max_tokens,
-}) {
-  const model = pickModel({ complex, override: overrideModel });
-  return openrouterChat({
-    messages,
-    model,
-    temperature,
-    max_tokens,
-    reasoning: complex ? { effort: 'medium' } : undefined,
-  });
+// -------------------------- public API --------------------------
+export async function chatLLM({ messages, temperature, max_tokens, overrideModel } = {}) {
+  return openrouterChat({ messages, model: overrideModel || MODEL, temperature, max_tokens });
 }
 
-// ---------------------------- Специализированные ИИ ---------------------------
+// Simple translator (RU/KK/EN)
+export async function translateText(text, { target = 'ru', overrideModel } = {}) {
+  const T = normLang(target);
+  const sys = sFor(
+    T,
+    'Ты профессиональный переводчик. Переведи текст на русский. Сохрани форматирование и верни только перевод.',
+    'Сен кәсіби аудармашысың. Мәтінді қазақ тіліне аудар. Пішімін сақта, тек аударманы қайтар.',
+    'You are a professional translator. Translate the text into English. Preserve formatting and return only the translation.'
+  );
+  const content = await openrouterChat({
+    messages: [{ role: 'system', content: sys }, { role: 'user', content: String(text || '') }],
+    model: overrideModel || MODEL,
+    temperature: 0.2,
+    max_tokens: Math.max(300, Math.min(1800, String(text || '').length * 2)),
+  });
+  return String(content).replace(/```[\s\S]*?```/g, '').trim();
+}
 
 export async function summarizeProfile(profile, opts = {}) {
-  const model = pickModel({ complex: false, override: opts.overrideModel });
-  const sys =
-    'Ты помощник карьерного консультанта. Пиши кратко, по-деловому, на русском. Максимум 3–4 предложения.';
-  const usr = `Профиль кандидата (JSON):
-${JSON.stringify(profile, null, 2)}
-
-Сделай краткое саммари сильных сторон и фокуса кандидата. Без списков и маркировок — цельный текст.`;
-
+  const L = normLang(opts.lang);
+  const sys = sFor(
+    L,
+    'Ты помощник карьерного консультанта. Пиши кратко, деловым стилем. 3–4 предложения.',
+    'Сен мансап кеңесшісінің көмекшісісің. Қысқа, іскер стильде жаз. 3–4 сөйлем.',
+    'You are a career consultant assistant. Write briefly, business style. 3–4 sentences.'
+  );
+  const usr = sFor(
+    L,
+    `Профиль кандидата (JSON):\n${JSON.stringify(profile, null, 2)}\nСделай краткое саммари сильных сторон и фокуса. Без списков — цельный текст.`,
+    `Кандидат профилі (JSON):\n${JSON.stringify(profile, null, 2)}\nКүшті жақтары мен кәсіби бағыты бойынша қысқаша түйін жаса. Тізімсіз — тұтас мәтін.`,
+    `Candidate profile (JSON):\n${JSON.stringify(profile, null, 2)}\nWrite a brief summary of strengths and focus. No lists — a single paragraph.`
+  );
   return openrouterChat({
-    messages: [
-      { role: 'system', content: sys },
-      { role: 'user', content: usr },
-    ],
-    model,
-    temperature: 0.4,
-    max_tokens: 220,
+    messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+    model: MODEL, temperature: 0.4, max_tokens: 220,
   });
 }
 
-/**
- * Возвращает объект:
- * { professions: string[], skillsToLearn: string[], courses: { name, duration }[], matchScore: number }
- */
 export async function recommendFromProfile(profile, opts = {}) {
-  const complex = !!opts.complex;
-  const model = pickModel({ complex, override: opts.overrideModel });
-
-  const sys =
-    'Ты эксперт по трудоустройству. Всегда возвращай ТОЛЬКО минифицированный JSON, без комментариев и пояснений.';
-  const usr = `Вот профиль кандидата:
-${JSON.stringify(profile, null, 2)}
-
-Сформируй объект JSON строго такого вида:
-{
-  "professions": ["string", ...],
-  "skillsToLearn": ["string", ...],
-  "courses": [{"name":"string","duration":"string"}, ...],
-  "matchScore": 0
-}
-Где:
-- "professions" — 3–5 подходящих ролей.
-- "skillsToLearn" — 4–8 ключевых навыков для роста.
-- "courses" — 2–4 курса ({"name","duration"}, без ссылок).
-- "matchScore" — целое 0–100 о соответствии рынку.
-Ответ — ТОЛЬКО JSON, БЕЗ текста.`;
+  const L = normLang(opts.lang);
+  const sys = sFor(
+    L,
+    'Ты эксперт по трудоустройству. Всегда возвращай ТОЛЬКО минифицированный JSON без пояснений. Все строки на русском.',
+    'Сен жұмысқа орналастыру мамансың. Әрқашан тек ықшам JSON қайтар, түсіндірмесіз. Барлық мәтін қазақ тілінде.',
+    'You are an employment expert. Always return ONLY minified JSON with no explanations. All strings in English.'
+  );
+  const format = `{"professions":["string",...],"skillsToLearn":["string",...],"courses":[{"name":"string","duration":"string"},...],"matchScore":0}`;
+  const expl = sFor(
+    L,
+    'Требования: professions=3–5; skillsToLearn=4–8; courses=2–4 без ссылок; matchScore=0–100. Ответ — ТОЛЬКО JSON.',
+    'Талаптар: professions=3–5; skillsToLearn=4–8; courses=2–4 сілтемесіз; matchScore=0–100. Жауап — тек JSON.',
+    'Requirements: professions=3–5; skillsToLearn=4–8; courses=2–4 without links; matchScore=0–100. Reply ONLY JSON.'
+  );
+  const usr = sFor(
+    L,
+    `Профиль кандидата:\n${JSON.stringify(profile, null, 2)}\nСформируй строго:\n${format}\n${expl}`,
+    `Үміткер профилі:\n${JSON.stringify(profile, null, 2)}\nДәл мына түрде қайтар:\n${format}\n${expl}`,
+    `Candidate profile:\n${JSON.stringify(profile, null, 2)}\nReturn exactly:\n${format}\n${expl}`
+  );
 
   try {
-    const text = await openrouterChatSafe({
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-      model,
-      temperature: complex ? 0.6 : 0.3,
-      max_tokens: 600,
-      reasoning: complex ? { effort: 'medium' } : undefined,
+    const txt = await openrouterChatSafe({
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+      model: MODEL, temperature: 0.3, max_tokens: 600,
     });
-
-    const json = tryParseJSON(text);
+    const json = tryParseJSON(txt);
     if (json) return json;
   } catch {}
-
-  // fallback
-  return {
-    professions: ['Frontend Developer', 'Full Stack Developer', 'Software Engineer'],
-    skillsToLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
-    courses: [
-      { name: 'Coursera — React Специализация', duration: '3 месяца' },
-      { name: 'Udemy — Complete Web Development', duration: '2 месяца' },
-    ],
-    matchScore: 70,
-    _note: 'fallback: model error or non-JSON',
-  };
+  return sFor(
+    L,
+    {
+      professions: ['Бизнес-аналитик', 'Проектный менеджер', 'Системный аналитик'],
+      skillsToLearn: ['SQL', 'BPMN', 'Excel', 'Agile', 'Scrum', 'Jira'],
+      courses: [{ name: 'Coursera — Excel: специализация', duration: '1–3 месяца' }, { name: 'Udemy — Практический бизнес-анализ', duration: '1–2 месяца' }],
+      matchScore: 70, _note: 'fallback',
+    },
+    {
+      professions: ['Бизнес-талдаушы', 'Жоба менеджері', 'Жүйелік талдаушы'],
+      skillsToLearn: ['SQL', 'BPMN', 'Excel', 'Agile', 'Scrum', 'Jira'],
+      courses: [{ name: 'Coursera — Excel: мамандану', duration: '1–3 ай' }, { name: 'Udemy — Іс тәжірибелік бизнес-талдау', duration: '1–2 ай' }],
+      matchScore: 70, _note: 'fallback',
+    },
+    {
+      professions: ['Business Analyst', 'Project Manager', 'Systems Analyst'],
+      skillsToLearn: ['SQL', 'BPMN', 'Excel', 'Agile', 'Scrum', 'Jira'],
+      courses: [{ name: 'Coursera — Excel Specialization', duration: '1–3 months' }, { name: 'Udemy — Practical Business Analysis', duration: '1–2 months' }],
+      matchScore: 70, _note: 'fallback',
+    }
+  );
 }
 
 export async function generateCoverLetter({ vacancy, profile }, opts = {}) {
-  const complex = !!opts.complex;
-  const model = pickModel({ complex, override: opts.overrideModel });
-
-  const sys =
-    'Ты карьерный ассистент. Пиши на русском, деловым стилем, 150–220 слов, без воды, с примерами достижений.';
-  const usr = `Данные кандидата:
-${JSON.stringify(profile, null, 2)}
-
-Вакансия (кратко):
-${JSON.stringify(vacancy, null, 2)}
-
-Задача: сделай персонализированное сопроводительное письмо.
-Требования к формату:
-- Обращение без "Здравствуйте, меня зовут".
-- 2–3 абзаца: релевантный опыт → стек и достижения → мотивация/fit.
-- В конце 1 предложение про готовность к собеседованию.`;
-
+  const L = normLang(opts.lang);
+  const sys = sFor(
+    L,
+    'Ты карьерный ассистент. Деловой стиль, 150–220 слов, без воды, с примерами достижений.',
+    'Сен мансап ассистентісің. Іскер стиль, 150–220 сөз, артық сөсіз, жетістік мысалдарымен.',
+    'You are a career assistant. Business tone, 150–220 words, concise, include concrete achievements.'
+  );
+  const usr = sFor(
+    L,
+    `Данные кандидата:\n${JSON.stringify(profile, null, 2)}\nВакансия (кратко):\n${JSON.stringify(vacancy, null, 2)}\nСделай персонализированное письмо: опыт → стек/достижения → мотивация. Заверши готовностью к собеседованию.`,
+    `Үміткер деректері:\n${JSON.stringify(profile, null, 2)}\nВакансия (қысқаша):\n${JSON.stringify(vacancy, null, 2)}\nЖеке хат жаз: тәжірибе → технологиялар/жетістіктер → мотивация. Соңында сұхбатқа дайындық.`,
+    `Candidate data:\n${JSON.stringify(profile, null, 2)}\nVacancy (brief):\n${JSON.stringify(vacancy, null, 2)}\nWrite a tailored cover letter: relevant experience → stack/achievements → motivation. End with interview readiness.`
+  );
   try {
     const content = await openrouterChat({
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-      model,
-      temperature: 0.5,
-      max_tokens: 380,
-      reasoning: complex ? { effort: 'low' } : undefined,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+      model: MODEL, temperature: 0.5, max_tokens: 380,
     });
-
     return String(content).replace(/```[\s\S]*?```/g, '').trim();
   } catch {
-    // короткий фолбэк
-    return 'Готов обсудить детали вакансии и буду рад рассказать больше о релевантных проектах на собеседовании.';
+    return sFor(
+      L,
+      'Готов обсудить детали вакансии и рассказать больше о релевантных проектах на собеседовании.',
+      'Вакансияның егжей-тегжейін талқылауға дайынмын, сұхбатта тиісті жобалар туралы қосымша айтамын.',
+      'I’m ready to discuss details and expand on relevant projects in an interview.'
+    );
   }
 }
 
 export async function suggestSkills(profile, opts = {}) {
-  const model = pickModel({ complex: false, override: opts.overrideModel });
-  const sys =
-    'Ты лаконичный ассистент по развитию навыков. Отвечай только списком, через запятую, без пояснений.';
-  const usr = `Профиль:
-${JSON.stringify(profile, null, 2)}
-Дай 6–8 навыков для развития (одно-двухсловные названия), без пояснений.`;
-
+  const L = normLang(opts.lang);
+  const sys = sFor(
+    L,
+    'Ты лаконичный ассистент. Отвечай списком через запятую, без пояснений.',
+    'Сен қысқа жауап беретін ассистентсің. Тек үтірмен тізім, түсіндірмесіз.',
+    'Be concise. Reply with a comma-separated list, no explanations.'
+  );
+  const usr = sFor(
+    L,
+    `Профиль:\n${JSON.stringify(profile, null, 2)}\nДай 6–8 навыков для развития (1–2 слова).`,
+    `Профиль:\n${JSON.stringify(profile, null, 2)}\nДамытуға 6–8 дағды ұсын (1–2 сөз).`,
+    `Profile:\n${JSON.stringify(profile, null, 2)}\nSuggest 6–8 skills to develop (one–two words each).`
+  );
   try {
     const text = await openrouterChat({
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-      model,
-      temperature: 0.3,
-      max_tokens: 120,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+      model: MODEL, temperature: 0.3, max_tokens: 120,
     });
-
-    return text
-      .replace(/\n/g, ' ')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 8);
+    return text.replace(/\n/g, ' ').split(',').map(s => s.trim()).filter(Boolean).slice(0, 8);
   } catch {
-    return ['Коммуникации', 'Аналитика данных', 'TypeScript', 'SQL', 'Docker', 'Design Systems'];
+    return sFor(
+      L,
+      ['Коммуникация','Аналитика данных','TypeScript','SQL','Docker','Системное мышление'],
+      ['Коммуникация','Деректер талдауы','TypeScript','SQL','Docker','Жүйелік ойлау'],
+      ['Communication','Data Analysis','TypeScript','SQL','Docker','Systems Thinking']
+    );
   }
 }
 
-// --------------------- Полировка текста (DeepSeek/Gemma через OpenRouter) -----
-
-/**
- * Полировка текста: аккуратная орфография/пунктуация + опциональная раскладка в буллеты.
- * Возвращает { corrected: string, bullets: string[] }.
- *
- * @param {string} text
- * @param {object} opts
- *  - lang: 'ru' | 'en' (по умолчанию 'ru')
- *  - mode: 'auto' | 'paragraph' | 'bullets'
- *  - complex: boolean (форсировать complex-модель)
- *  - overrideModel: string (любой openrouter id)
- *  - maxBullets: number (ограничение длины массива bullets)
- */
 export async function polishText(text, opts = {}) {
   const {
     lang = 'ru',
     mode = 'auto',
-    complex = (mode === 'bullets') || String(text || '').length > 600,
     overrideModel,
     maxBullets = 16,
   } = opts;
-
-  const model = pickModel({ complex, override: overrideModel });
-
-  const system = [
-    'Ты — строгий редактор на русском языке.',
-    'Исправляй орфографию и пунктуацию, не меняя смысл.',
-    'Следи за пробелами вокруг тире и запятых, единообразие кавычек.',
-    'Возвращай ТОЛЬКО JSON без лишнего текста.',
-    'Схема: {"corrected": string, "bullets": string[]}.',
-    'Режимы: "paragraph" — цельный текст; "bullets" — короткие пункты; "auto" — сохранить формат автора.',
-  ].join(' ');
-
-  const user = JSON.stringify({
-    lang,
-    mode,
-    maxBullets,
-    text: String(text || ''),
-  });
+  const L = normLang(lang);
+  const system = sFor(
+    L,
+    [
+      'Ты — строгий редактор (русский).',
+      'Исправляй орфографию/пунктуацию, не меняя смысл.',
+      'Возвращай ТОЛЬКО JSON {"corrected":string,"bullets":string[]}.',
+      'Режимы: paragraph | bullets | auto.',
+    ].join(' '),
+    [
+      'Сен — мұқият редактор (қазақ тілі).',
+      'Емле мен тыныс белгілерін түзет, мағынасы сақталсын.',
+      'ТЕК JSON қайтар {"corrected":string,"bullets":string[]}.',
+      'Режимдер: paragraph | bullets | auto.',
+    ].join(' '),
+    [
+      'You are a careful editor (English).',
+      'Fix spelling/punctuation without changing meaning.',
+      'Return ONLY JSON {"corrected":string,"bullets":string[]}.',
+      'Modes: paragraph | bullets | auto.',
+    ].join(' ')
+  );
+  const user = JSON.stringify({ lang: L, mode, maxBullets, text: String(text || '') });
 
   let content;
   try {
     content = await openrouterChatSafe({
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      model,
-      temperature: complex ? 0.2 : 0.1,
-      max_tokens: 700,
-      reasoning: complex ? { effort: 'low' } : undefined,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      model: overrideModel || MODEL, temperature: 0.15, max_tokens: 700,
     });
   } catch {
-    // если совсем нет ответа — вернём исходный текст
     return { corrected: String(text || ''), bullets: [] };
   }
 
   const json = tryParseJSON(content);
-  const corrected =
-    json && typeof json.corrected === 'string' ? json.corrected : String(text || '');
+  const corrected = json && typeof json.corrected === 'string' ? json.corrected : String(text || '');
   let bullets = Array.isArray(json?.bullets) ? json.bullets.filter(Boolean) : [];
+  if (maxBullets && bullets.length > maxBullets) bullets = bullets.slice(0, maxBullets);
 
-  if (maxBullets && bullets.length > maxBullets) {
-    bullets = bullets.slice(0, maxBullets);
-  }
-
-  // локальная нормализация пробелов/тире
   const norm = (s) =>
     String(s ?? '')
       .replace(/\u00A0/g, ' ')
@@ -437,11 +338,6 @@ export async function polishText(text, opts = {}) {
   return { corrected: norm(corrected), bullets: bullets.map(norm) };
 }
 
-/**
- * Пакетная полировка. Принимает массив строк, возвращает массив объектов
- * [{ corrected, bullets }, ...] (с сохранением порядка).
- * В free-тарифе лучше не распараллеливать.
- */
 export async function polishMany(texts, opts = {}) {
   const arr = Array.isArray(texts) ? texts : [];
   const out = [];
@@ -452,14 +348,11 @@ export async function polishMany(texts, opts = {}) {
   return out;
 }
 
-// -------------------- Инференс поискового запроса из резюме (KZ only) --------
-
-// Базовый список городов РК. Используем как whitelist (исключаем РФ и др.)
+// -------------------- infer search (KZ cities) --------------------
 const KZ_CITIES = [
-  'Алматы', 'Астана', 'Шымкент', 'Караганда', 'Актобе', 'Тараз', 'Павлодар',
-  'Усть-Каменогорск', 'Семей', 'Костанай', 'Кызылорда', 'Атырау', 'Актау',
-  'Туркестан', 'Петропавловск', 'Талдыкорган', 'Кокшетау', 'Темиртау',
-  'Экибастуз', 'Рудный'
+  'Алматы','Астана','Шымкент','Караганда','Актобе','Тараз','Павлодар',
+  'Усть-Каменогорск','Семей','Костанай','Кызылорда','Атырау','Актау',
+  'Туркестан','Петропавловск','Талдыкорган','Кокшетау','Темиртау','Экибастуз','Рудный'
 ];
 
 function yearsFromProfile(profile = {}) {
@@ -467,107 +360,73 @@ function yearsFromProfile(profile = {}) {
   if (!arr.length) return 0;
   let ms = 0;
   for (const it of arr) {
-    const s =
-      it?.start || it?.from || it?.dateStart || it?.date_from || it?.date_start;
-    const e =
-      it?.end ||
-      it?.to ||
-      it?.dateEnd ||
-      it?.date_to ||
-      it?.date_end ||
-      new Date().toISOString().slice(0, 10);
+    const s = it?.start || it?.from || it?.dateStart || it?.date_from || it?.date_start;
+    const e = it?.end || it?.to || it?.dateEnd || it?.date_to || it?.date_end || new Date().toISOString().slice(0,10);
     const ds = s ? new Date(s) : null;
     const de = e ? new Date(e) : null;
-    if (ds && de && !isNaN(+ds) && !isNaN(+de) && de > ds) ms += +de - +ds;
-    else ms += 365 * 24 * 3600 * 1000; // 1 год по умолчанию
+    if (ds && de && !isNaN(+ds) && !isNaN(+de) && de > ds) ms += (+de - +ds);
+    else ms += 365*24*3600*1000;
   }
-  return ms / (365 * 24 * 3600 * 1000);
+  return ms / (365*24*3600*1000);
 }
 
-function hhExpFromYears(years) {
-  if (years < 1) return 'noExperience';
-  if (years < 3) return 'between1And3';
-  if (years < 6) return 'between3And6';
+function hhExpFromYears(y) {
+  if (y < 1) return 'noExperience';
+  if (y < 3) return 'between1And3';
+  if (y < 6) return 'between3And6';
   return 'moreThan6';
 }
 
-function fallbackInfer(profile = {}) {
+function fallbackInfer(profile = {}, lang = 'ru') {
   const expYears = yearsFromProfile(profile);
   const experience = hhExpFromYears(expYears);
-
   const items = Array.isArray(profile.experience) ? profile.experience : [];
   const latest = items[0] || items[items.length - 1] || {};
   const role =
-    latest.position ||
-    latest.title ||
-    latest.role ||
+    latest.position || latest.title || latest.role ||
     (Array.isArray(profile.skills) && profile.skills[0]) ||
-    'Специалист';
+    sFor(lang, 'Специалист', 'Маман', 'Specialist');
 
   const rawCity = String(profile.location || '').trim();
-  let city =
-    KZ_CITIES.find((c) => new RegExp(c, 'i').test(rawCity)) || 'Алматы';
+  let city = KZ_CITIES.find((c) => new RegExp(c, 'i').test(rawCity)) || 'Алматы';
 
   const skills =
     (Array.isArray(profile.skills) && profile.skills.length
       ? profile.skills
-      : String(
-          latest.description ||
-            latest.responsibilities ||
-            profile.summary ||
-            ''
-        )
-          .split(/[,\n;•\-]/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-    ).slice(0, 8);
+      : String(latest.description || latest.responsibilities || profile.summary || '')
+          .split(/[,\n;•\-]/).map(s => s.trim()).filter(Boolean)).slice(0, 8);
 
   return { role, city, skills, experience };
 }
 
-/**
- * inferSearch(profile) → { role, city, skills[], experience }
- * city — всегда из Казахстана (если исходный город не из KZ, выбираем ближайший крупный).
- */
 export async function inferSearch(profile = {}, { lang = 'ru', overrideModel } = {}) {
-  // Если нет ключа — сразу вернём эвристику
-  if (!process.env.OPENROUTER_API_KEY) return fallbackInfer(profile);
+  if (!process.env.OPENROUTER_API_KEY) return fallbackInfer(profile, lang);
+  const L = normLang(lang);
 
-  const complex = false; // здесь хватает "быстрой" модели
-  const model = pickModel({ complex, override: overrideModel });
+  const sys = sFor(
+    L,
+    'Ты карьерный ассистент. Верни ТОЛЬКО валидный JSON-подсказки для поиска вакансий в Казахстане. Строки на русском.',
+    'Сен мансап ассистентісің. Қазақстан бойынша іздеу үшін тек валидті JSON қайтар. Мәтін қазақ тілінде.',
+    'You are a career assistant. Return ONLY valid JSON for Kazakhstan job search hints. Use English strings.'
+  );
 
-  const sys =
-`Ты карьерный ассистент. По JSON резюме верни ТОЛЬКО валидный JSON-объект подсказки для поиска вакансий в Казахстане.
-experience ∈ {"noExperience","between1And3","between3And6","moreThan6"}.
-city — только один город Казахстана (если в профиле другой — выбери подходящий из списка крупных городов РК).
-skills — 3–8 основных навыков (одно-двухсловные, без лишних слов).`;
+  const format = `{"role":"string","city":"string (KZ only)","skills":["string","..."],"experience":"noExperience|between1And3|between3And6|moreThan6"}`;
 
-  const usr =
-`Язык интерфейса: ${lang}
-Профиль пользователя (JSON):
-${JSON.stringify(profile, null, 2)}
-
-Формат ответа:
-{
-  "role": "string",
-  "city": "string (KZ only)",
-  "skills": ["string", "..."],
-  "experience": "noExperience|between1And3|between3And6|moreThan6"
-}`;
+  const usr = sFor(
+    L,
+    `Профиль пользователя (JSON):\n${JSON.stringify(profile, null, 2)}\nТребования:\n- "city" — город РК (если другой — выбери крупный из списка).\n- "skills" — 3–8 навыков (1–2 слова).\nФормат:\n${format}`,
+    `Пайдаланушы профилі (JSON):\n${JSON.stringify(profile, null, 2)}\nТалаптар:\n- "city" — тек Қазақстан қаласы.\n- "skills" — 3–8 қысқа дағды (1–2 сөз).\nПішім:\n${format}`,
+    `User profile (JSON):\n${JSON.stringify(profile, null, 2)}\nRequirements:\n- "city" must be a Kazakhstan city.\n- "skills" 3–8 items (1–2 words).\nFormat:\n${format}`
+  );
 
   try {
     const text = await openrouterChatSafe({
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-      model,
-      temperature: 0.2,
-      max_tokens: 500,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+      model: overrideModel || MODEL, temperature: 0.2, max_tokens: 500,
     });
 
     const json = tryParseJSON(text) || {};
-    const fb = fallbackInfer(profile);
+    const fb = fallbackInfer(profile, L);
 
     const role = String(json.role || '').trim() || fb.role;
 
@@ -577,23 +436,20 @@ ${JSON.stringify(profile, null, 2)}
       city = match || fb.city;
     }
 
-    const skills = Array.isArray(json.skills)
-      ? json.skills.filter(Boolean).slice(0, 8)
-      : fb.skills;
-
-    const expValid = ['noExperience', 'between1And3', 'between3And6', 'moreThan6'];
+    const skills = Array.isArray(json.skills) ? json.skills.filter(Boolean).slice(0, 8) : fb.skills;
+    const expValid = ['noExperience','between1And3','between3And6','moreThan6'];
     const experience = expValid.includes(json.experience) ? json.experience : fb.experience;
 
     return { role, city, skills, experience };
   } catch {
-    return fallbackInfer(profile);
+    return fallbackInfer(profile, L);
   }
 }
 
-// ---------------------------- Экспорт по умолчанию ----------------------------
-
+// ------------------ default export ------------------
 export default {
   MODELS,
+  MODEL,
   chatLLM,
   summarizeProfile,
   recommendFromProfile,
@@ -601,5 +457,6 @@ export default {
   suggestSkills,
   polishText,
   polishMany,
-  inferSearch, // ← не забудь экспортировать
+  inferSearch,
+  translateText,
 };
