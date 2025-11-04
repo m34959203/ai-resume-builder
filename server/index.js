@@ -1,3 +1,4 @@
+// server/index.js
 /* eslint-disable no-console */
 'use strict';
 
@@ -8,8 +9,8 @@
  * - Кеш справочников, rate-limit, helmet, morgan, compression
  * - Дополнительно: passthrough к HH
  * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
- * - /api/ai/infer-search — эвристика/LLM (опционально, с поддержкой lang=ru|kk|en)
- * - /api/recommendations — AI рекомендации/улучшение резюме (роут см. routes/recommendations.js)
+ * - /api/ai/infer-search — эвристика/LLM (опционально)
+ * - /api/recommendations — AI рекомендации/улучшение резюме (опционально)
  * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
  * Требуется Node 18+ (встроенный fetch)
  */
@@ -68,14 +69,6 @@ const {
 const isProd = NODE_ENV === 'production';
 const TIMEOUT_MS = Math.max(1000, Number(HH_TIMEOUT_MS) || 15000);
 const HH_API = 'https://api.hh.ru';
-
-/* =============================== LANG HELPERS ================================ */
-function normLang(lang) {
-  const v = String(lang || '').trim().toLowerCase();
-  if (v === 'kz') return 'kk';
-  if (v === 'kk' || v === 'ru' || v === 'en') return v;
-  return 'ru';
-}
 
 /* ==================================== APP =================================== */
 const app = express();
@@ -174,7 +167,7 @@ async function fetchJSON(url, opts = {}) {
     ...opts,
     headers: {
       Accept: 'application/json',
-      'Accept-Language': 'ru', // можно переопределить в opts.headers
+      'Accept-Language': 'ru',
       'HH-User-Agent': HH_USER_AGENT,
       'User-Agent': HH_USER_AGENT,
       ...(opts.headers || {}),
@@ -277,12 +270,11 @@ async function findAreaIdByCity(cityName, host) {
 /* ================================ Passthrough =============================== */
 async function passthrough(url, req, res, extraHeaders = {}) {
   try {
-    const lang = normLang(req.query?.lang || req.body?.lang || req.headers['accept-language']);
     const r = await fetchWithTimeout(url, {
       method: req.method || 'GET',
       headers: {
         Accept: 'application/json',
-        'Accept-Language': lang || 'ru',
+        'Accept-Language': 'ru',
         'HH-User-Agent': HH_USER_AGENT,
         'User-Agent': HH_USER_AGENT,
         ...(extraHeaders || {}),
@@ -368,7 +360,7 @@ const SEARCH_STALE_MAX = Math.max(30_000, Number(SEARCH_STALE_MAX_MS) || 900_000
 const searchCache = new Map();      // key -> { at, value }
 const inflightSearches = new Map(); // key -> Promise
 
-function makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page, lang }) {
+function makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page }) {
   return JSON.stringify({
     host: String(host || ''),
     text: String(text || ''),
@@ -378,7 +370,6 @@ function makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_
     ows: !!only_with_salary,
     per_page: Number(per_page || 20),
     page: Number(page || 0),
-    lang: normLang(lang || 'ru'),
   });
 }
 function getFreshFromCache(key) {
@@ -409,7 +400,7 @@ app.use(
 );
 
 /* ============================== HH SEARCH API =============================== */
-// ИСПРАВЛЕНИЕ 3: Логирование входа в хендлер + поддержка lang
+// ИСПРАВЛЕНИЕ 3: Логирование входа в хендлер
 app.get('/api/hh/jobs/search', async (req, res) => {
   console.log('[HH Search] Query params:', req.query);
   console.log('[HH Search] Headers origin:', req.headers.origin);
@@ -419,13 +410,12 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     const host = (q.host && String(q.host)) || HH_HOST;
 
     // text делаем изменяемым, чтобы можно было подставить значение по умолчанию
-    let text = q.text ? String(q.text).trim() : '';
+    let text   = q.text ? String(q.text).trim() : '';
     const city   = q.city ? String(q.city).trim() : '';
     const area   = q.area ? String(q.area).trim() : '';
     const exp    = normalizeExperience(q.experience ? String(q.experience) : '');
     const salary = q.salary ? Number(q.salary) : undefined;
     const only_with_salary = bool(q.only_with_salary);
-    const lang  = normLang(q.lang || 'ru');
 
     const per_page = Math.min(Math.max(toInt(q.per_page, 20), 1), 100);
     const page     = Math.max(toInt(q.page, 0), 0);
@@ -443,7 +433,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     let areaId = area;
     if (!areaId && city) areaId = (await findAreaIdByCity(city, host)) || '';
 
-    const key = makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page, lang });
+    const key = makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page });
 
     if (inflightSearches.has(key)) {
       console.log('[HH Search] Coalesced with inflight request for key');
@@ -473,13 +463,10 @@ app.get('/api/hh/jobs/search', async (req, res) => {
       const fresh = getFreshFromCache(key);
       if (fresh) {
         console.log('[HH Search] Served from fresh cache');
-        return { ...fresh, debug: { ...(fresh.debug || {}), cached: true, stale: false, lang } };
+        return { ...fresh, debug: { ...(fresh.debug || {}), cached: true, stale: false } };
       }
 
-      const { ok, status, data, headers } = await fetchJSONWithRetry(
-        url,
-        { headers: { 'Accept-Language': lang } },
-      );
+      const { ok, status, data, headers } = await fetchJSONWithRetry(url);
 
       if (ok) {
         const items = (data.items || []).map(normalizeVacancy);
@@ -488,7 +475,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
           page: data.page,
           pages: data.pages,
           items,
-          debug: { host, areaId, exp, cached: false, stale: false, lang },
+          debug: { host, areaId, exp, cached: false, stale: false },
         };
         putCache(key, out);
         return out;
@@ -502,7 +489,7 @@ app.get('/api/hh/jobs/search', async (req, res) => {
           console.log('[HH Search] Served stale cache due to 429');
           return {
             ...stale,
-            debug: { ...(stale.debug || {}), host, areaId, exp, cached: true, stale: true, retry_after: retryAfter, lang },
+            debug: { ...(stale.debug || {}), host, areaId, exp, cached: true, stale: true, retry_after: retryAfter },
           };
         }
       }
@@ -594,12 +581,11 @@ app.get('/api/hh/me', async (req, res) => {
   const token = getHHAccessToken(req);
   if (!token) return res.status(401).json({ ok: false, reason: 'no_token' });
 
-  const lang = normLang(req.query?.lang || req.headers['accept-language']);
   const r = await fetchWithTimeout(`${HH_API}/me`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
-      'Accept-Language': lang || 'ru',
+      'Accept-Language': 'ru',
       'HH-User-Agent': HH_USER_AGENT,
       'User-Agent': HH_USER_AGENT,
     },
@@ -618,12 +604,11 @@ app.get('/api/hh/resumes', async (req, res) => {
   const token = getHHAccessToken(req);
   if (!token) return res.status(401).json({ error: 'not_authorized' });
 
-  const lang = normLang(req.query?.lang || req.headers['accept-language']);
   const r = await fetchWithTimeout(`${HH_API}/resumes/mine`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
-      'Accept-Language': lang || 'ru',
+      'Accept-Language': 'ru',
       'HH-User-Agent': HH_USER_AGENT,
       'User-Agent': HH_USER_AGENT,
     },
@@ -649,14 +634,13 @@ app.post('/api/hh/respond', async (req, res) => {
   if (!vacancy_id) return res.status(400).json({ error: 'vacancy_id_required' });
   if (!usedResumeId) return res.status(428).json({ error: 'resume_id_required' });
 
-  const lang = normLang(req.query?.lang || req.body?.lang || req.headers['accept-language']);
   const r = await fetchWithTimeout(`${HH_API}/negotiations`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'Accept-Language': lang || 'ru',
+      'Accept-Language': 'ru',
       'HH-User-Agent': HH_USER_AGENT,
       'User-Agent': HH_USER_AGENT,
     },
@@ -730,7 +714,7 @@ function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
   c += Math.min(0.2, years / 10);
   const confidence = Math.max(0.3, Math.min(0.95, c));
 
-  return { role, city: normalizeCityName(city), experience: exp, skills, confidence, lang: normLang(lang) };
+  return { role, city: normalizeCityName(city), experience: exp, skills, confidence };
 }
 
 // /api/polish (если services/ai.js есть — используем, иначе безопасный фолбэк)
@@ -778,7 +762,6 @@ app.post('/api/polish/batch', async (req, res) => {
 });
 
 // /api/ai/infer-search — LLM (если services/ai.js есть) или эвристика
-// ИНИЦИАЛИЗАЦИЯ МАРШРУТА С ПОДДЕРЖКОЙ lang (ru|kk|en)
 app.post('/api/ai/infer-search', async (req, res) => {
   try {
     const { profile = {}, lang = 'ru', overrideModel } = req.body || {};
@@ -788,7 +771,7 @@ app.post('/api/ai/infer-search', async (req, res) => {
       if (fs.existsSync(aiPath)) {
         const mod = await import(aiPath).catch(() => ({}));
         if (typeof mod?.inferSearch === 'function') {
-          out = await mod.inferSearch(profile, { lang: normLang(lang), overrideModel });
+          out = await mod.inferSearch(profile, { lang, overrideModel });
         }
       }
     } catch (e) {
@@ -796,7 +779,7 @@ app.post('/api/ai/infer-search', async (req, res) => {
     }
 
     if (!out || typeof out !== 'object') {
-      out = naiveInferSearch(profile, { lang });
+      out = naiveInferSearch(profile, { lang, overrideModel });
       out.fallback = true;
     }
 
@@ -807,14 +790,12 @@ app.post('/api/ai/infer-search', async (req, res) => {
       experience: out.experience || '',
       per_page: 20,
       page: 0,
-      lang: normLang(lang),
     };
 
-    return res.json({ ...out, search, lang: normLang(lang) });
+    return res.json({ ...out, search });
   } catch (e) {
     console.error('[ai/infer-search] hard error, falling back:', e);
-    const lang = normLang(req.body?.lang || 'ru');
-    const out = naiveInferSearch(req.body?.profile || {}, { lang });
+    const out = naiveInferSearch(req.body?.profile || {}, { lang: req.body?.lang || 'ru' });
     out.fallback = true;
     const search = {
       host: HH_HOST || 'hh.kz',
@@ -823,9 +804,8 @@ app.post('/api/ai/infer-search', async (req, res) => {
       experience: out.experience || '',
       per_page: 20,
       page: 0,
-      lang,
     };
-    return res.json({ ...out, search, lang });
+    return res.json({ ...out, search });
   }
 });
 
@@ -878,7 +858,6 @@ app.get('/', async (req, res, next) => {
   if (q.only_with_salary) params.set('only_with_salary', 'true');
   if (q.page != null) params.set('page', String(q.page));
   if (q.per_page != null) params.set('per_page', String(q.per_page));
-  if (q.lang) params.set('lang', normLang(q.lang));
   params.set('host', String(q.host || HH_HOST || 'hh.kz'));
 
   const target = `/api/hh/jobs/search?${params.toString()}`;
@@ -898,16 +877,16 @@ app.get('/', (_req, res) => {
       'Useful endpoints:',
       ' - /healthz',
       ' - /api/version',
-      ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5&lang=ru',
+      ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5',
       ' - /api/hh/areas?host=hh.kz',
-      ' - /api/hh/me?lang=ru',
-      ' - /api/hh/resumes?lang=ru',
-      ' - POST /api/hh/respond { vacancy_id, resume_id?, message?, lang? }',
-      ' - POST /api/polish           { text, lang=ru|kk|en, mode=auto|paragraph|bullets }',
-      ' - POST /api/polish/batch     { texts[], lang?, mode? }',
-      ' - POST /api/ai/infer-search  { profile, lang=ru|kk|en, overrideModel? }',
-      ' - POST /api/recommendations/generate  { profile, lang? }',
-      ' - POST /api/recommendations/improve   { profile, lang? }',
+      ' - /api/hh/me',
+      ' - /api/hh/resumes',
+      ' - POST /api/hh/respond { vacancy_id, resume_id?, message? }',
+      ' - /api/polish   (POST {text, lang, mode})',
+      ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
+      ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
+      ' - /api/recommendations/generate   (POST {profile})',
+      ' - /api/recommendations/improve    (POST {profile})',
       '',
       '⚠️ Hint: do not call "/" with search params — use /api/hh/jobs/search',
     ].join('\n')

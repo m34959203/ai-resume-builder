@@ -1,3 +1,4 @@
+// src/services/bff.js
 /* eslint-disable no-console */
 
 // Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
@@ -9,32 +10,6 @@ import { mockJobs, mockResumes } from './mocks';
 function env(key, def = '') {
   const v = import.meta?.env?.[key];
   return v == null ? def : String(v);
-}
-
-/* -------------------- Язык интерфейса -------------------- */
-
-function normLang(raw) {
-  const v = String(raw || '').trim().toLowerCase();
-  if (v === 'kz') return 'kk';
-  if (v === 'kk' || v === 'ru' || v === 'en') return v;
-  return 'ru';
-}
-
-function detectPreferredLang() {
-  // 1) Явно из ENV/оконной переменной (если UI сам её устанавливает)
-  const fromEnv = env('VITE_DEFAULT_LANG', '');
-  const fromWindow =
-    typeof window !== 'undefined' && (window.__LANG || window.__APP_LANG || window.__UI_LANG);
-  const fromHtml =
-    typeof document !== 'undefined' && document.documentElement?.lang;
-
-  // 2) Браузерная локаль
-  const fromNav =
-    typeof navigator !== 'undefined' && (navigator.language || navigator.userLanguage);
-
-  // Очерёдность: window → html lang → ENV → navigator → ru
-  const candidate = fromWindow || fromHtml || fromEnv || fromNav || 'ru';
-  return normLang(candidate);
 }
 
 /**
@@ -65,10 +40,11 @@ function computeApiBase() {
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
 
   // 3) Render: фронт и бэкенд на разных доменах
-  const isRenderFrontend =
-    typeof host === 'string' &&
-    host.includes('onrender.com') &&
-    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+  //    Пример: фронт → ai-resume-frontend-nepa.onrender.com
+  //            BFF  → ai-resume-bff.onrender.com
+  const isRenderFrontend = typeof host === 'string'
+    && host.includes('onrender.com')
+    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -152,13 +128,10 @@ export const isHttpError = (e) => e && typeof e === 'object' && e.name === 'BFFH
 // In-flight dedupe для GET-запросов
 const IN_FLIGHT = new Map(); // key: normalizedUrl -> Promise<any>
 
-/**
- * Внутренний fetch с таймаутом.
- * Если передан options.signal — не навешиваем наш таймер (уважаем внешний AbortController).
- */
 function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const normalizedUrl = makeApiUrl(url);
 
+  // Если наружный signal уже передан — не навешиваем наш таймер
   if (options.signal) {
     return fetch(normalizedUrl, { credentials: 'include', ...options });
   }
@@ -189,22 +162,12 @@ async function parsePayload(res) {
  *  - signal?: AbortSignal
  *  - timeoutMs?: number
  *  - noDedupe?: boolean (по умолчанию false; dedupe только для GET)
- *  - lang?: 'ru'|'kk'|'en' — если не задан, берём detectPreferredLang()
  */
 export async function safeFetchJSON(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
 
-  // Проставим Accept-Language, если не передан явно
-  const preferred = normLang(options.lang || detectPreferredLang());
-
-  const headers = {
-    Accept: 'application/json',
-    ...(options.headers || {}),
-  };
-  if (!('Accept-Language' in headers) && !('accept-language' in headers)) {
-    headers['Accept-Language'] = preferred;
-  }
+  const headers = { Accept: 'application/json', ...(options.headers || {}) };
 
   let body = options.body;
   const hasJsonHeader =
@@ -231,8 +194,13 @@ export async function safeFetchJSON(url, options = {}) {
     if (normalizedUrl.includes('/hh/jobs/search')) {
       console.log('[BFF Client] Response status:', res.status);
       try {
-        console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()]));
-      } catch { /* ignore */ }
+        console.log(
+          '[BFF Client] Response headers:',
+          Object.fromEntries([...res.headers.entries()])
+        );
+      } catch {
+        // ignore
+      }
     }
 
     // Перехват 3xx (например, OAuth redirect)
@@ -347,7 +315,6 @@ export async function logoutHH() {
 }
 
 export async function getHHMe(options = {}) {
-  // добавим Accept-Language автоматически через safeFetchJSON
   return safeFetchJSON('/hh/me', options);
 }
 
@@ -369,7 +336,7 @@ export async function hhRespond({ vacancyId, resumeId, message = '' }, options =
   return safeFetchJSON('/hh/respond', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { vacancy_id: vacancyId, resume_id: resumeId, message, lang: normLang(options?.lang || detectPreferredLang()) },
+    body: { vacancy_id: vacancyId, resume_id: resumeId, message },
     noDedupe: true,
     ...options,
   });
@@ -384,7 +351,7 @@ const _COUNTRY_ROOT_CACHE = new Map();// host -> { id, name }
 async function _loadAreasRaw(host = normalizeHost(), options = {}) {
   const h = normalizeHost(host);
   const url = `/hh/areas?host=${encodeURIComponent(h)}`;
-  return safeFetchJSON(url, { ...options });
+  return safeFetchJSON(url, options);
 }
 
 async function getAreas(host = normalizeHost(), options = {}) {
@@ -536,7 +503,6 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 
 export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
-  const lang = normLang(params.lang || detectPreferredLang());
 
   // Если не задано ни city, ни area — для hh.kz ограничим деревом Казахстана
   let area = params.area;
@@ -550,7 +516,6 @@ export async function searchJobs(params = {}) {
   if (params.city) q.set('city', params.city);
   if (area) q.set('area', area);
   q.set('host', host);
-  q.set('lang', lang);
 
   const salaryClean = stripCurrency(params.salary);
   if (salaryClean != null) q.set('salary', salaryClean);
@@ -567,7 +532,6 @@ export async function searchJobs(params = {}) {
     method: 'GET',
     signal: params.signal,
     timeoutMs: params.timeoutMs,
-    lang, // проставит Accept-Language
   });
 
   if (data == null && USE_MOCKS) return { ...mockJobs };
@@ -576,7 +540,6 @@ export async function searchJobs(params = {}) {
 
 export async function searchJobsSmart(params = {}) {
   const host = normalizeHost(params.host);
-  const lang = normLang(params.lang || detectPreferredLang());
 
   let area = params.area;
   if (!area && params.city) {
@@ -587,12 +550,11 @@ export async function searchJobsSmart(params = {}) {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
     if (kz?.id) area = String(kz.id);
   }
-  return searchJobs({ ...params, area, host, lang });
+  return searchJobs({ ...params, area, host });
 }
 
 export async function searchVacanciesRaw(params = {}) {
   const host = normalizeHost(params.host);
-  const lang = normLang(params.lang || detectPreferredLang());
   const q = new URLSearchParams();
   if (params.text) q.set('text', params.text);
   if (params.area) q.set('area', params.area);
@@ -602,25 +564,22 @@ export async function searchVacanciesRaw(params = {}) {
   if (params.salary != null) q.set('salary', stripCurrency(params.salary) || '');
   if (params.only_with_salary) q.set('only_with_salary', 'true');
   q.set('host', host);
-  q.set('lang', lang);
-
   const url = `/hh/vacancies?${q.toString()}`;
-  return safeFetchJSON(url, { method: 'GET', lang });
+  return safeFetchJSON(url, { method: 'GET' });
 }
 
 /* -------------------- AI: инференс и полировка -------------------- */
 
-export async function inferSearchFromProfile(profile, { lang = detectPreferredLang(), overrideModel } = {}) {
+export async function inferSearchFromProfile(profile, { lang = 'ru', overrideModel } = {}) {
   const url = '/ai/infer-search';
-  const _lang = normLang(lang);
-  const payload = { profile, lang: _lang, ...(overrideModel ? { overrideModel } : {}) };
+  const payload = { profile, lang, overrideModel };
+  if (!overrideModel) delete payload.overrideModel;
 
   const out = await safeFetchJSON(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: payload,
+    body: { ...payload },
     noDedupe: true,
-    lang: _lang,
   });
 
   if (out && out.search) {
@@ -629,34 +588,29 @@ export async function inferSearchFromProfile(profile, { lang = detectPreferredLa
   return out;
 }
 
-export async function polishText(text, { lang = detectPreferredLang(), mode = 'auto' } = {}) {
-  const _lang = normLang(lang);
+export async function polishText(text, { lang = 'ru', mode = 'auto' } = {}) {
   const url = '/polish';
   return safeFetchJSON(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { text, lang: _lang, mode },
+    body: { text, lang, mode },
     noDedupe: true,
-    lang: _lang,
   });
 }
 
-export async function polishBatch(texts = [], { lang = detectPreferredLang(), mode = 'auto' } = {}) {
-  const _lang = normLang(lang);
+export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {}) {
   const url = '/polish/batch';
   return safeFetchJSON(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { texts, lang: _lang, mode },
+    body: { texts, lang, mode },
     noDedupe: true,
-    lang: _lang,
   });
 }
 
 /* -------------------- AI: рекомендации -------------------- */
 
 export async function fetchRecommendations(profile, opts = {}) {
-  const _lang = normLang(opts.lang || detectPreferredLang());
   let areaId = opts.areaId ?? null;
   if (!areaId && opts.city) {
     const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
@@ -665,31 +619,26 @@ export async function fetchRecommendations(profile, opts = {}) {
   return safeFetchJSON('/recommendations/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: areaId ?? null, lang: _lang },
+    body: { profile, areaId: areaId ?? null },
     noDedupe: true,
-    lang: _lang,
   });
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  const _lang = normLang(opts.lang || detectPreferredLang());
   return safeFetchJSON('/recommendations/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: opts.areaId ?? null, lang: _lang },
+    body: { profile, areaId: opts.areaId ?? null },
     noDedupe: true,
-    lang: _lang,
   });
 }
 
-export async function improveProfileAI(profile, { lang = detectPreferredLang() } = {}) {
-  const _lang = normLang(lang);
+export async function improveProfileAI(profile) {
   return safeFetchJSON('/recommendations/improve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile, lang: _lang },
+    body: { profile },
     noDedupe: true,
-    lang: _lang,
   });
 }
 
