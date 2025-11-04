@@ -295,22 +295,21 @@ const AIResumeBuilder = () => {
   const [currentPage, setCurrentPage] = useState('home');
 
   // профиль пользователя
-const [profile, setProfile] = useState({
-  fullName: '',
-  email: '',
-  phone: '',
-  location: '',
-  age: '',               // 🆕 возраст
-  maritalStatus: '',     // 🆕 семейное положение
-  children: '',          // 🆕 дети
-  driverLicense: '',     // 🆕 водительские права
-  summary: '',
-  experience: [],
-  education: [],
-  skills: [],
-  languages: []
-});
-
+  const [profile, setProfile] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    age: '',               // 🆕 возраст
+    maritalStatus: '',     // 🆕 семейное положение
+    children: '',          // 🆕 дети
+    driverLicense: '',     // 🆕 водительские права
+    summary: '',
+    experience: [],
+    education: [],
+    skills: [],
+    languages: []
+  });
 
   // выбор шаблона для PDF
   const [selectedTemplate, setSelectedTemplate] = useState('modern');
@@ -879,8 +878,8 @@ function VacanciesPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // bootstrap сделан ли уже стартовый реальный поиск
-  const [bootstrapped, setBootstrapped] = useState(false);
+  // 🔁 инициализация «первого захода» — вместо старого bootstrapped
+  const didInitRef = useRef(false);
 
   // AI-подсказка
   const [aiLoading, setAiLoading] = useState(false);
@@ -1178,6 +1177,34 @@ function VacanciesPage({
     }
   };
 
+  // 🔸 Гарантированный стартовый автопоиск при первом монтировании вкладки
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+
+    // 1) роль из профиля → иначе дефолт "разработчик" в видимой строке поиска
+    const role = (deriveQueryFromProfile(profile) || '').trim();
+    if (!String(searchQuery || '').trim()) {
+      setSearchQuery(role || 'разработчик');
+    }
+
+    // 2) подставим город и опыт из профиля, если пусто
+    setFilters((f) => {
+      const next = { ...f };
+      if (!next.location && (profile?.location || '').trim()) {
+        next.location = profile.location.trim();
+      }
+      const cat = calcExperienceCategory(profile);
+      if (!next.experience && cat) {
+        next.experience = cat;
+      }
+      return next;
+    });
+
+    // страница уже 0; остальное подтянет основной эффект
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // основной эффект поиска (строка поиска, фильтры, страница)
   useEffect(() => {
     if (blocked) return;
@@ -1201,23 +1228,6 @@ function VacanciesPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
-
-  // bootstrap при первом заходе:
-  // как только у нас есть хоть что-то осмысленное (searchQuery ИЛИ deriveQueryFromProfile(profile)),
-  // и мы ещё не делали стабильный первый поиск -> отмечаем bootstrapped
-  useEffect(() => {
-    if (bootstrapped) return;
-
-    const derivedRole = deriveQueryFromProfile(profile) || '';
-    const haveMeaningfulQuery =
-      (searchQuery && searchQuery.trim()) ||
-      (derivedRole && derivedRole.trim());
-
-    if (!haveMeaningfulQuery) return;
-
-    // у нас уже есть стартовые данные => считаем, что стартовый автопоиск должен быть запущен
-    setBootstrapped(true);
-  }, [bootstrapped, searchQuery, profile]);
 
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
