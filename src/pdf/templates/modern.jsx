@@ -3,105 +3,34 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
 /*
-  props: { profile, theme, lang }
+  props: { profile, theme }
 
-  Шаблон:
-  - Две колонки: слева тёмный сайдбар (контакты, личные данные, образование, языки),
-    справа контент (имя, «О себе», «Опыт», «Навыки», «Образование»).
-  - Аккуратно рендерит дополнительные поля: возраст, семейное положение, дети, права.
-  - Чистит многострочные bullets в опыте.
-  - i18n: ru / kk / en (автоопределение по props.lang → profile.lang/language/locale).
+  Этот шаблон:
+  - двухколоночный: слева тёмный сайдбар с контактами и личными данными,
+    справа контент: имя, "О себе", "Опыт", "Образование", "Навыки".
+  - аккуратно рендерит новые поля (возраст, семейное положение, дети, права).
+  - чистит многострочные bullets в опыте.
 */
 
-/* ===== i18n ===== */
-const DICT = {
-  ru: {
-    nameFallback: 'ИМЯ ФАМИЛИЯ',
-    contacts: 'Контакты',
-    city: 'Город',
-    phone: 'Телефон',
-    email: 'Email',
-    personal: 'Личная информация',
-    age: 'Возраст',
-    marital: 'Семейное положение',
-    children: 'Дети',
-    license: 'Права',
-    about: 'О себе',
-    experience: 'Опыт работы',
-    skills: 'Навыки',
-    education: 'Образование',
-    languages: 'Языки',
-    present: 'настоящее время',
-  },
-  kk: {
-    nameFallback: 'АТЫ ЖӨНІ',
-    contacts: 'Байланыс',
-    city: 'Қала',
-    phone: 'Телефон',
-    email: 'Email',
-    personal: 'Жеке мәліметтер',
-    age: 'Жасы',
-    marital: 'Отбасы жағдайы',
-    children: 'Балалар',
-    license: 'Жүргізуші куәлігі',
-    about: 'Өзі туралы',
-    experience: 'Еңбек өтілі',
-    skills: 'Дағдылар',
-    education: 'Білім',
-    languages: 'Тілдер',
-    present: 'қазіргі уақыт',
-  },
-  en: {
-    nameFallback: 'NAME SURNAME',
-    contacts: 'Contacts',
-    city: 'City',
-    phone: 'Phone',
-    email: 'Email',
-    personal: 'Personal info',
-    age: 'Age',
-    marital: 'Marital status',
-    children: 'Children',
-    license: "Driver's license",
-    about: 'About me',
-    experience: 'Experience',
-    skills: 'Skills',
-    education: 'Education',
-    languages: 'Languages',
-    present: 'present',
-  },
-};
-
-function pickLang(raw) {
-  const v = String(raw || '').toLowerCase();
-  if (v.startsWith('ru')) return 'ru';
-  if (v.startsWith('kk') || v.startsWith('kz')) return 'kk';
-  if (v.startsWith('en')) return 'en';
-  return 'ru';
-}
-function tr(lang, key) {
-  const L = DICT[lang] || DICT.ru;
-  return L[key] || key;
-}
-
 /* ===== helpers ===== */
-const toStr = (v) => (v == null ? '' : String(v));
-const trimStr = (v) => toStr(v).trim();
-const has = (v) => !!trimStr(v);
+const s = (v) => (v == null ? '' : String(v));
+const t = (v) => s(v).trim();
+const has = (v) => !!t(v);
 
-// приведение textarea к предсказуемому виду
+// приводим textarea к предсказуемому виду
 const normalizeMultiline = (v) =>
-  toStr(v)
-    .replace(/\r\n?/g, '\n')
+  s(v)
+    .replace(/\r\n?/g, '\n')        // \r\n -> \n
     .split('\n')
-    .map((line) => line.replace(/\s+$/g, ''))
+    .map((line) => line.replace(/\s+$/g, '')) // убрать пробелы в конце строки
     .join('\n')
     .trim();
 
 /**
  * bulletsPlus:
- * - режем на строки
+ * - режем текст на строки
  * - если строка начинается с маркера (•, -, *, 1.), создаём новый пункт
- * - иначе склеиваем с предыдущим
+ * - если НЕ начинается, но уже есть активный пункт, то это продолжение предыдущего: склеиваем
  */
 function bulletsPlus(text) {
   const lines = normalizeMultiline(text)
@@ -116,24 +45,33 @@ function bulletsPlus(text) {
 
   for (const line of lines) {
     if (isMarker(line)) {
+      // пушим предыдущий пункт
       if (current.trim()) out.push(current.trim());
+      // срезаем маркер
       const cleaned = line.replace(/^([•\-\*\u2022]|\d+[.)])\s+/, '');
+      // иногда люди пишут "• – Текст"; уберём ведущие тире/длинное тире
       const cleaned2 = cleaned.replace(/^[-–—]\s*/, '');
       current = cleaned2;
     } else {
-      if (current) current += ' ' + line;
-      else current = line.replace(/^[-–—]\s*/, '');
+      // просто продолжение предыдущего буллета
+      if (current) {
+        current += ' ' + line;
+      } else {
+        // не было маркера до этого — значит новая "сырая" строка, создаём пункт
+        current = line.replace(/^[-–—]\s*/, '');
+      }
     }
   }
   if (current.trim()) out.push(current.trim());
+
   return out;
 }
 
-// формат "Май.2021 — Настоящее время" (доверяем готовым строкам, иначе собираем)
-const fmtPeriod = (start, end, current, fallback, lang = 'ru') => {
-  if (has(fallback)) return trimStr(fallback);
-  const st = trimStr(start);
-  const en = current ? tr(lang, 'present') : trimStr(end);
+// формат "Май.2021 — Настоящее время"
+const fmtPeriod = (start, end, current, fallback) => {
+  if (has(fallback)) return t(fallback);
+  const st = t(start);
+  const en = current ? 'настоящее время' : t(end);
   if (!st && !en) return '';
   return `${st || '—'} — ${en || '—'}`;
 };
@@ -144,7 +82,7 @@ const LEFT_W = 170;
 const styles = StyleSheet.create({
   layout: {
     flexDirection: 'row',
-    // react-pdf не поддерживает gap повсеместно; визуальный отступ зададим справа от левой колонки
+    gap: 18,
   },
   left: {
     width: LEFT_W,
@@ -153,7 +91,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 14,
     paddingTop: 16,
-    marginRight: 18, // вместо gap
   },
   right: {
     flex: 1,
@@ -226,8 +163,8 @@ const styles = StyleSheet.create({
   xpCompany: { fontSize: 10, color: '#6B7280' },
   xpPeriod: { fontSize: 9, color: '#6B7280' },
   xpBullets: { marginTop: 4 },
-  bulletRow: { flexDirection: 'row', marginBottom: 2 },
-  bulletDot: { fontSize: 10, lineHeight: 1.35, color: '#111827', marginRight: 6 },
+  bulletRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
+  bulletDot: { fontSize: 10, lineHeight: 1.35, color: '#111827' },
   bulletText: {
     fontSize: 10,
     lineHeight: 1.35,
@@ -236,7 +173,7 @@ const styles = StyleSheet.create({
   },
 
   /* навыки */
-  skillsWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   skill: {
     fontSize: 9,
     color: '#1F2937',
@@ -244,8 +181,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     paddingHorizontal: 6,
     borderRadius: 4,
-    marginRight: 6,
-    marginBottom: 6,
   },
 });
 
@@ -263,36 +198,25 @@ const Row = ({ label, text, small }) =>
   !has(text) ? null : (
     <View style={styles.sideRow}>
       {has(label) ? <Text style={styles.sideLabel}>{label}</Text> : null}
-      <Text style={small ? styles.sideSmall : styles.sideText}>{trimStr(text)}</Text>
+      <Text style={small ? styles.sideSmall : styles.sideText}>{t(text)}</Text>
     </View>
   );
 
 /* ===== основной компонент ===== */
-export default function ModernTemplate({ profile = {}, theme = {}, lang: langProp }) {
-  const lang =
-    pickLang(
-      langProp ||
-        profile.lang ||
-        profile.language ||
-        profile.locale ||
-        (Array.isArray(profile?.i18n?.langs) && profile.i18n.langs[0]) ||
-        profile?.i18n?.lang
-    ) || 'ru';
+export default function ModernTemplate({ profile, theme }) {
+  const accent = (theme && theme.accent) || '#1E90FF';
 
-  const accent = theme.accent || '#1E90FF';
+  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
+  const position = t(profile?.position || profile?.title || profile?.professionalTitle);
 
-  const name = trimStr(profile?.fullName) || tr(lang, 'nameFallback');
-  const position =
-    trimStr(profile?.position || profile?.title || profile?.professionalTitle);
+  const email = t(profile?.email);
+  const phone = t(profile?.phone);
+  const location = t(profile?.location);
 
-  const email = trimStr(profile?.email);
-  const phone = trimStr(profile?.phone);
-  const location = trimStr(profile?.location);
-
-  const age = trimStr(profile?.age);
-  const maritalStatus = trimStr(profile?.maritalStatus);
-  const children = trimStr(profile?.children);
-  const driversLicense = trimStr(profile?.driversLicense);
+  const age = t(profile?.age);
+  const maritalStatus = t(profile?.maritalStatus);
+  const children = t(profile?.children);
+  const driversLicense = t(profile?.driversLicense);
 
   const summary = normalizeMultiline(profile?.summary);
   const experience = Array.isArray(profile?.experience) ? profile.experience : [];
@@ -315,31 +239,31 @@ export default function ModernTemplate({ profile = {}, theme = {}, lang: langPro
 
         {/* Контакты */}
         {(has(location) || has(phone) || has(email)) && (
-          <SideSection title={tr(lang, 'contacts')}>
-            <Row label={tr(lang, 'city')} text={location} />
-            <Row label={tr(lang, 'phone')} text={phone} />
-            <Row label={tr(lang, 'email')} text={email} />
+          <SideSection title="Контакты">
+            <Row label="Город" text={location} />
+            <Row label="Телефон" text={phone} />
+            <Row label="Email" text={email} />
           </SideSection>
         )}
 
         {/* Личная информация */}
         {(has(age) || has(maritalStatus) || has(children) || has(driversLicense)) && (
-          <SideSection title={tr(lang, 'personal')}>
-            <Row label={tr(lang, 'age')} text={age} />
-            <Row label={tr(lang, 'marital')} text={maritalStatus} />
-            <Row label={tr(lang, 'children')} text={children} />
-            <Row label={tr(lang, 'license')} text={driversLicense} />
+          <SideSection title="Личная информация">
+            <Row label="Возраст" text={age} />
+            <Row label="Семейное положение" text={maritalStatus} />
+            <Row label="Дети" text={children} />
+            <Row label="Права" text={driversLicense} />
           </SideSection>
         )}
 
-        {/* Образование (кратко) */}
+        {/* Образование (кратко, год + вуз + спец) */}
         {education.length ? (
-          <SideSection title={tr(lang, 'education')}>
+          <SideSection title="Образование">
             {education.map((ed, i) => {
-              const degree = trimStr(ed.level || ed.degree);
-              const inst = trimStr(ed.institution || ed.university);
-              const spec = trimStr(ed.specialization || ed.major);
-              const year = trimStr(ed.year || ed.period);
+              const degree = t(ed.level || ed.degree);
+              const inst = t(ed.institution || ed.university);
+              const spec = t(ed.specialization || ed.major);
+              const year = t(ed.year || ed.period);
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
                   {has(degree) ? <Text style={styles.sideText}>{degree}</Text> : null}
@@ -354,13 +278,13 @@ export default function ModernTemplate({ profile = {}, theme = {}, lang: langPro
 
         {/* Языки */}
         {languages.length ? (
-          <SideSection title={tr(lang, 'languages')}>
+          <SideSection title="Языки">
             {languages.map((l, i) => {
-              const lng = trimStr(l?.language || l?.name);
-              const lvl = trimStr(l?.level);
+              const lang = t(l?.language || l?.name);
+              const lvl = t(l?.level);
               return (
                 <View key={l.id || i} style={{ marginBottom: 6 }}>
-                  {has(lng) ? <Text style={styles.sideText}>{lng}</Text> : null}
+                  {has(lang) ? <Text style={styles.sideText}>{lang}</Text> : null}
                   {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
                 </View>
               );
@@ -379,27 +303,26 @@ export default function ModernTemplate({ profile = {}, theme = {}, lang: langPro
         {/* О себе */}
         {has(summary) ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{tr(lang, 'about')}</Text>
+            <Text style={styles.h2}>О себе</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <Text style={styles.paragraph}>{summary}</Text>
           </View>
         ) : null}
 
-        {/* Опыт */}
+        {/* Опыт работы */}
         {experience.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{tr(lang, 'experience')}</Text>
+            <Text style={styles.h2}>Опыт работы</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {experience.map((ex, i) => {
-              const pos = trimStr(ex.position);
-              const comp = trimStr(ex.company);
-              const locTxt = trimStr(ex.location);
+              const pos = t(ex.position);
+              const comp = t(ex.company);
+              const locTxt = t(ex.location);
               const periodText = fmtPeriod(
                 ex.startDate || ex.start,
                 ex.endDate || ex.end,
                 ex.currentlyWorking,
-                ex.period,
-                lang
+                ex.period
               );
 
               const pts = bulletsPlus(ex.responsibilities || ex.description);
@@ -439,38 +362,43 @@ export default function ModernTemplate({ profile = {}, theme = {}, lang: langPro
         {/* Навыки */}
         {skills.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>{tr(lang, 'skills')}</Text>
+            <Text style={styles.h2}>Навыки</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
                 <Text key={`${sk}_${i}`} style={styles.skill}>
-                  {trimStr(sk)}
+                  {t(sk)}
                 </Text>
               ))}
             </View>
           </View>
         ) : null}
 
-        {/* Образование (подробно — по желанию) */}
+        {/* Образование (расширенный блок дублируем справа только если хотим подробно).
+            Если не нужно дублировать, эту секцию можно убрать. */}
         {education.length ? (
           <View style={{ marginBottom: 6 }}>
-            <Text style={styles.h2}>{tr(lang, 'education')}</Text>
+            <Text style={styles.h2}>Образование</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {education.map((ed, i) => {
-              const degree = trimStr(ed.level || ed.degree);
-              const inst = trimStr(ed.institution || ed.university);
-              const spec = trimStr(ed.specialization || ed.major);
-              const year = trimStr(ed.year || ed.period);
+              const degree = t(ed.level || ed.degree);
+              const inst = t(ed.institution || ed.university);
+              const spec = t(ed.specialization || ed.major);
+              const year = t(ed.year || ed.period);
 
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
-                  {has(degree) ? <Text style={styles.xpTitle}>{degree}</Text> : null}
+                  {has(degree) ? (
+                    <Text style={styles.xpTitle}>{degree}</Text>
+                  ) : null}
                   <Text style={styles.xpCompany}>
                     {has(inst) ? inst : ''}
                     {has(inst) && has(year) ? ' • ' : ''}
                     {has(year) ? year : ''}
                   </Text>
-                  {has(spec) ? <Text style={styles.paragraph}>{spec}</Text> : null}
+                  {has(spec) ? (
+                    <Text style={styles.paragraph}>{spec}</Text>
+                  ) : null}
                 </View>
               );
             })}

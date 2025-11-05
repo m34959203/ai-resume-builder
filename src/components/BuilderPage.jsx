@@ -15,9 +15,10 @@ import {
   Globe,
   RefreshCw,
 } from 'lucide-react';
-import { useTranslation } from '../hooks/useTranslation'; // i18n
 
-/* ---------- Константы профиля (согласованы с AIResumeBuilder) ---------- */
+// import ResumePDF from './ResumePDF'; // динамически импортируется при скачивании
+
+/* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
   fullName: '',
   position: '',
@@ -30,12 +31,32 @@ const DEFAULT_PROFILE = {
   age: '',
   maritalStatus: '',
   children: '',
-  driverLicense: '', // ← основной ключ
+  driversLicense: '',
 
   experience: [],
   education: [],
   skills: [],
   languages: [],
+};
+
+const STEPS = [
+  'Личная информация',
+  'Опыт работы',
+  'Образование',
+  'Навыки',
+  'Языки',
+  'Шаблон',
+];
+
+// ОСТАВИЛИ ТОЛЬКО ДВА ШАБЛОНА
+const TEMPLATES = [
+  { id: 'modern', name: 'Современный', color: 'blue' },
+  { id: 'minimal', name: 'Минималистичный', color: 'green' },
+];
+
+const COLOR_BG = {
+  blue: 'bg-blue-100',
+  green: 'bg-green-100',
 };
 
 /* ---------- helpers ---------- */
@@ -88,7 +109,14 @@ const SKILL_CATALOG = {
     'REST API',
     'CI/CD',
   ],
-  mobile: ['React Native', 'Kotlin', 'Swift', 'Flutter', 'MVVM', 'Firebase'],
+  mobile: [
+    'React Native',
+    'Kotlin',
+    'Swift',
+    'Flutter',
+    'MVVM',
+    'Firebase',
+  ],
   data: [
     'Python',
     'Pandas',
@@ -108,10 +136,35 @@ const SKILL_CATALOG = {
     'Design Systems',
     'UX Writing',
   ],
-  qa: ['Manual Testing', 'Test Automation', 'Selenium', 'Cypress', 'Jest', 'Playwright'],
-  pm: ['Agile', 'Scrum', 'Kanban', 'Jira', 'Confluence', 'Stakeholder Management'],
-  marketing: ['Digital Marketing', 'SEO', 'SMM', 'Google Analytics', 'Copywriting'],
-  soft: ['Communication', 'Problem Solving', 'Teamwork', 'Time Management'],
+  qa: [
+    'Manual Testing',
+    'Test Automation',
+    'Selenium',
+    'Cypress',
+    'Jest',
+    'Playwright',
+  ],
+  pm: [
+    'Agile',
+    'Scrum',
+    'Kanban',
+    'Jira',
+    'Confluence',
+    'Stakeholder Management',
+  ],
+  marketing: [
+    'Digital Marketing',
+    'SEO',
+    'SMM',
+    'Google Analytics',
+    'Copywriting',
+  ],
+  soft: [
+    'Communication',
+    'Problem Solving',
+    'Teamwork',
+    'Time Management',
+  ],
 };
 
 function detectTracks(profile) {
@@ -203,9 +256,9 @@ const Textarea = React.memo(({ label, rows = 3, className = '', ...rest }) => (
   </div>
 ));
 
-const Stepper = React.memo(({ steps, current }) => (
+const Stepper = React.memo(({ current }) => (
   <div className="flex justify-between items-center mb-4">
-    {steps.map((_, idx) => (
+    {STEPS.map((_, idx) => (
       <div key={idx} className="flex items-center">
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
@@ -218,7 +271,7 @@ const Stepper = React.memo(({ steps, current }) => (
         >
           {idx < current ? <Check size={20} /> : idx + 1}
         </div>
-        {idx < steps.length - 1 && (
+        {idx < STEPS.length - 1 && (
           <div className={`w-20 h-1 mx-2 ${idx < current ? 'bg-green-500' : 'bg-gray-200'}`} />
         )}
       </div>
@@ -226,12 +279,11 @@ const Stepper = React.memo(({ steps, current }) => (
   </div>
 ));
 
-/* Только 2 шаблона */
-const COLOR_BG = { blue: 'bg-blue-100', green: 'bg-green-100' };
-const TemplateSelect = React.memo(function TemplateSelect({ items, selected, onSelect }) {
+/* Только 2 шаблона: Современный и Минималистичный */
+const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect }) {
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      {items.map((t) => (
+      {TEMPLATES.map((t) => (
         <div
           key={t.id}
           onClick={() => onSelect(t.id)}
@@ -242,15 +294,15 @@ const TemplateSelect = React.memo(function TemplateSelect({ items, selected, onS
           tabIndex={0}
           onKeyDown={(e) => e.key === 'Enter' && onSelect(t.id)}
           aria-pressed={selected === t.id}
-          aria-label={t.name}
+          aria-label={`Выбрать шаблон ${t.name}`}
         >
           <div className={`${COLOR_BG[t.color]} w-12 h-12 rounded-lg mb-3`} />
           <h4 className="font-semibold mb-1">{t.name}</h4>
-          <p className="text-sm text-gray-600">{t.desc}</p>
+          <p className="text-sm text-gray-600">Стильный и профессиональный дизайн</p>
           {selected === t.id && (
             <div className="mt-3 flex items-center gap-2 text-blue-600">
               <Check size={16} />
-              <span className="text-sm font-medium">OK</span>
+              <span className="text-sm font-medium">Выбрано</span>
             </div>
           )}
         </div>
@@ -259,7 +311,7 @@ const TemplateSelect = React.memo(function TemplateSelect({ items, selected, onS
   );
 });
 
-const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
+const ResumePreview = React.memo(function ResumePreview({ profile }) {
   const topSkills = useMemo(() => (profile.skills || []).slice(0, 8), [profile.skills]);
   const expCount = (profile.experience || []).length;
   const eduCount = (profile.education || []).length;
@@ -267,19 +319,19 @@ const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
 
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-      <h4 className="font-semibold mb-3 text-green-900">{t('builder.preview.title')}</h4>
+      <h4 className="font-semibold mb-3 text-green-900">Предпросмотр резюме</h4>
       <div className="bg-white rounded-lg p-6 border shadow-sm">
         <div className="mb-4 flex gap-4">
           {profile.photo && (
             <img
               src={profile.photo}
-              alt={t('builder.preview.photoAlt')}
+              alt="Фото"
               className="w-16 h-16 rounded-full object-cover border"
             />
           )}
 
           <div>
-            <h2 className="text-2xl font-bold">{profile.fullName || t('builder.preview.namePlaceholder')}</h2>
+            <h2 className="text-2xl font-bold">{profile.fullName || 'Ваше имя'}</h2>
 
             {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
 
@@ -305,17 +357,17 @@ const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
             </div>
 
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
-              {profile.age && <span>{t('builder.personal.age')}: {profile.age}</span>}
-              {profile.maritalStatus && <span>{t('builder.personal.maritalStatus')}: {profile.maritalStatus}</span>}
-              {profile.children && <span>{t('builder.personal.children')}: {profile.children}</span>}
-              {profile.driverLicense && <span>{t('builder.personal.driverLicense')}: {profile.driverLicense}</span>}
+              {profile.age && <span>Возраст: {profile.age}</span>}
+              {profile.maritalStatus && <span>Семейное положение: {profile.maritalStatus}</span>}
+              {profile.children && <span>Дети: {profile.children}</span>}
+              {profile.driversLicense && <span>Права: {profile.driversLicense}</span>}
             </div>
           </div>
         </div>
 
         {profile.summary && (
           <div className="mb-4">
-            <h3 className="font-semibold mb-2">{t('builder.personal.summary')}</h3>
+            <h3 className="font-semibold mb-2">О себе</h3>
             <p className="text-sm text-gray-700">{profile.summary}</p>
           </div>
         )}
@@ -324,23 +376,23 @@ const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
           <div className="text-center p-3 bg-blue-50 rounded-lg">
             <Briefcase size={20} className="mx-auto mb-1 text-blue-600" />
             <div className="font-semibold text-gray-900">{expCount}</div>
-            <div className="text-gray-600">{t('builder.preview.expCount')}</div>
+            <div className="text-gray-600">мест работы</div>
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg">
             <BookOpen size={20} className="mx-auto mb-1 text-purple-600" />
             <div className="font-semibold text-gray-900">{eduCount}</div>
-            <div className="text-gray-600">{t('builder.preview.eduCount')}</div>
+            <div className="text-gray-600">образование</div>
           </div>
           <div className="text-center p-3 bg-indigo-50 rounded-lg">
             <Globe size={20} className="mx-auto mb-1 text-indigo-600" />
             <div className="font-semibold text-gray-900">{langCount}</div>
-            <div className="text-gray-600">{t('builder.preview.langCount')}</div>
+            <div className="text-gray-600">языков</div>
           </div>
         </div>
 
         {topSkills.length > 0 && (
           <div className="mb-0">
-            <h3 className="font-semibold mb-2">{t('builder.steps.skills')}</h3>
+            <h3 className="font-semibold mb-2">Навыки</h3>
             <div className="flex flex-wrap gap-2">
               {topSkills.map((skill, idx) => (
                 <span
@@ -366,48 +418,21 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
-
-  // Динамические шаги и шаблоны из переводов
-  const STEPS = useMemo(
-    () => [
-      t('builder.steps.personal'),
-      t('builder.steps.experience'),
-      t('builder.steps.education'),
-      t('builder.steps.skills'),
-      t('builder.steps.languages'),
-      t('builder.steps.template'),
-    ],
-    [t]
-  );
-
-  const TEMPLATE_ITEMS = useMemo(
-    () => [
-      { id: 'modern', name: t('builder.templates.modern'), desc: t('builder.templates.desc'), color: 'blue' },
-      { id: 'minimal', name: t('builder.templates.minimal'), desc: t('builder.templates.desc'), color: 'green' },
-    ],
-    [t]
-  );
 
   const headingRef = useRef(null);
 
-  // Внутреннее состояние формы (с маппингом на оба варианта driver(s)License)
   const [form, setForm] = useState(() => ({
     ...DEFAULT_PROFILE,
     ...(profile || {}),
-    driverLicense: profile?.driverLicense ?? profile?.driversLicense ?? '',
   }));
 
-  // Синхронизация при изменении внешнего профиля
   useEffect(() => {
     if (!profile) return;
     setForm((prev) => ({
       ...prev,
       ...profile,
-      driverLicense: profile?.driverLicense ?? profile?.driversLicense ?? prev.driverLicense ?? '',
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     profile?.fullName,
     profile?.email,
@@ -420,25 +445,19 @@ function BuilderPage({
     profile?.age,
     profile?.maritalStatus,
     profile?.children,
-    profile?.driverLicense,   // ← основной
-    profile?.driversLicense,  // ← поддержка старого ключа
+    profile?.driversLicense,
     profile?.experience,
     profile?.education,
     profile?.skills,
   ]);
 
-  // Поднимать состояние в родителя (выравниваем ключ до driverLicense)
   useEffect(() => {
-    const tm = setTimeout(() => {
-      const normalized = { ...form };
-      // если вдруг кто-то писал в старый ключ — почистим
-      delete normalized.driversLicense;
-      setProfile?.(normalized);
+    const t = setTimeout(() => {
+      setProfile?.(form);
     }, 250);
-    return () => clearTimeout(tm);
+    return () => clearTimeout(t);
   }, [form, setProfile]);
 
-  // Фокус/скролл между шагами
   useEffect(() => {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const behavior = reduceMotion ? 'auto' : 'smooth';
@@ -461,7 +480,7 @@ function BuilderPage({
         ...p,
         [field]: e.target.value,
       })),
-    []
+    [],
   );
 
   const handlePhotoUpload = useCallback((e) => {
@@ -491,7 +510,7 @@ function BuilderPage({
         : {
             ...p,
             skills: [...p.skills, s],
-          }
+          },
     );
     setNewSkill('');
   }, [newSkill]);
@@ -517,7 +536,7 @@ function BuilderPage({
         setAiLoading(false);
       }, 250);
     },
-    [form, aiRotate]
+    [form, aiRotate],
   );
 
   useEffect(() => {
@@ -536,6 +555,7 @@ function BuilderPage({
   };
   const [newExperience, setNewExperience] = useState(blankExperience);
 
+  const isBlank = (v) => !v || !String(v).trim();
   const isExperienceDraftFilled = useCallback(
     (e) =>
       !!e &&
@@ -544,9 +564,12 @@ function BuilderPage({
         !isBlank(e.startDate) ||
         !isBlank(e.endDate) ||
         !isBlank(e.responsibilities)),
-    []
+    [],
   );
-  const canCommitExperience = useCallback((e) => !!e && !isBlank(e.position) && !isBlank(e.company), []);
+  const canCommitExperience = useCallback(
+    (e) => !!e && !isBlank(e.position) && !isBlank(e.company),
+    [],
+  );
 
   const commitExperienceDraft = useCallback(() => {
     if (isExperienceDraftFilled(newExperience) && canCommitExperience(newExperience)) {
@@ -578,10 +601,16 @@ function BuilderPage({
   const isEducationDraftFilled = useCallback(
     (e) =>
       !!e &&
-      (!isBlank(e.institution) || !isBlank(e.level) || !isBlank(e.year) || !isBlank(e.specialization)),
-    []
+      (!isBlank(e.institution) ||
+        !isBlank(e.level) ||
+        !isBlank(e.year) ||
+        !isBlank(e.specialization)),
+    [],
   );
-  const canCommitEducation = useCallback((e) => !!e && !isBlank(e.institution) && !isBlank(e.level), []);
+  const canCommitEducation = useCallback(
+    (e) => !!e && !isBlank(e.institution) && !isBlank(e.level),
+    [],
+  );
 
   const commitEducationDraft = useCallback(() => {
     if (isEducationDraftFilled(newEducation) && canCommitEducation(newEducation)) {
@@ -635,22 +664,29 @@ function BuilderPage({
   }, []);
 
   /* --- Шаблон выбора --- */
-  const handleSelectTemplate = useCallback((id) => setSelectedTemplate(id), [setSelectedTemplate]);
+  const handleSelectTemplate = useCallback(
+    (id) => setSelectedTemplate(id),
+    [setSelectedTemplate],
+  );
 
   /* --- Имя файла --- */
   const fileName = useMemo(() => {
-    const base = (form.fullName || 'resume').toString().trim().replace(/\s+/g, '_').replace(/[^\w\-]+/g, '');
+    const base = (form.fullName || 'resume')
+      .toString()
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^\w\-]+/g, '');
     return `${base || 'resume'}.pdf`;
   }, [form.fullName]);
 
   /* --- Проверка обязательных --- */
   const requiredMissing = useMemo(() => {
     const miss = [];
-    if (!form.fullName?.trim()) miss.push(t('builder.personal.fullName'));
-    if (!form.email?.trim()) miss.push(t('builder.personal.email'));
-    if (!form.phone?.trim()) miss.push(t('builder.personal.phone'));
+    if (!form.fullName?.trim()) miss.push('ФИО');
+    if (!form.email?.trim()) miss.push('Email');
+    if (!form.phone?.trim()) miss.push('Телефон');
     return miss;
-  }, [form.fullName, form.email, form.phone, t]);
+  }, [form.fullName, form.email, form.phone]);
   const canDownload = requiredMissing.length === 0;
 
   const goNext = useCallback(() => {
@@ -658,7 +694,7 @@ function BuilderPage({
     if (currentStep === 2) commitEducationDraft();
     if (currentStep === 4) commitLanguageDraft();
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft, STEPS.length]);
+  }, [currentStep, commitExperienceDraft, commitEducationDraft, commitLanguageDraft]);
 
   /* --- Профиль для PDF --- */
   const buildExportProfile = useCallback(() => {
@@ -688,7 +724,7 @@ function BuilderPage({
       age: form.age || '',
       maritalStatus: form.maritalStatus || '',
       children: form.children || '',
-      driverLicense: form.driverLicense || '', // ← единый ключ в экспорт
+      driversLicense: form.driversLicense || '',
     };
   }, [
     form,
@@ -726,7 +762,7 @@ function BuilderPage({
       ]);
 
       const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
-      if (!blob || blob.size === 0) throw new Error(t('builder.pdf.emptyError'));
+      if (!blob || blob.size === 0) throw new Error('Пустой PDF (blob.size === 0)');
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -737,10 +773,9 @@ function BuilderPage({
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('PDF generate error:', err);
-      const msg = (err && (err.message || err.toString())) || t('builder.pdf.unknownError');
-      setDownloadError(`${t('builder.pdf.generateError')} ${msg}`);
+      const msg = (err && (err.message || err.toString())) || 'Неизвестная ошибка';
+      setDownloadError(`Не удалось сформировать PDF. ${msg}`);
     } finally {
       setDownloading(false);
     }
@@ -754,7 +789,6 @@ function BuilderPage({
     buildExportProfile,
     selectedTemplate,
     fileName,
-    t,
   ]);
 
   /* --- RENDER --- */
@@ -765,12 +799,12 @@ function BuilderPage({
           onClick={() => setCurrentPage('home')}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
         >
-          ← {t('common.back')}
+          ← Назад
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="mb-8">
-            <Stepper steps={STEPS} current={currentStep} />
+            <Stepper current={currentStep} />
             <h2
               ref={headingRef}
               tabIndex={-1}
@@ -781,7 +815,6 @@ function BuilderPage({
           </div>
 
           <div className="mb-8">
-            {/* Шаг 0 — Личная информация */}
             {currentStep === 0 && (
               <div className="space-y-6">
                 <div className="text-center">
@@ -789,7 +822,7 @@ function BuilderPage({
                     {form.photo ? (
                       <img
                         src={form.photo}
-                        alt={t('builder.preview.photoAlt')}
+                        alt="Фото"
                         className="w-28 h-28 rounded-full object-cover border-4 border-blue-100"
                       />
                     ) : (
@@ -808,20 +841,20 @@ function BuilderPage({
                       />
                     </label>
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">{t('builder.personal.photoHint')}</p>
+                  <p className="text-sm text-gray-500 mt-2">Рекомендуется загрузить фото</p>
                 </div>
 
                 <Input
-                  label={`${t('builder.personal.fullName')} *`}
+                  label="Полное имя *"
                   type="text"
                   value={form.fullName}
                   onChange={onChangeField('fullName')}
-                  placeholder={t('builder.personal.fullNamePh')}
+                  placeholder="Иван Иванов"
                   autoComplete="name"
                 />
 
                 <Input
-                  label={t('builder.personal.position')}
+                  label="Желаемая должность"
                   type="text"
                   value={form.position}
                   onChange={onChangeField('position')}
@@ -831,7 +864,7 @@ function BuilderPage({
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <Input
-                    label={`${t('builder.personal.email')} *`}
+                    label="Email *"
                     type="email"
                     value={form.email}
                     onChange={onChangeField('email')}
@@ -840,7 +873,7 @@ function BuilderPage({
                     inputMode="email"
                   />
                   <Input
-                    label={`${t('builder.personal.phone')} *`}
+                    label="Телефон *"
                     type="tel"
                     value={form.phone}
                     onChange={onChangeField('phone')}
@@ -851,17 +884,17 @@ function BuilderPage({
                 </div>
 
                 <Input
-                  label={t('builder.personal.location')}
+                  label="Город"
                   type="text"
                   value={form.location}
                   onChange={onChangeField('location')}
-                  placeholder={t('builder.personal.locationPh')}
+                  placeholder="Алматы"
                   autoComplete="address-level2"
                 />
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <Input
-                    label={t('builder.personal.age')}
+                    label="Возраст"
                     type="number"
                     min="14"
                     max="80"
@@ -870,58 +903,57 @@ function BuilderPage({
                     placeholder="30"
                   />
                   <Input
-                    label={t('builder.personal.maritalStatus')}
+                    label="Семейное положение"
                     type="text"
                     value={form.maritalStatus}
                     onChange={onChangeField('maritalStatus')}
-                    placeholder={t('builder.personal.maritalStatusPh')}
+                    placeholder="Женат / Замужем / Не женат"
                   />
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <Input
-                    label={t('builder.personal.children')}
+                    label="Дети"
                     type="text"
                     value={form.children}
                     onChange={onChangeField('children')}
-                    placeholder={t('builder.personal.childrenPh')}
+                    placeholder="2 детей / нет"
                   />
                   <Input
-                    label={t('builder.personal.driverLicense')}
+                    label="Водительские права"
                     type="text"
-                    value={form.driverLicense}
-                    onChange={onChangeField('driverLicense')}
-                    placeholder={t('builder.personal.driverLicensePh')}
+                    value={form.driversLicense}
+                    onChange={onChangeField('driversLicense')}
+                    placeholder="Категория B"
                   />
                 </div>
 
                 <div>
                   <Textarea
-                    label={t('builder.personal.summary')}
+                    label="О себе"
                     rows={4}
                     value={form.summary}
                     onChange={onChangeField('summary')}
-                    placeholder={t('builder.personal.summaryPh')}
+                    placeholder="Расскажите о себе: 2–3 предложения о ключевых компетенциях и целях…"
                   />
                   <div className="mt-2 flex items-start gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded">
                     <Sparkles size={16} className="mt-0.5" />
-                    <p>{t('builder.personal.summaryHint')}</p>
+                    <p>Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Шаг 1 — Опыт */}
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <h3 className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
-                    <Briefcase size={18} /> {t('builder.experience.add')}
+                    <Briefcase size={18} /> Добавить опыт
                   </h3>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <Input
-                      label={`${t('builder.experience.position')} *`}
+                      label="Должность *"
                       value={newExperience.position}
                       onChange={(e) =>
                         setNewExperience((p) => ({ ...p, position: e.target.value }))
@@ -929,7 +961,7 @@ function BuilderPage({
                       placeholder="Frontend Developer"
                     />
                     <Input
-                      label={`${t('builder.experience.company')} *`}
+                      label="Компания *"
                       value={newExperience.company}
                       onChange={(e) =>
                         setNewExperience((p) => ({ ...p, company: e.target.value }))
@@ -940,7 +972,7 @@ function BuilderPage({
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <Input
-                      label={t('builder.experience.start')}
+                      label="Начало работы *"
                       type="month"
                       value={newExperience.startDate}
                       onChange={(e) =>
@@ -948,7 +980,7 @@ function BuilderPage({
                       }
                     />
                     <Input
-                      label={t('builder.experience.end')}
+                      label="Окончание работы"
                       type="month"
                       value={newExperience.endDate}
                       onChange={(e) =>
@@ -972,18 +1004,18 @@ function BuilderPage({
                       }
                       className="w-4 h-4"
                     />
-                    <span className="text-sm">{t('builder.experience.current')}</span>
+                    <span className="text-sm">Работаю в настоящее время</span>
                   </label>
 
                   <Textarea
-                    label={t('builder.experience.responsibilities')}
+                    label="Обязанности и достижения"
                     rows={4}
                     value={newExperience.responsibilities}
                     onChange={(e) =>
                       setNewExperience((p) => ({ ...p, responsibilities: e.target.value }))
                     }
                     placeholder={
-                      '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество'
+                      '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров'
                     }
                   />
 
@@ -992,13 +1024,13 @@ function BuilderPage({
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                   >
                     <Plus size={16} />
-                    {t('builder.experience.addBtn')}
+                    Добавить опыт
                   </button>
                 </div>
 
                 {form.experience.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold">{t('builder.experience.added')}</h3>
+                    <h3 className="font-semibold">Добавленный опыт:</h3>
                     {form.experience.map((exp, idx) => (
                       <div key={exp.id || idx} className="border rounded-lg p-4 bg-white">
                         <div className="flex justify-between items-start mb-1">
@@ -1006,13 +1038,13 @@ function BuilderPage({
                             <h4 className="font-semibold">{exp.position}</h4>
                             <p className="text-sm text-gray-600">
                               {exp.company} • {fmtMonth(exp.startDate)} —{' '}
-                              {exp.currentlyWorking ? t('builder.experience.now') : fmtMonth(exp.endDate)}
+                              {exp.currentlyWorking ? 'настоящее время' : fmtMonth(exp.endDate)}
                             </p>
                           </div>
                           <button
                             onClick={() => removeExperience(exp.id ?? idx)}
                             className="text-red-500 hover:text-red-700"
-                            aria-label={t('builder.common.remove')}
+                            aria-label="Удалить опыт"
                           >
                             <X size={16} />
                           </button>
@@ -1030,28 +1062,27 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 2 — Образование */}
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="space-y-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
                   <h3 className="font-semibold text-purple-900 mb-1 flex items-center gap-2">
-                    <BookOpen size={18} /> {t('builder.education.add')}
+                    <BookOpen size={18} /> Добавить образование
                   </h3>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <Select
-                      label={`${t('builder.education.level')} *`}
-                      value={form.newEducation?.level ?? ''}
+                      label="Уровень *"
+                      value={newEducation.level}
                       onChange={(e) =>
                         setNewEducation((p) => ({ ...p, level: e.target.value }))
                       }
                     >
-                      <option value="">{t('common.choose')}</option>
+                      <option value="">Выберите</option>
                       {[
-                        t('builder.education.levels.secondary'),
-                        t('builder.education.levels.college'),
-                        t('builder.education.levels.someHigher'),
-                        t('builder.education.levels.higher'),
+                        'Среднее',
+                        'Среднее специальное',
+                        'Неоконченное высшее',
+                        'Высшее',
                         'Бакалавр',
                         'Магистр',
                         'MBA',
@@ -1064,18 +1095,18 @@ function BuilderPage({
                       ))}
                     </Select>
                     <Input
-                      label={`${t('builder.education.institution')} *`}
-                      value={form.newEducation?.institution ?? newEducation.institution}
+                      label="Учебное заведение *"
+                      value={newEducation.institution}
                       onChange={(e) =>
                         setNewEducation((p) => ({ ...p, institution: e.target.value }))
                       }
-                      placeholder={t('builder.education.institutionPh')}
+                      placeholder="Жезказганский университет имени О.А. Байконурова"
                     />
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <Input
-                      label={t('builder.education.year')}
+                      label="Год окончания"
                       type="number"
                       min="1950"
                       max="2035"
@@ -1086,12 +1117,12 @@ function BuilderPage({
                       placeholder="2024"
                     />
                     <Input
-                      label={t('builder.education.specialization')}
+                      label="Специальность"
                       value={newEducation.specialization}
                       onChange={(e) =>
                         setNewEducation((p) => ({ ...p, specialization: e.target.value }))
                       }
-                      placeholder={t('builder.education.specializationPh')}
+                      placeholder="Программная инженерия"
                     />
                   </div>
 
@@ -1100,13 +1131,13 @@ function BuilderPage({
                     className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
                   >
                     <Plus size={16} />
-                    {t('builder.education.addBtn')}
+                    Добавить образование
                   </button>
                 </div>
 
                 {form.education.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold">{t('builder.education.added')}</h3>
+                    <h3 className="font-semibold">Добавленное образование:</h3>
                     {form.education.map((edu, idx) => (
                       <div key={edu.id || idx} className="border rounded-lg p-4 bg-white">
                         <div className="flex justify-between items-start">
@@ -1123,7 +1154,7 @@ function BuilderPage({
                           <button
                             onClick={() => removeEducation(edu.id ?? idx)}
                             className="text-red-500 hover:text-red-700"
-                            aria-label={t('builder.common.remove')}
+                            aria-label="Удалить образование"
                           >
                             <X size={16} />
                           </button>
@@ -1135,11 +1166,10 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 3 — Навыки */}
             {currentStep === 3 && (
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">{t('builder.skills.add')}</label>
+                  <label className="block text-sm font-medium mb-2">Добавить навык</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -1147,7 +1177,7 @@ function BuilderPage({
                       onChange={(e) => setNewSkill(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addSkill()}
                       className="flex-1 px-4 py-2 border rounded-lg"
-                      placeholder={t('builder.skills.placeholder')}
+                      placeholder="Например: React, JavaScript, Python"
                     />
                     <button
                       onClick={addSkill}
@@ -1160,7 +1190,7 @@ function BuilderPage({
 
                 {form.skills.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-3">{t('builder.skills.yours')}</h3>
+                    <h3 className="font-semibold mb-3">Ваши навыки:</h3>
                     <div className="flex flex-wrap gap-2">
                       {form.skills.map((skill, idx) => (
                         <span
@@ -1171,7 +1201,7 @@ function BuilderPage({
                           <button
                             onClick={() => removeSkill(idx)}
                             className="hover:text-blue-900"
-                            aria-label={t('builder.common.remove')}
+                            aria-label={`Удалить навык ${skill}`}
                           >
                             <X size={14} />
                           </button>
@@ -1186,10 +1216,10 @@ function BuilderPage({
                     <div className="flex items-start gap-2">
                       <Sparkles className="text-purple-600 mt-0.5" size={16} />
                       <div>
-                        <h4 className="font-semibold text-purple-900">{t('builder.skills.aiTitle')}</h4>
+                        <h4 className="font-semibold text-purple-900">AI рекомендует добавить:</h4>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {aiLoading ? (
-                            <span className="text-sm text-gray-600">{t('common.loading')}</span>
+                            <span className="text-sm text-gray-600">Подбираем навыки…</span>
                           ) : aiSkillHints.length ? (
                             aiSkillHints.map((skill) => (
                               <button
@@ -1211,7 +1241,7 @@ function BuilderPage({
                             ))
                           ) : (
                             <span className="text-sm text-gray-600">
-                              {t('builder.skills.aiEmpty')}
+                              Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.
                             </span>
                           )}
                         </div>
@@ -1222,8 +1252,7 @@ function BuilderPage({
                       onClick={() => rebuildHints(1)}
                       className="px-3 py-2 text-sm border rounded-lg hover:bg-purple-100 disabled:opacity-50"
                       disabled={aiLoading}
-                      title={t('common.refresh')}
-                      aria-label={t('common.refresh')}
+                      title="Обновить рекомендации"
                     >
                       <RefreshCw size={16} className={aiLoading ? 'animate-spin' : ''} />
                     </button>
@@ -1232,25 +1261,24 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 4 — Языки */}
             {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
                   <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-                    <Globe size={18} /> {t('builder.languages.title')}
+                    <Globe size={18} /> Знание языков
                   </h3>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <Input
-                      label={`${t('builder.languages.lang')} *`}
+                      label="Язык *"
                       value={newLanguage.language}
                       onChange={(e) =>
                         setNewLanguage((p) => ({ ...p, language: e.target.value }))
                       }
-                      placeholder={t('builder.languages.langPh')}
+                      placeholder="Английский"
                     />
                     <Select
-                      label={`${t('builder.languages.level')} *`}
+                      label="Уровень *"
                       value={newLanguage.level}
                       onChange={(e) =>
                         setNewLanguage((p) => ({ ...p, level: e.target.value }))
@@ -1276,7 +1304,7 @@ function BuilderPage({
                     className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
                   >
                     <Plus size={16} />
-                    {t('builder.languages.addBtn')}
+                    Добавить язык
                   </button>
                 </div>
 
@@ -1294,7 +1322,7 @@ function BuilderPage({
                         <button
                           onClick={() => removeLanguage(l.id ?? idx)}
                           className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                          aria-label={t('builder.common.remove')}
+                          aria-label={`Удалить язык ${l.language}`}
                         >
                           <X size={18} />
                         </button>
@@ -1305,15 +1333,14 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Шаг 5 — Шаблон и предпросмотр */}
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-4">{t('builder.template.choose')}</h3>
-                  <TemplateSelect items={TEMPLATE_ITEMS} selected={selectedTemplate} onSelect={handleSelectTemplate} />
+                  <h3 className="font-semibold mb-4">Выберите шаблон резюме:</h3>
+                  <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} />
                 </div>
 
-                <ResumePreview profile={form} t={t} />
+                <ResumePreview profile={form} />
               </div>
             )}
           </div>
@@ -1324,7 +1351,7 @@ function BuilderPage({
                 onClick={() => setCurrentStep((s) => s - 1)}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                {t('common.back')}
+                Назад
               </button>
             )}
 
@@ -1333,7 +1360,7 @@ function BuilderPage({
                 onClick={goNext}
                 className="ml-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                {t('common.next')}
+                Далее
               </button>
             ) : canDownload ? (
               <div className="ml-auto flex flex-col items-end gap-2">
@@ -1347,7 +1374,7 @@ function BuilderPage({
                   }`}
                 >
                   <Download size={20} />
-                  {downloading ? t('builder.pdf.inProgress') : t('builder.pdf.download')}
+                  {downloading ? 'Готовим PDF…' : 'Скачать PDF'}
                 </button>
                 {downloadError && <p className="text-sm text-red-600">{downloadError}</p>}
               </div>
@@ -1356,13 +1383,13 @@ function BuilderPage({
                 <button
                   disabled
                   className="px-6 py-2 bg-gray-300 text-gray-600 rounded-lg cursor-not-allowed flex items-center gap-2"
-                  title={`${t('builder.required.fill')}: ${requiredMissing.join(', ')}`}
+                  title={`Заполните: ${requiredMissing.join(', ')}`}
                 >
                   <Download size={20} />
-                  {t('builder.required.button')}
+                  Заполните обязательные поля
                 </button>
                 <p className="text-xs text-gray-500">
-                  {t('builder.required.need')}: {requiredMissing.join(', ')}
+                  Необходимо: {requiredMissing.join(', ')}
                 </p>
               </div>
             )}

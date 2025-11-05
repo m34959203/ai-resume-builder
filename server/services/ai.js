@@ -10,10 +10,6 @@
 //   APP_TITLE=AI Resume Builder                              (опционально — попадёт в X-Title)
 //   OR_TIMEOUT_MS=30000                                      (опционально — таймаут, мс)
 //
-// Дополнительно для переводчика (используется самим translator.js):
-//   API_KEY_DEEPSEEK / DEEPSEEK_API_KEY=<ключ DeepSeek>
-//   DEEPSEEK_MODEL=deepseek-chat
-//
 // Модели по умолчанию:
 //   - Быстрая/дешевая:  google/gemma-3-12b-it:free
 //   - «Сложная»/рассуждения: deepseek/deepseek-r1:free
@@ -22,10 +18,7 @@
 //   MODELS, chatLLM, summarizeProfile, recommendFromProfile,
 //   generateCoverLetter, suggestSkills,
 //   polishText, polishMany,
-//   inferSearch,
-//   translateText, translateMany       ← НОВОЕ: прокси к DeepSeek-переводчику
-
-import translator from './translator.js'; // CommonJS → ESM default interop (module.exports как default)
+//   inferSearch  ← НОВОЕ: извлечение "должность • город (KZ) • навыки • опыт" из резюме
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -597,25 +590,6 @@ ${JSON.stringify(profile, null, 2)}
   }
 }
 
-// ---------------------- DeepSeek Translator: публичные прокси -----------------
-
-/**
- * Прокси к DeepSeek-переводчику.
- * translateText(text, { target, source='auto', html=false, temperature, model, ... })
- * Возвращает объект { ok, translated, provider, chunks, cached, ... }.
- */
-export async function translateText(text, options = {}) {
-  // translator сам обрабатывает отсутствие API-ключа (мягкий фолбэк: вернёт исходный текст)
-  return translator.translateText(text, options);
-}
-
-/**
- * Пакетный перевод массива строк. Возвращает массив результатов translateText().
- */
-export async function translateMany(texts, options = {}) {
-  return translator.translateMany(texts, options);
-}
-
 // ---------------------------- Экспорт по умолчанию ----------------------------
 
 export default {
@@ -627,7 +601,5 @@ export default {
   suggestSkills,
   polishText,
   polishMany,
-  inferSearch,
-  translateText,   // ← интеграция translator
-  translateMany,   // ← интеграция translator
+  inferSearch, // ← не забудь экспортировать
 };

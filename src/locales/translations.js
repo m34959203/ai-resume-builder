@@ -110,12 +110,10 @@ export const translations = {
     builder: {
       title: 'Конструктор резюме',
       steps: {
-        personal: 'Личная информация',
+        personal: 'Личные данные',
         experience: 'Опыт работы',
         education: 'Образование',
         skills: 'Навыки',
-        languages: 'Языки',
-        template: 'Шаблон',
         preview: 'Предварительный просмотр'
       },
       
@@ -138,43 +136,29 @@ export const translations = {
       // Опыт работы
       experience: {
         addExperience: 'Добавить опыт',
-        addedExperience: 'Добавленный опыт:',
         company: 'Компания',
-        companyPlaceholder: 'ТОО "Tech Corp"',
+        companyPlaceholder: 'ТОО "Компания"',
         position: 'Должность',
-        positionPlaceholder: 'Frontend Developer',
-        startDate: 'Начало работы',
-        endDate: 'Окончание работы',
-        current: 'Работаю в настоящее время',
-        description: 'Обязанности и достижения',
-        descriptionPlaceholder: '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров',
-        remove: 'Удалить',
-        label: 'Опыт'
+        positionPlaceholder: 'Senior Developer',
+        startDate: 'Начало',
+        endDate: 'Окончание',
+        current: 'По настоящее время',
+        description: 'Описание обязанностей',
+        descriptionPlaceholder: 'Опишите ваши достижения и обязанности...',
+        remove: 'Удалить'
       },
       
       // Образование
       education: {
         addEducation: 'Добавить образование',
-        addedEducation: 'Добавленное образование:',
         institution: 'Учебное заведение',
-        institutionPlaceholder: 'Жезказганский университет имени О.А. Байконурова',
-        level: 'Уровень',
-        levelPlaceholder: 'Выберите',
-        levelOptions: {
-          secondary: 'Среднее',
-          secondarySpecial: 'Среднее специальное',
-          incompleteHigher: 'Неоконченное высшее',
-          higher: 'Высшее',
-          bachelor: 'Бакалавр',
-          master: 'Магистр',
-          mba: 'MBA',
-          candidate: 'Кандидат наук',
-          doctor: 'Доктор наук'
-        },
-        year: 'Год окончания',
-        yearPlaceholder: '2024',
-        specialization: 'Специальность',
-        specializationPlaceholder: 'Программная инженерия',
+        institutionPlaceholder: 'КазНУ им. аль-Фараби',
+        degree: 'Степень',
+        degreePlaceholder: 'Бакалавр',
+        fieldOfStudy: 'Специальность',
+        fieldOfStudyPlaceholder: 'Информационные системы',
+        startDate: 'Начало',
+        endDate: 'Окончание',
         remove: 'Удалить'
       },
       
@@ -182,66 +166,16 @@ export const translations = {
       skills: {
         title: 'Навыки',
         addSkill: 'Добавить навык',
-        skillPlaceholder: 'Например: React, JavaScript, Python',
-        yourSkills: 'Ваши навыки:',
-        aiRecommends: 'AI рекомендует добавить:',
-        aiLoading: 'Подбираем навыки…',
-        aiEmpty: 'Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.',
-        aiRefresh: 'Обновить рекомендации',
+        skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Удалить'
-      },
-      
-      // Языки
-      languages: {
-        title: 'Знание языков',
-        addLanguage: 'Добавить язык',
-        language: 'Язык',
-        languagePlaceholder: 'Английский',
-        level: 'Уровень',
-        levelOptions: {
-          a1: 'A1 — Начальный',
-          a2: 'A2 — Элементарный',
-          b1: 'B1 — Средний',
-          b2: 'B2 — Средне-продвинутый',
-          c1: 'C1 — Продвинутый',
-          c2: 'C2 — В совершенстве'
-        },
-        remove: 'Удалить'
-      },
-      
-      // Шаблоны
-      templates: {
-        modern: 'Современный',
-        minimal: 'Минималистичный'
-      },
-      
-      // Шаблон
-      template: {
-        title: 'Выберите шаблон резюме:',
-        select: 'Выбрать шаблон',
-        description: 'Стильный и профессиональный дизайн',
-        selected: 'Выбрано'
-      },
-      
-      // Предпросмотр
-      preview: {
-        title: 'Предпросмотр резюме',
-        photo: 'Фото',
-        yourName: 'Ваше имя',
-        jobsCount: 'мест работы',
-        educationCount: 'образование',
-        languagesCount: 'языков'
       },
       
       // Кнопки
       buttons: {
         previous: 'Назад',
         next: 'Далее',
-        back: 'Назад',
         generateWithAI: 'Генерировать с ИИ',
         downloadPDF: 'Скачать PDF',
-        downloadingPDF: 'Готовим PDF…',
-        fillRequired: 'Заполните обязательные поля',
         save: 'Сохранить',
         cancel: 'Отмена'
       },
@@ -252,15 +186,7 @@ export const translations = {
         saved: 'Сохранено',
         generating: 'Генерация с помощью ИИ...',
         error: 'Произошла ошибка',
-        fillRequired: 'Заполните обязательные поля',
-        requiredFields: 'Необходимо:'
-      },
-      
-      // PDF
-      pdf: {
-        generateError: 'Не удалось сформировать PDF.',
-        emptyError: 'Пустой PDF (blob.size === 0)',
-        unknownError: 'Неизвестная ошибка'
+        fillRequired: 'Заполните обязательные поля'
       }
     },
     
@@ -297,40 +223,6 @@ export const translations = {
       edit: 'Редактировать',
       save: 'Сохранить',
       back: 'Назад'
-    },
-    
-    // Состояния загрузки
-    loading: {
-      page: 'Загружаем приложение...',
-      pleaseWait: 'Пожалуйста, подождите',
-      component: 'Загрузка...',
-      processing: 'Обработка...',
-      progress: 'Прогресс',
-      aiGenerating: 'ИИ генерирует контент...'
-    },
-    
-    // Ошибки
-    errors: {
-      title: 'Что-то пошло не так',
-      criticalTitle: 'Критическая ошибка',
-      message: 'Мы зафиксировали ошибку и работаем над её устранением. Попробуйте обновить страницу.',
-      criticalMessage: 'Приложение столкнулось с критической ошибкой. Пожалуйста, перезагрузите страницу или вернитесь на главную.',
-      details: 'Детали ошибки',
-      devOnly: 'только в разработке',
-      errorMessage: 'Сообщение',
-      componentStack: 'Стек компонентов',
-      callStack: 'Стек вызовов',
-      tryAgain: 'Попробовать снова',
-      goHome: 'На главную',
-      contactSupport: 'Если проблема повторяется, пожалуйста, свяжитесь с поддержкой',
-      repeated: 'Ошибка повторилась',
-      times: 'раз',
-      whatToTry: 'Что можно попробовать',
-      tip1: 'Обновите страницу (Ctrl + F5 или Cmd + R)',
-      tip2: 'Очистите кэш браузера',
-      tip3: 'Попробуйте использовать режим инкогнито',
-      tip4: 'Проверьте подключение к интернету',
-      tip5: 'Обновите браузер до последней версии'
     }
   },
   
@@ -445,12 +337,10 @@ export const translations = {
     builder: {
       title: 'Түйіндеме құрастырушысы',
       steps: {
-        personal: 'Жеке ақпарат',
+        personal: 'Жеке деректер',
         experience: 'Жұмыс тәжірибесі',
         education: 'Білім',
         skills: 'Дағдылар',
-        languages: 'Тілдер',
-        template: 'Үлгі',
         preview: 'Алдын ала қарау'
       },
       
@@ -458,68 +348,44 @@ export const translations = {
       personal: {
         fullName: 'Толық аты-жөні',
         fullNamePlaceholder: 'Иванов Иван Иванович',
-        position: 'Қалаған лауазым',
-        positionPlaceholder: 'Frontend Developer',
         email: 'Email',
         emailPlaceholder: 'example@email.com',
         phone: 'Телефон',
         phonePlaceholder: '+7 (777) 123-45-67',
         location: 'Қала',
-        locationPlaceholder: 'Алматы',
+        locationPlaceholder: 'Алматы, Қазақстан',
+        title: 'Лауазымы',
+        titlePlaceholder: 'Frontend әзірлеуші',
         summary: 'Өзім туралы',
-        summaryPlaceholder: 'Өзіңіз туралы айтып беріңіз: негізгі құзыреттер мен мақсаттар туралы 2–3 сөйлем…',
-        summaryHint: 'Тәжірибе, 1–2 жетістік және күшті болған стек / сала көрсетіңіз.',
-        age: 'Жас',
-        agePlaceholder: '30',
-        maritalStatus: 'Отбасылық жағдайы',
-        maritalStatusPlaceholder: 'Үйленген / Тұрмысқа шыққан / Бойдақ',
-        children: 'Балалар',
-        childrenPlaceholder: '2 бала / жоқ',
-        driversLicense: 'Жүргізуші куәлігі',
-        driversLicensePlaceholder: 'B санаты',
-        photoRecommendation: 'Фото жүктеу ұсынылады'
+        summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...'
       },
       
       // Опыт работы
       experience: {
         addExperience: 'Тәжірибе қосу',
-        addedExperience: 'Қосылған тәжірибе:',
         company: 'Компания',
-        companyPlaceholder: 'ЖШС "Tech Corp"',
-        position: 'Лауазым',
-        positionPlaceholder: 'Frontend Developer',
-        startDate: 'Жұмыс басталуы',
-        endDate: 'Жұмыс аяқталуы',
-        current: 'Қазіргі уақытта жұмыс істеймін',
-        description: 'Міндеттер мен жетістіктер',
-        descriptionPlaceholder: '• Қосымшаларды әзірлеу және қолдау\n• Өнімділікті оңтайландыру\n• Джуниорларға тәлімгерлік',
-        remove: 'Жою',
-        label: 'Тәжірибе'
+        companyPlaceholder: 'ЖШС "Компания"',
+        position: 'Лауазымы',
+        positionPlaceholder: 'Senior Developer',
+        startDate: 'Басталуы',
+        endDate: 'Аяқталуы',
+        current: 'Қазіргі уақытта',
+        description: 'Міндеттер сипаттамасы',
+        descriptionPlaceholder: 'Жетістіктеріңіз бен міндеттеріңізді сипаттаңыз...',
+        remove: 'Жою'
       },
       
       // Образование
       education: {
         addEducation: 'Білім қосу',
-        addedEducation: 'Қосылған білім:',
         institution: 'Оқу орны',
-        institutionPlaceholder: 'О.Ә. Байқоңыров атындағы Жезқазған университеті',
-        level: 'Деңгей',
-        levelPlaceholder: 'Таңдаңыз',
-        levelOptions: {
-          secondary: 'Орта',
-          secondarySpecial: 'Орта арнайы',
-          incompleteHigher: 'Аяқталмаған жоғары',
-          higher: 'Жоғары',
-          bachelor: 'Бакалавр',
-          master: 'Магистр',
-          mba: 'MBA',
-          candidate: 'Ғылым кандидаты',
-          doctor: 'Ғылым докторы'
-        },
-        year: 'Бітірген жыл',
-        yearPlaceholder: '2024',
-        specialization: 'Мамандық',
-        specializationPlaceholder: 'Бағдарламалық инженерия',
+        institutionPlaceholder: 'Әл-Фараби атындағы ҚазҰУ',
+        degree: 'Дәреже',
+        degreePlaceholder: 'Бакалавр',
+        fieldOfStudy: 'Мамандық',
+        fieldOfStudyPlaceholder: 'Ақпараттық жүйелер',
+        startDate: 'Басталуы',
+        endDate: 'Аяқталуы',
         remove: 'Жою'
       },
       
@@ -527,66 +393,16 @@ export const translations = {
       skills: {
         title: 'Дағдылар',
         addSkill: 'Дағды қосу',
-        skillPlaceholder: 'Мысалы: React, JavaScript, Python',
-        yourSkills: 'Сіздің дағдыларыңыз:',
-        aiRecommends: 'AI қосуды ұсынады:',
-        aiLoading: 'Дағдыларды іріктеп жатырмыз…',
-        aiEmpty: 'Әзірге ұсынар ешнәрсе жоқ — бірнеше негізгі дағдыларды қосыңыз немесе лауазымды көрсетіңіз.',
-        aiRefresh: 'Ұсыныстарды жаңарту',
+        skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Жою'
-      },
-      
-      // Языки
-      languages: {
-        title: 'Тілдерді білу',
-        addLanguage: 'Тіл қосу',
-        language: 'Тіл',
-        languagePlaceholder: 'Ағылшын',
-        level: 'Деңгей',
-        levelOptions: {
-          a1: 'A1 — Бастапқы',
-          a2: 'A2 — Элементарлы',
-          b1: 'B1 — Орта',
-          b2: 'B2 — Орта-жетілдірілген',
-          c1: 'C1 — Жетілдірілген',
-          c2: 'C2 — Кемелдікте'
-        },
-        remove: 'Жою'
-      },
-      
-      // Шаблоны
-      templates: {
-        modern: 'Заманауи',
-        minimal: 'Минималистік'
-      },
-      
-      // Шаблон
-      template: {
-        title: 'Түйіндеме үлгісін таңдаңыз:',
-        select: 'Үлгіні таңдау',
-        description: 'Стильді және кәсіби дизайн',
-        selected: 'Таңдалған'
-      },
-      
-      // Предпросмотр
-      preview: {
-        title: 'Түйіндемені алдын ала қарау',
-        photo: 'Фото',
-        yourName: 'Сіздің атыңыз',
-        jobsCount: 'жұмыс орны',
-        educationCount: 'білім',
-        languagesCount: 'тіл'
       },
       
       // Кнопки
       buttons: {
         previous: 'Артқа',
         next: 'Алға',
-        back: 'Артқа',
-        generateWithAI: 'AI арқылы жасау',
+        generateWithAI: 'AI көмегімен жасау',
         downloadPDF: 'PDF жүктеу',
-        downloadingPDF: 'PDF дайындап жатырмыз…',
-        fillRequired: 'Міндетті өрістерді толтырыңыз',
         save: 'Сақтау',
         cancel: 'Болдырмау'
       },
@@ -597,15 +413,7 @@ export const translations = {
         saved: 'Сақталды',
         generating: 'AI көмегімен жасалуда...',
         error: 'Қате орын алды',
-        fillRequired: 'Міндетті өрістерді толтырыңыз',
-        requiredFields: 'Қажет:'
-      },
-      
-      // PDF
-      pdf: {
-        generateError: 'PDF қалыптастыру мүмкін болмады.',
-        emptyError: 'Бос PDF (blob.size === 0)',
-        unknownError: 'Белгісіз қате'
+        fillRequired: 'Міндетті өрістерді толтырыңыз'
       }
     },
     
@@ -642,40 +450,6 @@ export const translations = {
       edit: 'Өңдеу',
       save: 'Сақтау',
       back: 'Артқа'
-    },
-    
-    // Состояния загрузки
-    loading: {
-      page: 'Қосымшаны жүктеп жатырмыз...',
-      pleaseWait: 'Күтіңіз',
-      component: 'Жүктелуде...',
-      processing: 'Өңдеу...',
-      progress: 'Прогресс',
-      aiGenerating: 'AI мазмұн жасап жатыр...'
-    },
-    
-    // Ошибки
-    errors: {
-      title: 'Бірдеңе дұрыс болмады',
-      criticalTitle: 'Сыни қате',
-      message: 'Біз қатені тіркедік және оны жою үстіндеміз. Бетті жаңартып көріңіз.',
-      criticalMessage: 'Қосымша сыни қатеге тап болды. Бетті қайта жүктеңіз немесе басты бетке оралыңыз.',
-      details: 'Қате туралы мәліметтер',
-      devOnly: 'тек әзірлеуде',
-      errorMessage: 'Хабарлама',
-      componentStack: 'Компоненттер стегі',
-      callStack: 'Шақырулар стегі',
-      tryAgain: 'Қайталап көру',
-      goHome: 'Басты бетке',
-      contactSupport: 'Мәселе қайталанса, қолдау қызметіне хабарласыңыз',
-      repeated: 'Қате қайталанды',
-      times: 'рет',
-      whatToTry: 'Не істеуге болады',
-      tip1: 'Бетті жаңартыңыз (Ctrl + F5 немесе Cmd + R)',
-      tip2: 'Браузер кэшін тазалаңыз',
-      tip3: 'Жасырын режимді пайдаланып көріңіз',
-      tip4: 'Интернет байланысын тексеріңіз',
-      tip5: 'Браузерді соңғы нұсқаға дейін жаңартыңыз'
     }
   },
   
@@ -794,8 +568,6 @@ export const translations = {
         experience: 'Work Experience',
         education: 'Education',
         skills: 'Skills',
-        languages: 'Languages',
-        template: 'Template',
         preview: 'Preview'
       },
       
@@ -803,68 +575,44 @@ export const translations = {
       personal: {
         fullName: 'Full Name',
         fullNamePlaceholder: 'John Smith',
-        position: 'Desired Position',
-        positionPlaceholder: 'Frontend Developer',
         email: 'Email',
         emailPlaceholder: 'example@email.com',
         phone: 'Phone',
         phonePlaceholder: '+1 (555) 123-4567',
-        location: 'City',
-        locationPlaceholder: 'New York',
+        location: 'Location',
+        locationPlaceholder: 'New York, USA',
+        title: 'Job Title',
+        titlePlaceholder: 'Frontend Developer',
         summary: 'About',
-        summaryPlaceholder: 'Tell about yourself: 2–3 sentences about key competencies and goals…',
-        summaryHint: 'Mention experience, 1–2 achievements, and the stack/field where you excel.',
-        age: 'Age',
-        agePlaceholder: '30',
-        maritalStatus: 'Marital Status',
-        maritalStatusPlaceholder: 'Married / Single',
-        children: 'Children',
-        childrenPlaceholder: '2 children / none',
-        driversLicense: 'Driver\'s License',
-        driversLicensePlaceholder: 'Category B',
-        photoRecommendation: 'Recommended to upload photo'
+        summaryPlaceholder: 'Describe your experience and goals...'
       },
       
       // Work experience
       experience: {
         addExperience: 'Add Experience',
-        addedExperience: 'Added experience:',
         company: 'Company',
-        companyPlaceholder: 'Tech Corp LLC',
+        companyPlaceholder: 'Company LLC',
         position: 'Position',
-        positionPlaceholder: 'Frontend Developer',
+        positionPlaceholder: 'Senior Developer',
         startDate: 'Start Date',
         endDate: 'End Date',
-        current: 'Currently working',
-        description: 'Responsibilities and Achievements',
-        descriptionPlaceholder: '• Application development and support\n• Performance optimization\n• Junior mentoring',
-        remove: 'Remove',
-        label: 'Experience'
+        current: 'Present',
+        description: 'Job Description',
+        descriptionPlaceholder: 'Describe your achievements and responsibilities...',
+        remove: 'Remove'
       },
       
       // Education
       education: {
         addEducation: 'Add Education',
-        addedEducation: 'Added education:',
         institution: 'Institution',
-        institutionPlaceholder: 'Zhezkazgan University',
-        level: 'Level',
-        levelPlaceholder: 'Select',
-        levelOptions: {
-          secondary: 'Secondary',
-          secondarySpecial: 'Secondary Special',
-          incompleteHigher: 'Incomplete Higher',
-          higher: 'Higher',
-          bachelor: 'Bachelor',
-          master: 'Master',
-          mba: 'MBA',
-          candidate: 'PhD Candidate',
-          doctor: 'PhD'
-        },
-        year: 'Graduation Year',
-        yearPlaceholder: '2024',
-        specialization: 'Specialization',
-        specializationPlaceholder: 'Software Engineering',
+        institutionPlaceholder: 'University Name',
+        degree: 'Degree',
+        degreePlaceholder: 'Bachelor',
+        fieldOfStudy: 'Field of Study',
+        fieldOfStudyPlaceholder: 'Computer Science',
+        startDate: 'Start Date',
+        endDate: 'End Date',
         remove: 'Remove'
       },
       
@@ -872,66 +620,16 @@ export const translations = {
       skills: {
         title: 'Skills',
         addSkill: 'Add Skill',
-        skillPlaceholder: 'E.g.: React, JavaScript, Python',
-        yourSkills: 'Your skills:',
-        aiRecommends: 'AI recommends adding:',
-        aiLoading: 'Selecting skills…',
-        aiEmpty: 'Nothing to suggest yet — add a few key skills or specify position.',
-        aiRefresh: 'Refresh suggestions',
+        skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Remove'
-      },
-      
-      // Languages
-      languages: {
-        title: 'Language Proficiency',
-        addLanguage: 'Add Language',
-        language: 'Language',
-        languagePlaceholder: 'English',
-        level: 'Level',
-        levelOptions: {
-          a1: 'A1 — Beginner',
-          a2: 'A2 — Elementary',
-          b1: 'B1 — Intermediate',
-          b2: 'B2 — Upper Intermediate',
-          c1: 'C1 — Advanced',
-          c2: 'C2 — Proficiency'
-        },
-        remove: 'Remove'
-      },
-      
-      // Templates
-      templates: {
-        modern: 'Modern',
-        minimal: 'Minimal'
-      },
-      
-      // Template
-      template: {
-        title: 'Choose resume template:',
-        select: 'Select template',
-        description: 'Stylish and professional design',
-        selected: 'Selected'
-      },
-      
-      // Preview
-      preview: {
-        title: 'Resume Preview',
-        photo: 'Photo',
-        yourName: 'Your Name',
-        jobsCount: 'jobs',
-        educationCount: 'education',
-        languagesCount: 'languages'
       },
       
       // Buttons
       buttons: {
         previous: 'Previous',
         next: 'Next',
-        back: 'Back',
         generateWithAI: 'Generate with AI',
         downloadPDF: 'Download PDF',
-        downloadingPDF: 'Preparing PDF…',
-        fillRequired: 'Fill required fields',
         save: 'Save',
         cancel: 'Cancel'
       },
@@ -942,15 +640,7 @@ export const translations = {
         saved: 'Saved',
         generating: 'Generating with AI...',
         error: 'An error occurred',
-        fillRequired: 'Fill required fields',
-        requiredFields: 'Required:'
-      },
-      
-      // PDF
-      pdf: {
-        generateError: 'Failed to generate PDF.',
-        emptyError: 'Empty PDF (blob.size === 0)',
-        unknownError: 'Unknown error'
+        fillRequired: 'Fill in required fields'
       }
     },
     
@@ -987,40 +677,6 @@ export const translations = {
       edit: 'Edit',
       save: 'Save',
       back: 'Back'
-    },
-    
-    // Loading states
-    loading: {
-      page: 'Loading application...',
-      pleaseWait: 'Please wait',
-      component: 'Loading...',
-      processing: 'Processing...',
-      progress: 'Progress',
-      aiGenerating: 'AI is generating content...'
-    },
-    
-    // Errors
-    errors: {
-      title: 'Something went wrong',
-      criticalTitle: 'Critical error',
-      message: 'We have recorded the error and are working to fix it. Try refreshing the page.',
-      criticalMessage: 'The application encountered a critical error. Please reload the page or return to the home page.',
-      details: 'Error details',
-      devOnly: 'development only',
-      errorMessage: 'Message',
-      componentStack: 'Component stack',
-      callStack: 'Call stack',
-      tryAgain: 'Try again',
-      goHome: 'Go home',
-      contactSupport: 'If the problem persists, please contact support',
-      repeated: 'Error repeated',
-      times: 'times',
-      whatToTry: 'What you can try',
-      tip1: 'Refresh the page (Ctrl + F5 or Cmd + R)',
-      tip2: 'Clear browser cache',
-      tip3: 'Try using incognito mode',
-      tip4: 'Check internet connection',
-      tip5: 'Update browser to the latest version'
     }
   }
 };
