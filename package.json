@@ -18,13 +18,13 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
-    "react-helmet-async": "^2.0.5"  // ← This will be added
+    "react-helmet-async": "^2.0.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.15",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.21",
-    "babel-plugin-transform-console": "^6.9.4",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "postcss": "^8.5.6",
