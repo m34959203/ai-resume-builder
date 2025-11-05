@@ -669,7 +669,7 @@ export const pdfLabels = {
  * const labels = getLabels('ru');
  * console.log(labels.experience); // 'Опыт работы'
  */
-export const getLabels = (language = DEFAULT_PDF_LANGUAGE) => {
+export function getLabels(language = DEFAULT_PDF_LANGUAGE) {
   // Validate language code
   if (!language || typeof language !== 'string') {
     console.warn('[PDFLabels] Invalid language, using default:', DEFAULT_PDF_LANGUAGE);
@@ -680,7 +680,7 @@ export const getLabels = (language = DEFAULT_PDF_LANGUAGE) => {
 
   // Return labels or fallback to default
   return pdfLabels[lang] || pdfLabels[DEFAULT_PDF_LANGUAGE];
-};
+}
 
 /**
  * Get specific label by key (supports nested keys)
@@ -693,7 +693,7 @@ export const getLabels = (language = DEFAULT_PDF_LANGUAGE) => {
  * getLabel('experience', 'ru'); // 'Опыт работы'
  * getLabel('languageLevels.fluent', 'en'); // 'Fluent'
  */
-export const getLabel = (key, language = DEFAULT_PDF_LANGUAGE) => {
+export function getLabel(key, language = DEFAULT_PDF_LANGUAGE) {
   if (!key || typeof key !== 'string') {
     console.warn('[PDFLabels] Invalid key:', key);
     return key || '';
@@ -720,7 +720,7 @@ export const getLabel = (key, language = DEFAULT_PDF_LANGUAGE) => {
 
   // Simple key lookup
   return labels[key] || key;
-};
+}
 
 /**
  * Get month name
@@ -734,7 +734,7 @@ export const getLabel = (key, language = DEFAULT_PDF_LANGUAGE) => {
  * getMonthName(0, 'ru', false); // 'Январь'
  * getMonthName(0, 'en', true);  // 'Jan'
  */
-export const getMonthName = (monthIndex, language = DEFAULT_PDF_LANGUAGE, short = false) => {
+export function getMonthName(monthIndex, language = DEFAULT_PDF_LANGUAGE, short = false) {
   const labels = getLabels(language);
   const months = short ? labels.months?.short : labels.months?.long;
 
@@ -743,7 +743,7 @@ export const getMonthName = (monthIndex, language = DEFAULT_PDF_LANGUAGE, short 
   }
 
   return months[monthIndex];
-};
+}
 
 /**
  * Format date in PDF
@@ -757,7 +757,7 @@ export const getMonthName = (monthIndex, language = DEFAULT_PDF_LANGUAGE, short 
  * formatPDFDate(new Date('2024-01-15'), 'en'); // 'January 2024'
  * formatPDFDate('2024-01-15', 'ru', true);     // 'Янв 2024'
  */
-export const formatPDFDate = (date, language = DEFAULT_PDF_LANGUAGE, shortMonth = false) => {
+export function formatPDFDate(date, language = DEFAULT_PDF_LANGUAGE, shortMonth = false) {
   if (!date) return '';
 
   try {
@@ -775,7 +775,7 @@ export const formatPDFDate = (date, language = DEFAULT_PDF_LANGUAGE, shortMonth 
     console.error('[PDFLabels] Date formatting error:', error);
     return date.toString();
   }
-};
+}
 
 /**
  * Format date range for PDF
@@ -789,6 +789,50 @@ export const formatPDFDate = (date, language = DEFAULT_PDF_LANGUAGE, shortMonth 
  * formatDateRange('2020-01-01', '2024-01-01', 'en'); // 'January 2020 to January 2024'
  * formatDateRange('2020-01-01', null, 'ru');         // 'Январь 2020 по Настоящее время'
  */
-export const formatDateRange = (startDate, endDate, language = DEFAULT_PDF_LANGUAGE) => {
+export function formatDateRange(startDate, endDate, language = DEFAULT_PDF_LANGUAGE) {
   const labels = getLabels(language);
-  const start = formatPDFDate(startDate
+  const start = formatPDFDate(startDate, language, true);
+  
+  if (!endDate) {
+    return `${start} ${labels.to} ${labels.present}`;
+  }
+  
+  const end = formatPDFDate(endDate, language, true);
+  return `${start} ${labels.to} ${end}`;
+}
+
+/**
+ * Validate language code
+ * 
+ * @param {string} language - Language code to validate
+ * @returns {boolean} True if valid
+ */
+export function isValidPDFLanguage(language) {
+  return language && SUPPORTED_PDF_LANGUAGES.includes(language.toLowerCase());
+}
+
+/**
+ * Get supported languages list
+ * 
+ * @returns {Array} Array of supported language codes
+ */
+export function getSupportedLanguages() {
+  return [...SUPPORTED_PDF_LANGUAGES];
+}
+
+// ============================================================================
+// DEFAULT EXPORT
+// ============================================================================
+
+export default {
+  pdfLabels,
+  getLabels,
+  getLabel,
+  getMonthName,
+  formatPDFDate,
+  formatDateRange,
+  isValidPDFLanguage,
+  getSupportedLanguages,
+  SUPPORTED_PDF_LANGUAGES,
+  DEFAULT_PDF_LANGUAGE,
+};
