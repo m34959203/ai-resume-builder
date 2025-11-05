@@ -114,7 +114,7 @@ const getInitialLanguage = () => {
  * @param {React.ReactNode} props.children - Child components
  * @returns {JSX.Element}
  */
-export const LanguageProvider = ({ children }) => {
+export function LanguageProvider({ children }) {
   // Initialize language state
   const [language, setLanguage] = useState(getInitialLanguage);
 
@@ -222,7 +222,7 @@ export const LanguageProvider = ({ children }) => {
       {children}
     </LanguageContext.Provider>
   );
-};
+}
 
 // ============================================================================
 // CUSTOM HOOK
@@ -239,7 +239,7 @@ export const LanguageProvider = ({ children }) => {
  * const { language, changeLanguage } = useLanguage();
  * changeLanguage('es');
  */
-export const useLanguage = () => {
+export function useLanguage() {
   const context = useContext(LanguageContext);
   
   if (!context) {
@@ -250,14 +250,14 @@ export const useLanguage = () => {
   }
   
   return context;
-};
+}
 
 // ============================================================================
 // EXPORTS
 // ============================================================================
 
-// Re-export language constants from translations module for convenience
-// This allows importing from either location for backward compatibility
+// Re-export language constants from translations module
 export { AVAILABLE_LANGUAGES, LANGUAGE_CODES, DEFAULT_LANGUAGE };
 
+// Default export
 export default LanguageProvider;
