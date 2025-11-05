@@ -25,7 +25,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
-import { useLanguage, AVAILABLE_LANGUAGES } from '../context/LanguageContext';
+import { AVAILABLE_LANGUAGES } from '../locales/translations';
 import ResumeLanguageSelector from './ResumeLanguageSelector';
 
 /* ---------- Константы ---------- */
@@ -512,7 +512,6 @@ function BuilderPage({
   setCurrentPage,
 }) {
   const { t, language: interfaceLanguage } = useTranslation();
-  const { language } = useLanguage();
   const [currentStep, setCurrentStep] = useState(0);
   const headingRef = useRef(null);
 
@@ -807,8 +806,8 @@ function BuilderPage({
       .trim()
       .replace(/\s+/g, '_')
       .replace(/[^\w\-]+/g, '');
-    return `${base || 'resume'}_${language}.pdf`;
-  }, [form.fullName, language]);
+    return `${base || 'resume'}_${interfaceLanguage}.pdf`;
+  }, [form.fullName, interfaceLanguage]);
 
   // Валидация
   const validateStep = useCallback((step) => {
@@ -913,7 +912,7 @@ function BuilderPage({
         <ResumePDF 
           profile={exportProfile} 
           template={selectedTemplate}
-          language={language}
+          language={interfaceLanguage}
         />
       ).toBlob();
       
@@ -943,7 +942,7 @@ function BuilderPage({
     commitLanguageDraft,
     buildExportProfile,
     selectedTemplate,
-    language,
+    interfaceLanguage,
     fileName,
     t,
   ]);
@@ -965,8 +964,8 @@ function BuilderPage({
           <ResumeLanguageSelector
             resumeData={form}
             onDataChange={setForm}
-            onLanguageChange={(newLang, langInfo) => {
-              console.log('Resume language changed to:', newLang, langInfo);
+            onLanguageChange={(lang, langInfo) => {
+              console.log('Resume language changed to:', lang, langInfo);
             }}
           />
 
@@ -1126,11 +1125,436 @@ function BuilderPage({
               </div>
             )}
 
-            {/* Остальные шаги - такие же как в оригинале */}
-            {/* Для краткости я их пропустил, но в реальном коде они должны быть */}
-            
-            {/* Добавьте все остальные шаги (1-5) из вашего оригинального кода здесь */}
-            
+            {/* ШАГ 1: Опыт работы */}
+            {currentStep === 1 && (
+              <div className="space-y-6">
+                <div className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 shadow-sm">
+                  <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2 text-lg">
+                    <Briefcase size={20} />
+                    {t('builder.experience.add')}
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label={t('builder.experience.position') + ' *'}
+                      value={newExperience.position}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, position: e.target.value }))
+                      }
+                      placeholder={t('builder.experience.positionPlaceholder')}
+                    />
+                    <Input
+                      label={t('builder.experience.company') + ' *'}
+                      value={newExperience.company}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, company: e.target.value }))
+                      }
+                      placeholder={t('builder.experience.companyPlaceholder')}
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label={t('builder.experience.startDate') + ' *'}
+                      type="month"
+                      value={newExperience.startDate}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, startDate: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label={t('builder.experience.endDate')}
+                      type="month"
+                      value={newExperience.endDate}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({ ...p, endDate: e.target.value }))
+                      }
+                      disabled={newExperience.currentlyWorking}
+                      className={newExperience.currentlyWorking ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newExperience.currentlyWorking}
+                      onChange={(e) =>
+                        setNewExperience((p) => ({
+                          ...p,
+                          currentlyWorking: e.target.checked,
+                          endDate: e.target.checked ? '' : p.endDate,
+                        }))
+                      }
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium">{t('builder.experience.current')}</span>
+                  </label>
+
+                  <Textarea
+                    label={t('builder.experience.responsibilities')}
+                    rows={5}
+                    value={newExperience.responsibilities}
+                    onChange={(e) =>
+                      setNewExperience((p) => ({ ...p, responsibilities: e.target.value }))
+                    }
+                    placeholder={t('builder.experience.responsibilitiesPlaceholder')}
+                    maxLength={1000}
+                    showCount
+                  />
+
+                  <button
+                    onClick={addExperience}
+                    disabled={!canCommitExperience(newExperience)}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium transition-all"
+                  >
+                    <Plus size={18} />
+                    {t('builder.experience.addButton')}
+                  </button>
+                </div>
+
+                {form.experience.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <CheckCircle size={20} className="text-green-600" />
+                      {t('builder.experience.added')}:
+                    </h3>
+                    {form.experience.map((exp, idx) => (
+                      <div key={exp.id || idx} className="border-2 border-gray-200 rounded-xl p-5 bg-white hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-lg text-gray-900">{exp.position}</h4>
+                            <p className="text-sm text-gray-600 mt-1">
+                              <span className="font-medium">{exp.company}</span> • {fmtMonth(exp.startDate)} —{' '}
+                              {exp.currentlyWorking ? t('builder.experience.present') : fmtMonth(exp.endDate)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => removeExperience(exp.id ?? idx)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            aria-label={t('common.delete')}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+
+                        {exp.responsibilities && (
+                          <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed mt-3 pl-4 border-l-2 border-blue-200">
+                            {exp.responsibilities}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ШАГ 2: Образование */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                <div className="space-y-4 bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-6 shadow-sm">
+                  <h3 className="font-semibold text-purple-900 mb-3 flex items-center gap-2 text-lg">
+                    <BookOpen size={20} />
+                    {t('builder.education.add')}
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Select
+                      label={t('builder.education.degree') + ' *'}
+                      value={newEducation.level}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, level: e.target.value }))
+                      }
+                    >
+                      <option value="">{t('common.select')}</option>
+                      {[
+                        t('builder.education.levels.secondary'),
+                        t('builder.education.levels.vocational'),
+                        t('builder.education.levels.incomplete'),
+                        t('builder.education.levels.bachelor'),
+                        t('builder.education.levels.master'),
+                        t('builder.education.levels.mba'),
+                        t('builder.education.levels.phd'),
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      label={t('builder.education.institution') + ' *'}
+                      value={newEducation.institution}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, institution: e.target.value }))
+                      }
+                      placeholder={t('builder.education.institutionPlaceholder')}
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input
+                      label={t('builder.education.graduationYear')}
+                      type="number"
+                      min="1950"
+                      max="2035"
+                      value={newEducation.year}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, year: e.target.value }))
+                      }
+                      placeholder="2024"
+                    />
+                    <Input
+                      label={t('builder.education.field')}
+                      value={newEducation.specialization}
+                      onChange={(e) =>
+                        setNewEducation((p) => ({ ...p, specialization: e.target.value }))
+                      }
+                      placeholder={t('builder.education.fieldPlaceholder')}
+                    />
+                  </div>
+
+                  <button
+                    onClick={addEducation}
+                    disabled={!canCommitEducation(newEducation)}
+                    className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium transition-all"
+                  >
+                    <Plus size={18} />
+                    {t('builder.education.addButton')}
+                  </button>
+                </div>
+
+                {form.education.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <CheckCircle size={20} className="text-green-600" />
+                      {t('builder.education.added')}:
+                    </h3>
+                    {form.education.map((edu, idx) => (
+                      <div key={edu.id || idx} className="border-2 border-gray-200 rounded-xl p-5 bg-white hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-lg text-gray-900">{edu.level}</h4>
+                            <p className="text-sm text-gray-600 mt-1">
+                              <span className="font-medium">{edu.institution}</span>
+                              {edu.year && <span> • {edu.year}</span>}
+                            </p>
+                            {edu.specialization && (
+                              <p className="text-sm text-gray-700 mt-2">{edu.specialization}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removeEducation(edu.id ?? idx)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            aria-label={t('common.delete')}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ШАГ 3: Навыки */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-3 text-gray-700">
+                    {t('builder.skills.add')}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newSkill}
+                      onChange={(e) => setNewSkill(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+                      className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      placeholder={t('builder.skills.placeholder')}
+                    />
+                    <button
+                      onClick={addSkill}
+                      disabled={!newSkill.trim()}
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all font-medium"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                {form.skills.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
+                      <CheckCircle size={20} className="text-green-600" />
+                      {t('builder.skills.your')}:
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {form.skills.map((skill, idx) => (
+                        <span
+                          key={`${skill}-${idx}`}
+                          className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center gap-2 font-medium hover:bg-blue-200 transition-colors"
+                        >
+                          {skill}
+                          <button
+                            onClick={() => removeSkill(idx)}
+                            className="hover:text-blue-900 transition-colors"
+                            aria-label={`${t('common.delete')} ${skill}`}
+                          >
+                            <X size={16} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-6 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="text-purple-600" size={20} />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-purple-900 mb-3">
+                          {t('builder.skills.aiRecommends')}:
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {aiLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <Loader className="animate-spin" size={16} />
+                              {t('builder.skills.aiLoading')}
+                            </div>
+                          ) : aiSkillHints.length ? (
+                            aiSkillHints.map((skill) => (
+                              <button
+                                key={skill}
+                                onClick={() =>
+                                  setForm((p) =>
+                                    p.skills.includes(skill)
+                                      ? p
+                                      : {
+                                          ...p,
+                                          skills: uniqCaseInsensitive([...p.skills, skill]),
+                                        }
+                                  )
+                                }
+                                className="px-3 py-1.5 bg-white border-2 border-purple-300 text-purple-700 rounded-full text-sm hover:bg-purple-100 font-medium transition-all"
+                              >
+                                + {skill}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-600">
+                              {t('builder.skills.noSuggestions')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => rebuildHints(1)}
+                      className="px-3 py-2 text-sm border-2 border-purple-300 rounded-lg hover:bg-purple-100 disabled:opacity-50 transition-all"
+                      disabled={aiLoading}
+                      title={t('builder.skills.refresh')}
+                    >
+                      <RefreshCw size={18} className={aiLoading ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ШАГ 4: Языки */}
+            {currentStep === 4 && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-xl p-6 shadow-sm">
+                  <h3 className="font-semibold text-indigo-900 mb-4 flex items-center gap-2 text-lg">
+                    <Globe size={20} />
+                    {t('builder.languages.add')}
+                  </h3>
+
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <Input
+                      label={t('builder.languages.languageName') + ' *'}
+                      value={newLanguage.language}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({ ...p, language: e.target.value }))
+                      }
+                      placeholder={t('builder.languages.languagePlaceholder')}
+                    />
+                    <Select
+                      label={t('builder.languages.proficiency') + ' *'}
+                      value={newLanguage.level}
+                      onChange={(e) =>
+                        setNewLanguage((p) => ({ ...p, level: e.target.value }))
+                      }
+                    >
+                      {[
+                        t('builder.languages.levels.basic'),
+                        t('builder.languages.levels.intermediate'),
+                        t('builder.languages.levels.advanced'),
+                        t('builder.languages.levels.fluent'),
+                        t('builder.languages.levels.native'),
+                      ].map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <button
+                    onClick={addLanguage}
+                    disabled={!isLanguageDraftFilled(newLanguage)}
+                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium transition-all"
+                  >
+                    <Plus size={18} />
+                    {t('builder.languages.addButton')}
+                  </button>
+                </div>
+
+                {(form.languages || []).length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold mb-3 text-lg flex items-center gap-2">
+                      <CheckCircle size={20} className="text-green-600" />
+                      {t('builder.languages.added')}:
+                    </h3>
+                    {form.languages.map((l, idx) => (
+                      <div
+                        key={l.id || idx}
+                        className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-xl bg-white hover:shadow-md transition-shadow"
+                      >
+                        <div>
+                          <span className="font-semibold text-gray-900 text-lg">{l.language}</span>
+                          <span className="text-gray-600 text-sm ml-3">— {l.level}</span>
+                        </div>
+                        <button
+                          onClick={() => removeLanguage(l.id ?? idx)}
+                          className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                          aria-label={`${t('common.delete')} ${l.language}`}
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ШАГ 5: Шаблон */}
+            {currentStep === 5 && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-semibold mb-6 text-xl">{t('builder.template.choose')}:</h3>
+                  <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} templates={templates} />
+                </div>
+
+                <ResumePreview profile={form} t={t} />
+              </div>
+            )}
           </div>
 
           {/* Навигация */}
