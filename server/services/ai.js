@@ -2,7 +2,8 @@
  * AI Service - OpenRouter Integration
  * 
  * Provides AI-powered features for resume building:
- * - Text translation (EN, KK, RU)
+ * - Text translation (Gemini 2.0 Flash) - EN, KK, RU
+ * - Resume analysis (DeepSeek R1) - Deep reasoning
  * - Content generation and improvement
  * - Career recommendations
  * - Skill suggestions
@@ -19,9 +20,14 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 export const MODELS = {
-  primary: process.env.OPENROUTER_MODEL_PRIMARY || 'google/gemma-3-12b-it:free',
-  complex: process.env.OPENROUTER_MODEL_COMPLEX || 'deepseek/deepseek-r1:free',
-  translate: process.env.OPENROUTER_MODEL_TRANSLATE || 'google/gemma-3-12b-it:free',
+  // DeepSeek R1 - для анализа резюме, сложных рекомендаций, глубокого мышления
+  reasoning: process.env.OPENROUTER_MODEL_COMPLEX || 'deepseek/deepseek-r1:free',
+  
+  // Gemini 2.0 Flash - для быстрого перевода и простых задач
+  translation: process.env.OPENROUTER_MODEL_TRANSLATE || 'google/gemini-2.0-flash-exp:free',
+  
+  // Основная модель для стандартных задач
+  primary: process.env.OPENROUTER_MODEL_PRIMARY || 'google/gemini-2.0-flash-exp:free',
 };
 
 const DEFAULT_TIMEOUT = Math.max(
@@ -35,35 +41,63 @@ const LANGUAGE_NAMES = {
   en: 'English',
   kk: 'Kazakh (Қазақша)',
   ru: 'Russian (Русский)',
+  es: 'Spanish (Español)',
+  fr: 'French (Français)',
+  de: 'German (Deutsch)',
+  zh: 'Chinese (中文)',
 };
 
 const SYSTEM_PROMPTS = {
   en: {
-    translator: 'You are a professional translator. Translate accurately and naturally, preserving tone and context.',
-    summarizer: 'You are a career consultant assistant. Write concisely and professionally in English. Maximum 3-4 sentences.',
-    recommender: 'You are a career expert. Always return ONLY minified JSON without comments or explanations.',
-    coverLetter: 'You are a career assistant. Write in English, business style, 150-220 words, no fluff, with achievement examples.',
-    skillSuggester: 'You are a concise skill development assistant. Reply only with a list, comma-separated, no explanations.',
-    textPolisher: 'You are a strict English editor. Fix spelling and punctuation without changing meaning.',
-    searchInferrer: 'You are a career assistant. From resume JSON, return ONLY valid JSON object for job search in Kazakhstan.',
+    translator: 'You are a professional translator specializing in resume and business content. Translate accurately and naturally from one language to another, preserving professional tone, formatting, and context. Return ONLY the translated text without explanations.',
+    
+    summarizer: 'You are an expert career consultant assistant. Write concise, professional summaries in English. Maximum 3-4 sentences. Focus on key strengths, experience, and career goals.',
+    
+    recommender: 'You are a career development expert with deep knowledge of job markets. Always return ONLY valid, minified JSON without comments, explanations, or markdown formatting.',
+    
+    coverLetter: 'You are a professional career assistant specializing in cover letters. Write in English, business style, 150-220 words. Focus on achievements and specific examples. No generic phrases.',
+    
+    skillSuggester: 'You are a concise skill development advisor. Reply only with a comma-separated list of skills. No explanations, no numbering, no additional text.',
+    
+    textPolisher: 'You are a strict English editor. Fix grammar, spelling, and punctuation while preserving the original meaning and professional tone.',
+    
+    searchInferrer: 'You are a career assistant. Analyze the resume and return ONLY a valid JSON object for job search parameters in Kazakhstan job market.',
+    
+    analyzer: 'You are an expert resume analyst. Provide detailed, actionable feedback on resume content, structure, and optimization for ATS systems.',
   },
   kk: {
-    translator: 'Сіз кәсіби аудармашысыз. Мағынасы мен контекстін сақтай отырып, дәл және табиғи аударыңыз.',
-    summarizer: 'Сіз мансап кеңесшісінің көмекшісісіз. Қысқа және кәсіби жазыңыз. Максимум 3-4 сөйлем.',
-    recommender: 'Сіз мансап бойынша сарапшысыз. Әрқашан ТЕК минификацияланған JSON қайтарыңыз, түсініктемелерсіз.',
-    coverLetter: 'Сіз мансап көмекшісісіз. Қазақ тілінде, іскерлік стильде, 150-220 сөз, қысқа, жетістіктер мысалдарымен жазыңыз.',
-    skillSuggester: 'Сіз дағдыларды дамыту бойынша қысқа көмекшісіз. Тек тізіммен, үтірмен бөлінген, түсініктемесіз жауап беріңіз.',
-    textPolisher: 'Сіз қатаң қазақ тілі редакторысыз. Мағынасын өзгертпей орфографияны және пунктуацияны түзетіңіз.',
-    searchInferrer: 'Сіз мансап көмекшісісіз. Резюме JSON-нан Қазақстандағы жұмыс іздеу үшін ТЕК жарамды JSON объектін қайтарыңыз.',
+    translator: 'Сіз резюме және іскери мазмұнға маманданған кәсіби аудармашысыз. Бір тілден екінші тілге кәсіби үнді, форматты және контекстті сақтай отырып дәл және табиғи аударыңыз. Түсініктемелерсіз ТЕК аударылған мәтінді қайтарыңыз.',
+    
+    summarizer: 'Сіз мансап кеңесшісінің сарапшысыз. Қазақ тілінде қысқа, кәсіби түйіндемелер жазыңыз. Максимум 3-4 сөйлем. Негізгі күшті жақтарға, тәжірибеге және мансаптық мақсаттарға назар аударыңыз.',
+    
+    recommender: 'Сіз жұмыс нарығы туралы терең білімі бар мансапты дамыту сарапшысыз. Әрқашан түсініктемелерсіз, түсіндірмелерсіз немесе markdown форматтаусыз ТЕК жарамды, минификацияланған JSON қайтарыңыз.',
+    
+    coverLetter: 'Сіз сүйемелдеу хаттарына маманданған кәсіби мансап көмекшісісіз. Қазақ тілінде, іскерлік стильде, 150-220 сөз жазыңыз. Жетістіктер мен нақты мысалдарға назар аударыңыз. Жалпы фразалар жоқ.',
+    
+    skillSuggester: 'Сіз дағдыларды дамыту бойынша қысқаша кеңесші боласыз. Тек үтірмен бөлінген дағдылар тізімімен жауап беріңіз. Түсініктемелер жоқ, нөмірлеу жоқ, қосымша мәтін жоқ.',
+    
+    textPolisher: 'Сіз қатаң қазақ тілінің редакторысыз. Түпнұсқа мағынасы мен кәсіби үнді сақтай отырып грамматиканы, орфографияны және пунктуацияны түзетіңіз.',
+    
+    searchInferrer: 'Сіз мансап көмекшісісіз. Резюмені талдаңыз және Қазақстан жұмыс нарығындағы жұмыс іздеу параметрлері үшін ТЕК жарамды JSON объектін қайтарыңыз.',
+    
+    analyzer: 'Сіз резюмені талдау сарапшысыз. ATS жүйелері үшін резюме мазмұны, құрылымы және оңтайландыру бойынша егжей-тегжейлі, іс-қимылды кері байланыс беріңіз.',
   },
   ru: {
-    translator: 'Ты профессиональный переводчик. Переводи точно и естественно, сохраняя тон и контекст.',
-    summarizer: 'Ты помощник карьерного консультанта. Пиши кратко и профессионально на русском. Максимум 3-4 предложения.',
-    recommender: 'Ты эксперт по карьере. Всегда возвращай ТОЛЬКО минифицированный JSON без комментариев и пояснений.',
-    coverLetter: 'Ты карьерный ассистент. Пиши на русском, деловым стилем, 150-220 слов, без воды, с примерами достижений.',
-    skillSuggester: 'Ты лаконичный ассистент по развитию навыков. Отвечай только списком, через запятую, без пояснений.',
-    textPolisher: 'Ты строгий редактор на русском языке. Исправляй орфографию и пунктуацию, не меняя смысл.',
-    searchInferrer: 'Ты карьерный ассистент. По JSON резюме верни ONLY валидный JSON-объект для поиска вакансий в Казахстане.',
+    translator: 'Ты профессиональный переводчик, специализирующийся на резюме и деловом контенте. Переводи точно и естественно с одного языка на другой, сохраняя профессиональный тон, форматирование и контекст. Возвращай ТОЛЬКО переведенный текст без пояснений.',
+    
+    summarizer: 'Ты эксперт-консультант по карьере. Пиши краткие, профессиональные резюме на русском языке. Максимум 3-4 предложения. Фокус на ключевых сильных сторонах, опыте и карьерных целях.',
+    
+    recommender: 'Ты эксперт по развитию карьеры с глубоким знанием рынка труда. Всегда возвращай ТОЛЬКО валидный, минифицированный JSON без комментариев, пояснений или markdown форматирования.',
+    
+    coverLetter: 'Ты профессиональный карьерный ассистент, специализирующийся на сопроводительных письмах. Пиши на русском, деловым стилем, 150-220 слов. Фокус на достижениях и конкретных примерах. Без общих фраз.',
+    
+    skillSuggester: 'Ты лаконичный советник по развитию навыков. Отвечай только списком навыков через запятую. Без пояснений, без нумерации, без дополнительного текста.',
+    
+    textPolisher: 'Ты строгий редактор русского языка. Исправляй грамматику, орфографию и пунктуацию, сохраняя исходный смысл и профессиональный тон.',
+    
+    searchInferrer: 'Ты карьерный ассистент. Проанализируй резюме и верни ТОЛЬКО валидный JSON-объект для параметров поиска работы на рынке труда Казахстана.',
+    
+    analyzer: 'Ты эксперт по анализу резюме. Предоставь детальную, actionable обратную связь по содержанию резюме, структуре и оптимизации для ATS-систем.',
   },
 };
 
@@ -84,12 +118,29 @@ function ensureApiKey() {
 }
 
 /**
- * Pick appropriate model
+ * Pick appropriate model based on task type
  */
-function pickModel({ complex = false, override, type = 'default' } = {}) {
+function pickModel({ task = 'default', complex = false, override } = {}) {
   if (override) return override;
-  if (type === 'translate') return MODELS.translate;
-  return complex ? MODELS.complex : MODELS.primary;
+  
+  // Выбор модели в зависимости от задачи
+  switch (task) {
+    case 'translate':
+      return MODELS.translation; // Gemini 2.0 Flash для перевода
+    
+    case 'analyze':
+    case 'recommend':
+    case 'reason':
+      return MODELS.reasoning; // DeepSeek R1 для анализа и рассуждений
+    
+    case 'simple':
+    case 'polish':
+    case 'summarize':
+      return MODELS.primary; // Gemini для простых задач
+    
+    default:
+      return complex ? MODELS.reasoning : MODELS.primary;
+  }
 }
 
 /**
@@ -101,12 +152,14 @@ function baseHeaders() {
     'Content-Type': 'application/json',
   };
 
-  if (process.env.ORIGIN_HEADER) {
-    headers['HTTP-Referer'] = process.env.ORIGIN_HEADER;
+  const referer = process.env.OPENROUTER_REFERER || process.env.ORIGIN_HEADER;
+  if (referer) {
+    headers['HTTP-Referer'] = referer;
   }
 
-  if (process.env.APP_TITLE) {
-    headers['X-Title'] = process.env.APP_TITLE;
+  const title = process.env.OPENROUTER_TITLE || process.env.APP_TITLE;
+  if (title) {
+    headers['X-Title'] = title;
   }
 
   return headers;
@@ -159,6 +212,16 @@ function tryParseJSON(text) {
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     try {
       return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+    } catch {}
+  }
+
+  // Try finding first [ to last ]
+  const firstBracket = text.indexOf('[');
+  const lastBracket = text.lastIndexOf(']');
+  
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(text.slice(firstBracket, lastBracket + 1));
     } catch {}
   }
 
@@ -293,34 +356,37 @@ async function openrouterChatSafe(args) {
  */
 export async function chatLLM({
   messages,
+  task = 'default',
   complex = false,
   overrideModel,
   temperature,
   max_tokens,
   language = 'ru',
 }) {
-  const model = pickModel({ complex, override: overrideModel });
+  const model = pickModel({ task, complex, override: overrideModel });
   
   return openrouterChat({
     messages,
     model,
     temperature,
     max_tokens,
-    reasoning: complex ? { effort: 'medium' } : undefined,
+    reasoning: (task === 'analyze' || task === 'reason' || complex) 
+      ? { effort: 'medium' } 
+      : undefined,
   });
 }
 
 /* ============================= Translation =================================== */
 
 /**
- * Translate text using AI
+ * Translate text using Gemini 2.0 Flash
  * @param {string} text - Text to translate
  * @param {string} targetLanguage - Target language code
  * @param {string} sourceLanguage - Source language code (optional)
  * @returns {Promise<string>} Translated text
  */
 export async function translateWithAI(text, targetLanguage = 'en', sourceLanguage = 'auto') {
-  if (!text) return '';
+  if (!text || !text.trim()) return '';
 
   const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
   const sourceLangName = sourceLanguage === 'auto' 
@@ -328,10 +394,10 @@ export async function translateWithAI(text, targetLanguage = 'en', sourceLanguag
     : (LANGUAGE_NAMES[sourceLanguage] || sourceLanguage);
 
   const systemPrompt = getSystemPrompt('translator', targetLanguage);
-  const userPrompt = `Translate the following text from ${sourceLangName} to ${targetLangName}. Return ONLY the translation without any explanations or additional text:\n\n${text}`;
+  const userPrompt = `Translate the following text from ${sourceLangName} to ${targetLangName}. Preserve formatting, professional tone, and context. Return ONLY the translation:\n\n${text}`;
 
   try {
-    const model = pickModel({ type: 'translate' });
+    const model = pickModel({ task: 'translate' }); // Gemini 2.0 Flash
     
     const translated = await openrouterChat({
       messages: [
@@ -339,9 +405,9 @@ export async function translateWithAI(text, targetLanguage = 'en', sourceLanguag
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: 0.3,
-      max_tokens: Math.min(2000, text.length * 2),
-      timeoutMs: 20000,
+      temperature: 0.2, // Низкая температура для точности
+      max_tokens: Math.min(4000, Math.max(500, text.length * 2)),
+      timeoutMs: 25000,
     });
 
     return normalizeText(translated);
@@ -355,12 +421,24 @@ export async function translateWithAI(text, targetLanguage = 'en', sourceLanguag
  * Batch translate multiple texts
  */
 export async function translateBatch(texts, targetLanguage = 'en', sourceLanguage = 'auto') {
+  if (!Array.isArray(texts) || texts.length === 0) return [];
+
   const results = [];
   
   for (const text of texts) {
+    if (!text || !text.trim()) {
+      results.push(text);
+      continue;
+    }
+
     try {
       const translated = await translateWithAI(text, targetLanguage, sourceLanguage);
       results.push(translated);
+      
+      // Небольшая задержка между запросами
+      if (results.length < texts.length) {
+        await delay(150);
+      }
     } catch (error) {
       console.error('[AI] Batch translate item error:', error);
       results.push(text); // Use original on error
@@ -370,53 +448,158 @@ export async function translateBatch(texts, targetLanguage = 'en', sourceLanguag
   return results;
 }
 
-/* ========================= Resume AI Functions =============================== */
-
 /**
- * Generate profile summary
+ * Optimized batch translation (combines multiple texts into one request)
  */
-export async function summarizeProfile(profile, { language = 'ru', overrideModel } = {}) {
-  const model = pickModel({ complex: false, override: overrideModel });
-  const systemPrompt = getSystemPrompt('summarizer', language);
-
-  const userPrompt = language === 'en'
-    ? `Candidate profile (JSON):\n${JSON.stringify(profile, null, 2)}\n\nCreate a brief summary of the candidate's strengths and focus. No lists or bullets - solid text.`
-    : language === 'kk'
-    ? `Үміткердің профилі (JSON):\n${JSON.stringify(profile, null, 2)}\n\nҮміткердің күшті жақтары мен бағытының қысқаша түйіндемесін жасаңыз. Тізімсіз және белгілеусіз - тұтас мәтін.`
-    : `Профиль кандидата (JSON):\n${JSON.stringify(profile, null, 2)}\n\nСделай краткое саммари сильных сторон и фокуса кандидата. Без списков и маркировок - цельный текст.`;
+export async function translateBatchOptimized(texts, targetLanguage = 'en', sourceLanguage = 'auto') {
+  if (!Array.isArray(texts) || texts.length === 0) return [];
+  
+  // Для малого количества используем обычный метод
+  if (texts.length <= 2) {
+    return translateBatch(texts, targetLanguage, sourceLanguage);
+  }
 
   try {
-    return await openrouterChat({
+    const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
+    const sourceLangName = sourceLanguage === 'auto' 
+      ? 'the source language'
+      : (LANGUAGE_NAMES[sourceLanguage] || sourceLanguage);
+
+    // Создаем пронумерованный список
+    const numberedTexts = texts.map((text, idx) => 
+      `[${idx + 1}] ${text}`
+    ).join('\n\n');
+
+    const systemPrompt = getSystemPrompt('translator', targetLanguage);
+    const userPrompt = `Translate the following numbered texts from ${sourceLangName} to ${targetLangName}. Preserve the numbering format [1], [2], etc. Return translations in the same numbered format:\n\n${numberedTexts}`;
+
+    const model = pickModel({ task: 'translate' });
+    
+    const response = await openrouterChat({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      model,
+      temperature: 0.2,
+      max_tokens: 4000,
+      timeoutMs: 30000,
+    });
+
+    // Парсим ответ
+    const translatedTexts = [];
+    for (let i = 0; i < texts.length; i++) {
+      const regex = new RegExp(`\\[${i + 1}\\]\\s*([\\s\\S]*?)(?=\\n\\[${i + 2}\\]|$)`, 'm');
+      const match = response.match(regex);
+      
+      if (match && match[1]) {
+        translatedTexts.push(normalizeText(match[1].trim()));
+      } else {
+        // Fallback: переводим индивидуально
+        const translated = await translateWithAI(texts[i], targetLanguage, sourceLanguage);
+        translatedTexts.push(translated);
+      }
+    }
+
+    return translatedTexts;
+  } catch (error) {
+    console.error('[AI] Optimized batch translation failed, falling back:', error);
+    return translateBatch(texts, targetLanguage, sourceLanguage);
+  }
+}
+
+/* ========================= Resume AI Functions (DeepSeek R1) ================= */
+
+/**
+ * Analyze resume using DeepSeek R1 (deep reasoning)
+ */
+export async function analyzeResume(resumeData, { language = 'ru', overrideModel } = {}) {
+  const model = pickModel({ task: 'analyze', override: overrideModel }); // DeepSeek R1
+  const systemPrompt = getSystemPrompt('analyzer', language);
+
+  const userPrompt = language === 'en'
+    ? `Analyze this resume comprehensively:\n\n${JSON.stringify(resumeData, null, 2)}\n\nProvide:\n1. Overall assessment (1-10 score)\n2. Key strengths (3-5 points)\n3. Areas for improvement (3-5 points)\n4. ATS optimization suggestions\n5. Recommended next steps`
+    : language === 'kk'
+    ? `Бұл резюмені жан-жақты талдаңыз:\n\n${JSON.stringify(resumeData, null, 2)}\n\nБеріңіз:\n1. Жалпы бағалау (1-10 балл)\n2. Негізгі күшті жақтар (3-5 тармақ)\n3. Жақсарту салалары (3-5 тармақ)\n4. ATS оңтайландыру ұсыныстары\n5. Ұсынылатын келесі қадамдар`
+    : `Проанализируй это резюме комплексно:\n\n${JSON.stringify(resumeData, null, 2)}\n\nПредоставь:\n1. Общую оценку (балл 1-10)\n2. Ключевые сильные стороны (3-5 пунктов)\n3. Области для улучшения (3-5 пунктов)\n4. Рекомендации по оптимизации для ATS\n5. Рекомендуемые следующие шаги`;
+
+  try {
+    const analysis = await openrouterChat({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       model,
       temperature: 0.4,
-      max_tokens: 220,
+      max_tokens: 2000,
+      reasoning: { effort: 'high' }, // Deep reasoning для анализа
     });
+
+    return normalizeText(analysis);
   } catch (error) {
-    console.error('[AI] Summarize error:', error);
-    return language === 'en' 
-      ? 'Experienced professional with diverse skill set.'
+    console.error('[AI] Resume analysis error:', error);
+    return language === 'en'
+      ? 'Unable to analyze resume at this time. Please try again later.'
       : language === 'kk'
-      ? 'Әртүрлі дағдылары бар тәжірибелі маман.'
-      : 'Опытный специалист с разносторонними навыками.';
+      ? 'Қазіргі уақытта резюмені талдау мүмкін емес. Кейінірек қайталап көріңіз.'
+      : 'Не удалось проанализировать резюме. Попробуйте позже.';
   }
 }
 
 /**
- * Generate career recommendations
+ * Generate profile summary
  */
-export async function recommendFromProfile(profile, { language = 'ru', complex = false, overrideModel } = {}) {
-  const model = pickModel({ complex, override: overrideModel });
-  const systemPrompt = getSystemPrompt('recommender', language);
+export async function summarizeProfile(profile, { language = 'ru', overrideModel } = {}) {
+  const model = pickModel({ task: 'summarize', override: overrideModel });
+  const systemPrompt = getSystemPrompt('summarizer', language);
 
   const userPrompt = language === 'en'
-    ? `Here is the candidate profile:\n${JSON.stringify(profile, null, 2)}\n\nCreate a JSON object with this structure:\n{"professions":["string",...], "skillsToLearn":["string",...], "courses":[{"name":"string","duration":"string"},...], "matchScore":0}\nWhere:\n- "professions" - 3-5 suitable roles\n- "skillsToLearn" - 4-8 key skills for growth\n- "courses" - 2-4 courses ({"name","duration"}, no links)\n- "matchScore" - integer 0-100 for market fit\nResponse - ONLY JSON, NO text.`
+    ? `Candidate profile:\n${JSON.stringify(profile, null, 2)}\n\nCreate a compelling 3-4 sentence professional summary highlighting their key strengths, experience, and career focus. Write as a cohesive paragraph.`
     : language === 'kk'
-    ? `Міне үміткердің профилі:\n${JSON.stringify(profile, null, 2)}\n\nМынадай құрылымды JSON объектін жасаңыз:\n{"professions":["string",...], "skillsToLearn":["string",...], "courses":[{"name":"string","duration":"string"},...], "matchScore":0}\nМұнда:\n- "professions" - 3-5 қолайлы рөлдер\n- "skillsToLearn" - өсу үшін 4-8 негізгі дағды\n- "courses" - 2-4 курс ({"name","duration"}, сілтемелерсіз)\n- "matchScore" - нарыққа сәйкестік үшін 0-100 бүтін сан\nЖауап - ТЕК JSON, МӘТІНСІЗ.`
-    : `Вот профиль кандидата:\n${JSON.stringify(profile, null, 2)}\n\nСформируй объект JSON строго такого вида:\n{"professions":["string",...], "skillsToLearn":["string",...], "courses":[{"name":"string","duration":"string"},...], "matchScore":0}\nГде:\n- "professions" - 3-5 подходящих ролей\n- "skillsToLearn" - 4-8 ключевых навыков для роста\n- "courses" - 2-4 курса ({"name","duration"}, без ссылок)\n- "matchScore" - целое 0-100 о соответствии рынку\nОтвет - ТОЛЬКО JSON, БЕЗ текста.`;
+    ? `Үміткердің профилі:\n${JSON.stringify(profile, null, 2)}\n\nОлардың негізгі күшті жақтарын, тәжірибесін және мансаптық бағытын көрсететін 3-4 сөйлемді кәсіби түйіндеме жасаңыз. Бүтін абзац ретінде жазыңыз.`
+    : `Профиль кандидата:\n${JSON.stringify(profile, null, 2)}\n\nСоздай убедительное профессиональное резюме из 3-4 предложений, подчеркивающее ключевые сильные стороны, опыт и карьерный фокус. Пиши цельным абзацем.`;
+
+  try {
+    const summary = await openrouterChat({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      model,
+      temperature: 0.5,
+      max_tokens: 250,
+    });
+
+    return normalizeText(summary);
+  } catch (error) {
+    console.error('[AI] Summarize error:', error);
+    return language === 'en' 
+      ? 'Experienced professional with diverse skill set and proven track record of success.'
+      : language === 'kk'
+      ? 'Әртүрлі дағдылары және дәлелденген жетістіктері бар тәжірибелі маман.'
+      : 'Опытный специалист с разносторонними навыками и подтвержденными достижениями.';
+  }
+}
+
+/**
+ * Generate career recommendations using DeepSeek R1
+ */
+export async function recommendFromProfile(profile, { language = 'ru', complex = true, overrideModel } = {}) {
+  const model = pickModel({ task: 'recommend', complex, override: overrideModel }); // DeepSeek R1
+  const systemPrompt = getSystemPrompt('recommender', language);
+
+  const schemaExample = {
+    professions: ["string", "..."],
+    skillsToLearn: ["string", "..."],
+    courses: [{ name: "string", duration: "string" }],
+    matchScore: 0
+  };
+
+  const userPrompt = language === 'en'
+    ? `Analyze this candidate profile and provide career recommendations:\n\n${JSON.stringify(profile, null, 2)}\n\nReturn ONLY valid JSON with this exact structure:\n${JSON.stringify(schemaExample, null, 2)}\n\nWhere:\n- professions: 3-5 suitable job roles\n- skillsToLearn: 4-8 key skills for career growth\n- courses: 2-4 relevant courses (name and duration only, no URLs)\n- matchScore: integer 0-100 indicating market fit\n\nResponse must be valid JSON only, no markdown, no explanations.`
+    : language === 'kk'
+    ? `Бұл үміткер профилін талдаңыз және мансаптық ұсыныстар беріңіз:\n\n${JSON.stringify(profile, null, 2)}\n\nМынадай нақты құрылымы бар ТЕК жарамды JSON қайтарыңыз:\n${JSON.stringify(schemaExample, null, 2)}\n\nМұнда:\n- professions: 3-5 қолайлы жұмыс рөлдері\n- skillsToLearn: мансаптық өсу үшін 4-8 негізгі дағды\n- courses: 2-4 тиісті курс (тек атауы мен ұзақтығы, URL жоқ)\n- matchScore: нарыққа сәйкестікті көрсететін 0-100 бүтін сан\n\nЖауап тек жарамды JSON болуы керек, markdown жоқ, түсініктемелер жоқ.`
+    : `Проанализируй профиль кандидата и предоставь карьерные рекомендации:\n\n${JSON.stringify(profile, null, 2)}\n\nВерни ТОЛЬКО валидный JSON со строго такой структурой:\n${JSON.stringify(schemaExample, null, 2)}\n\nГде:\n- professions: 3-5 подходящих ролей\n- skillsToLearn: 4-8 ключевых навыков для роста\n- courses: 2-4 курса (только название и длительность, без URL)\n- matchScore: целое число 0-100 о соответствии рынку\n\nОтвет должен быть только валидным JSON, без markdown, без пояснений.`;
 
   try {
     const text = await openrouterChatSafe({
@@ -425,27 +608,46 @@ export async function recommendFromProfile(profile, { language = 'ru', complex =
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: complex ? 0.6 : 0.3,
-      max_tokens: 600,
+      temperature: 0.4,
+      max_tokens: 800,
       reasoning: complex ? { effort: 'medium' } : undefined,
     });
 
     const json = tryParseJSON(text);
-    if (json) return json;
+    
+    if (json && json.professions && json.skillsToLearn) {
+      return json;
+    }
+
+    throw new Error('Invalid JSON structure');
   } catch (error) {
     console.error('[AI] Recommend error:', error);
+    
+    // Fallback
+    return {
+      professions: language === 'en'
+        ? ['Software Engineer', 'Full Stack Developer', 'Frontend Developer']
+        : language === 'kk'
+        ? ['Бағдарламалық қамтамасыз ету инженері', 'Full Stack әзірлеуші', 'Frontend әзірлеуші']
+        : ['Инженер-программист', 'Full Stack разработчик', 'Frontend разработчик'],
+      skillsToLearn: language === 'en'
+        ? ['TypeScript', 'React', 'Node.js', 'Docker', 'GraphQL', 'Testing']
+        : language === 'kk'
+        ? ['TypeScript', 'React', 'Node.js', 'Docker', 'GraphQL', 'Тестілеу']
+        : ['TypeScript', 'React', 'Node.js', 'Docker', 'GraphQL', 'Тестирование'],
+      courses: [
+        { 
+          name: language === 'en' ? 'Full Stack Web Development' : language === 'kk' ? 'Full Stack веб-әзірлеу' : 'Full Stack веб-разработка',
+          duration: language === 'en' ? '3 months' : language === 'kk' ? '3 ай' : '3 месяца'
+        },
+        { 
+          name: language === 'en' ? 'Advanced JavaScript' : language === 'kk' ? 'Жетілдірілген JavaScript' : 'Продвинутый JavaScript',
+          duration: language === 'en' ? '2 months' : language === 'kk' ? '2 ай' : '2 месяца'
+        },
+      ],
+      matchScore: 70,
+    };
   }
-
-  // Fallback
-  return {
-    professions: ['Frontend Developer', 'Full Stack Developer', 'Software Engineer'],
-    skillsToLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
-    courses: [
-      { name: 'Coursera — React Specialization', duration: '3 months' },
-      { name: 'Udemy — Complete Web Development', duration: '2 months' },
-    ],
-    matchScore: 70,
-  };
 }
 
 /**
@@ -455,14 +657,14 @@ export async function generateCoverLetter(
   { vacancy, profile },
   { language = 'ru', complex = false, overrideModel } = {}
 ) {
-  const model = pickModel({ complex, override: overrideModel });
+  const model = pickModel({ task: complex ? 'reason' : 'simple', override: overrideModel });
   const systemPrompt = getSystemPrompt('coverLetter', language);
 
   const userPrompt = language === 'en'
-    ? `Candidate data:\n${JSON.stringify(profile, null, 2)}\n\nVacancy (brief):\n${JSON.stringify(vacancy, null, 2)}\n\nTask: create a personalized cover letter.\nFormat requirements:\n- No "Hello, my name is" greeting\n- 2-3 paragraphs: relevant experience → stack and achievements → motivation/fit\n- End with 1 sentence about interview readiness.`
+    ? `Candidate:\n${JSON.stringify(profile, null, 2)}\n\nVacancy:\n${JSON.stringify(vacancy, null, 2)}\n\nWrite a personalized, professional cover letter (150-220 words).\n\nStructure:\n- Opening: Why this role interests you (no "Hello, my name is")\n- Body: Relevant experience and specific achievements\n- Closing: Motivation and interview availability\n\nFocus on concrete examples and measurable results.`
     : language === 'kk'
-    ? `Үміткер деректері:\n${JSON.stringify(profile, null, 2)}\n\nБос орын (қысқаша):\n${JSON.stringify(vacancy, null, 2)}\n\nТапсырма: жекелендірілген сүйемелдеу хатын жасаңыз.\nФормат талаптары:\n- "Сәлем, менің атым" сәлемдемесіз\n- 2-3 абзац: тиісті тәжірибе → стек және жетістіктер → мотивация/сәйкестік\n- Сұхбатқа дайындық туралы 1 сөйлеммен аяқтаңыз.`
-    : `Данные кандидата:\n${JSON.stringify(profile, null, 2)}\n\nВакансия (кратко):\n${JSON.stringify(vacancy, null, 2)}\n\nЗадача: сделай персонализированное сопроводительное письмо.\nТребования к формату:\n- Обращение без "Здравствуйте, меня зовут"\n- 2-3 абзаца: релевантный опыт → стек и достижения → мотивация/fit\n- В конце 1 предложение про готовность к собеседованию.`;
+    ? `Үміткер:\n${JSON.stringify(profile, null, 2)}\n\nБос орын:\n${JSON.stringify(vacancy, null, 2)}\n\nЖекелендірілген, кәсіби сүйемелдеу хатын жазыңыз (150-220 сөз).\n\nҚұрылым:\n- Ашылу: Бұл рөл неге қызықтырады ("Сәлем, менің атым" жоқ)\n- Негізгі бөлім: Тиісті тәжірибе және нақты жетістіктер\n- Жабылу: Мотивация және сұхбат қол жетімділігі\n\nНақты мысалдар мен өлшенетін нәтижелерге назар аударыңыз.`
+    : `Кандидат:\n${JSON.stringify(profile, null, 2)}\n\nВакансия:\n${JSON.stringify(vacancy, null, 2)}\n\nНапиши персонализированное профессиональное сопроводительное письмо (150-220 слов).\n\nСтруктура:\n- Вступление: Почему интересна эта роль (без "Здравствуйте, меня зовут")\n- Основная часть: Релевантный опыт и конкретные достижения\n- Заключение: Мотивация и готовность к собеседованию\n\nФокус на конкретных примерах и измеримых результатах.`;
 
   try {
     const content = await openrouterChat({
@@ -471,8 +673,8 @@ export async function generateCoverLetter(
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: 0.5,
-      max_tokens: 380,
+      temperature: 0.6,
+      max_tokens: 450,
       reasoning: complex ? { effort: 'low' } : undefined,
     });
 
@@ -481,10 +683,10 @@ export async function generateCoverLetter(
     console.error('[AI] Cover letter error:', error);
     
     return language === 'en'
-      ? 'I am ready to discuss the vacancy details and would be happy to tell more about relevant projects during the interview.'
+      ? 'I am very interested in this position and believe my experience aligns well with your requirements. I would be happy to discuss the opportunity in more detail during an interview.'
       : language === 'kk'
-      ? 'Бос орын туралы толығырақ талқылауға дайынмын және сұхбат кезінде тиісті жобалар туралы көбірек айтуға қуаныштымын.'
-      : 'Готов обсудить детали вакансии и буду рад рассказать больше о релевантных проектах на собеседовании.';
+      ? 'Мен бұл лауазымға өте қызығушылық танытамын және менің тәжірибем сіздің талаптарыңызға жақсы сәйкес келеді деп ойлаймын. Сұхбат кезінде мүмкіндікті толығырақ талқылауға қуаныштымын.'
+      : 'Я очень заинтересован в этой позиции и считаю, что мой опыт хорошо соответствует вашим требованиям. Буду рад обсудить возможность более подробно на собеседовании.';
   }
 }
 
@@ -492,14 +694,14 @@ export async function generateCoverLetter(
  * Suggest skills for development
  */
 export async function suggestSkills(profile, { language = 'ru', overrideModel } = {}) {
-  const model = pickModel({ complex: false, override: overrideModel });
+  const model = pickModel({ task: 'simple', override: overrideModel });
   const systemPrompt = getSystemPrompt('skillSuggester', language);
 
   const userPrompt = language === 'en'
-    ? `Profile:\n${JSON.stringify(profile, null, 2)}\nProvide 6-8 skills for development (one-two word names), no explanations.`
+    ? `Based on this profile:\n${JSON.stringify(profile, null, 2)}\n\nSuggest 6-8 relevant skills to learn for career growth. Reply with a comma-separated list only (e.g., "TypeScript, Docker, GraphQL"). No explanations, no numbers, no additional text.`
     : language === 'kk'
-    ? `Профиль:\n${JSON.stringify(profile, null, 2)}\nДамыту үшін 6-8 дағдыны беріңіз (бір-екі сөзді атаулар), түсініктемесіз.`
-    : `Профиль:\n${JSON.stringify(profile, null, 2)}\nДай 6-8 навыков для развития (одно-двухсловные названия), без пояснений.`;
+    ? `Осы профильге негізделген:\n${JSON.stringify(profile, null, 2)}\n\nМансаптық өсу үшін үйрену керек 6-8 тиісті дағдыны ұсыныңыз. Тек үтірмен бөлінген тізіммен жауап беріңіз (мысалы, "TypeScript, Docker, GraphQL"). Түсініктемелер жоқ, сандар жоқ, қосымша мәтін жоқ.`
+    : `На основе этого профиля:\n${JSON.stringify(profile, null, 2)}\n\nПредложи 6-8 релевантных навыков для изучения и карьерного роста. Ответь только списком через запятую (например, "TypeScript, Docker, GraphQL"). Без пояснений, без номеров, без дополнительного текста.`;
 
   try {
     const text = await openrouterChat({
@@ -508,25 +710,32 @@ export async function suggestSkills(profile, { language = 'ru', overrideModel } 
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: 0.3,
-      max_tokens: 120,
+      temperature: 0.4,
+      max_tokens: 150,
     });
 
-    return text
+    const skills = text
       .replace(/\n/g, ' ')
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 8);
+
+    return skills.length > 0 ? skills : getFallbackSkills(language);
   } catch (error) {
     console.error('[AI] Suggest skills error:', error);
-    
-    return language === 'en'
-      ? ['Communication', 'Data Analysis', 'TypeScript', 'SQL', 'Docker', 'Design Systems']
-      : language === 'kk'
-      ? ['Қарым-қатынас', 'Деректерді талдау', 'TypeScript', 'SQL', 'Docker', 'Дизайн жүйелері']
-      : ['Коммуникации', 'Аналитика данных', 'TypeScript', 'SQL', 'Docker', 'Design Systems'];
+    return getFallbackSkills(language);
   }
+}
+
+function getFallbackSkills(language) {
+  const fallbacks = {
+    en: ['Communication', 'Data Analysis', 'TypeScript', 'SQL', 'Docker', 'Design Systems', 'Agile', 'Testing'],
+    kk: ['Қарым-қатынас', 'Деректерді талдау', 'TypeScript', 'SQL', 'Docker', 'Дизайн жүйелері', 'Agile', 'Тестілеу'],
+    ru: ['Коммуникации', 'Анализ данных', 'TypeScript', 'SQL', 'Docker', 'Design Systems', 'Agile', 'Тестирование'],
+  };
+  
+  return fallbacks[language] || fallbacks.ru;
 }
 
 /* ============================= Text Polishing ================================ */
@@ -547,10 +756,10 @@ export async function polishText(
   if (!text) return { corrected: '', bullets: [] };
 
   const shouldUseComplex = complex ?? (mode === 'bullets' || String(text).length > 600);
-  const model = pickModel({ complex: shouldUseComplex, override: overrideModel });
+  const model = pickModel({ task: 'polish', complex: shouldUseComplex, override: overrideModel });
 
   const systemPrompt = getSystemPrompt('textPolisher', lang);
-  const fullSystemPrompt = `${systemPrompt} Always return ONLY JSON without extra text. Schema: {"corrected": string, "bullets": string[]}. Modes: "paragraph" - solid text; "bullets" - short points; "auto" - preserve author's format.`;
+  const fullSystemPrompt = `${systemPrompt}\n\nAlways return ONLY valid JSON without extra text, code blocks, or markdown. Schema: {"corrected": string, "bullets": string[]}\n\nModes:\n- "paragraph": keep as solid text\n- "bullets": convert to short bullet points\n- "auto": preserve author's format`;
 
   const userPrompt = JSON.stringify({
     lang,
@@ -566,8 +775,8 @@ export async function polishText(
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: shouldUseComplex ? 0.2 : 0.1,
-      max_tokens: 700,
+      temperature: 0.1,
+      max_tokens: 800,
       reasoning: shouldUseComplex ? { effort: 'low' } : undefined,
     });
 
@@ -598,6 +807,11 @@ export async function polishMany(texts, opts = {}) {
   for (const text of Array.isArray(texts) ? texts : []) {
     const result = await polishText(text, opts);
     results.push(result);
+    
+    // Небольшая задержка
+    if (results.length < texts.length) {
+      await delay(200);
+    }
   }
 
   return results;
@@ -655,7 +869,7 @@ function fallbackInferSearch(profile = {}) {
     || (Array.isArray(profile.skills) && profile.skills[0]) 
     || 'Специалист';
 
-  const rawCity = String(profile.location || '').trim();
+  const rawCity = String(profile.location || profile.city || '').trim();
   const city = KZ_CITIES.find((c) => new RegExp(c, 'i').test(rawCity)) || 'Алматы';
 
   const skills = (
@@ -678,14 +892,21 @@ export async function inferSearch(profile = {}, { lang = 'ru', overrideModel } =
     return fallbackInferSearch(profile);
   }
 
-  const model = pickModel({ complex: false, override: overrideModel });
+  const model = pickModel({ task: 'simple', override: overrideModel });
   const systemPrompt = getSystemPrompt('searchInferrer', lang);
 
+  const schemaExample = {
+    role: "string",
+    city: "string (Kazakhstan cities only)",
+    skills: ["string"],
+    experience: "noExperience|between1And3|between3And6|moreThan6"
+  };
+
   const userPrompt = lang === 'en'
-    ? `Interface language: ${lang}\nUser profile (JSON):\n${JSON.stringify(profile, null, 2)}\n\nResponse format:\n{"role":"string", "city":"string (KZ only)", "skills":["string",...], "experience":"noExperience|between1And3|between3And6|moreThan6"}`
+    ? `Analyze this profile and infer job search parameters for Kazakhstan job market:\n\n${JSON.stringify(profile, null, 2)}\n\nReturn ONLY valid JSON with this structure:\n${JSON.stringify(schemaExample, null, 2)}\n\nKazakhstan cities: ${KZ_CITIES.join(', ')}`
     : lang === 'kk'
-    ? `Интерфейс тілі: ${lang}\nПайдаланушы профилі (JSON):\n${JSON.stringify(profile, null, 2)}\n\nЖауап форматы:\n{"role":"string", "city":"string (тек ҚР)", "skills":["string",...], "experience":"noExperience|between1And3|between3And6|moreThan6"}`
-    : `Язык интерфейса: ${lang}\nПрофиль пользователя (JSON):\n${JSON.stringify(profile, null, 2)}\n\nФормат ответа:\n{"role":"string", "city":"string (только РК)", "skills":["string",...], "experience":"noExperience|between1And3|between3And6|moreThan6"}`;
+    ? `Бұл профильді талдаңыз және Қазақстан жұмыс нарығы үшін жұмыс іздеу параметрлерін анықтаңыз:\n\n${JSON.stringify(profile, null, 2)}\n\nМынадай құрылымы бар ТЕК жарамды JSON қайтарыңыз:\n${JSON.stringify(schemaExample, null, 2)}\n\nҚазақстан қалалары: ${KZ_CITIES.join(', ')}`
+    : `Проанализируй профиль и выведи параметры поиска работы для рынка труда Казахстана:\n\n${JSON.stringify(profile, null, 2)}\n\nВерни ТОЛЬКО валидный JSON с такой структурой:\n${JSON.stringify(schemaExample, null, 2)}\n\nГорода Казахстана: ${KZ_CITIES.join(', ')}`;
 
   try {
     const text = await openrouterChatSafe({
@@ -694,8 +915,8 @@ export async function inferSearch(profile = {}, { lang = 'ru', overrideModel } =
         { role: 'user', content: userPrompt },
       ],
       model,
-      temperature: 0.2,
-      max_tokens: 500,
+      temperature: 0.3,
+      max_tokens: 600,
     });
 
     const json = tryParseJSON(text) || {};
@@ -732,6 +953,8 @@ export default {
   chatLLM,
   translateWithAI,
   translateBatch,
+  translateBatchOptimized,
+  analyzeResume,
   summarizeProfile,
   recommendFromProfile,
   generateCoverLetter,

@@ -1,18 +1,19 @@
 {
-  "name": "resume-bff",
-  "version": "1.2.0",
+  "name": "ai-resume-backend",
+  "version": "2.0.0",
   "private": true,
-  "description": "Backend-for-Frontend (Express) для AI Resume Builder: прокси HH API, OAuth, утилиты",
+  "description": "Backend-for-Frontend для AI Resume Builder: HH API proxy, AI translation (Gemini), AI analysis (DeepSeek), OAuth",
   "main": "index.js",
   "type": "commonjs",
   "engines": {
-    "node": ">=18.18.0 <21"
+    "node": ">=18.18.0"
   },
   "scripts": {
     "start": "cross-env NODE_ENV=production node index.js",
     "dev": "cross-env NODE_ENV=development nodemon --watch . --ext js,json --signal SIGTERM index.js",
     "start:dev": "npm run dev",
-    "start:inspect": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js"
+    "start:inspect": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "compression": "^1.7.4",
@@ -28,13 +29,18 @@
     "cross-env": "^7.0.3",
     "nodemon": "^3.0.2"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "keywords": [
     "express",
     "bff",
-    "proxy",
-    "hh",
+    "backend-for-frontend",
+    "headhunter",
+    "hh-api",
+    "ai",
+    "gemini",
+    "deepseek",
+    "translation",
     "resume",
-    "vite"
+    "openrouter"
   ]
 }

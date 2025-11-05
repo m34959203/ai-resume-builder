@@ -6,7 +6,8 @@
  * 
  * Функциональность:
  * - Прокси для HeadHunter API (поиск вакансий, справочники)
- * - AI-перевод текстов (EN, KK, RU)
+ * - AI-перевод текстов (Gemini 2.0 Flash) - 7 языков
+ * - AI-анализ резюме (DeepSeek R1)
  * - AI-рекомендации для резюме
  * - Кэширование и оптимизация запросов
  * - Rate limiting и безопасность
@@ -23,8 +24,13 @@ const fs = require('fs');
   if (!isRender) {
     const rootEnv = path.resolve(__dirname, '..', '.env');
     const localEnv = path.resolve(__dirname, '.env');
-    require('dotenv').config({ path: rootEnv, override: false });
-    require('dotenv').config({ path: localEnv, override: false });
+    
+    if (fs.existsSync(rootEnv)) {
+      require('dotenv').config({ path: rootEnv, override: false });
+    }
+    if (fs.existsSync(localEnv)) {
+      require('dotenv').config({ path: localEnv, override: true });
+    }
   }
 })();
 
@@ -40,7 +46,7 @@ const crypto = require('crypto');
 
 /* =========================== Environment Variables =========================== */
 const {
-  PORT = '10000',
+  PORT = '8000',
   NODE_ENV = (process.env.RENDER ? 'production' : 'development'),
   FRONT_ORIGINS,
 
@@ -49,7 +55,6 @@ const {
   HH_HOST = 'hh.kz',
   HH_CLIENT_ID,
   HH_CLIENT_SECRET,
-  HH_RESUME_ID,
   HH_TIMEOUT_MS = '15000',
 
   // Cache settings
@@ -61,13 +66,14 @@ const {
   COOKIE_DOMAIN,
   COOKIE_SECURE,
 
-  // OpenAI/OpenRouter для AI функций
-  OPENAI_API_KEY,
+  // OpenRouter для AI
   OPENROUTER_API_KEY,
+  OPENROUTER_REFERER,
+  OPENROUTER_TITLE,
 
   // Rate limiting
   RATE_LIMIT_WINDOW_MS = '60000',
-  RATE_LIMIT_MAX = '60',
+  RATE_LIMIT_MAX = '100',
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
@@ -83,8 +89,8 @@ app.set('etag', false);
 app.disable('x-powered-by');
 
 // Middleware
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 app.use(cookieParser());
 app.use(compression());
 
@@ -107,16 +113,19 @@ app.use((req, res, next) => {
 // Morgan logging
 morgan.token('id', (req) => req.id);
 const morganFormat = isProd
-  ? 'combined'
+  ? ':id :remote-addr - :method :url :status :res[content-length] - :response-time ms'
   : ':id :method :url :status :res[content-length] - :response-time ms';
+
 app.use(morgan(morganFormat));
 
 /* ================================== CORS Setup ================================ */
+
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
   'http://localhost:4180',
+  'http://localhost:8000',
 ];
 
 const ORIGINS = String(FRONT_ORIGINS || '')
@@ -130,25 +139,29 @@ const corsMw = cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) {
-      console.log('[CORS] Request without origin - allowed');
       return callback(null, true);
     }
 
     // Check if origin is in allowed list
     if (ALLOWED_ORIGINS.includes(origin)) {
-      console.log('[CORS] Allowed origin:', origin);
       return callback(null, true);
     }
 
     // Allow Render.com domains
     if (origin.includes('onrender.com')) {
-      console.log('[CORS] Render domain allowed:', origin);
       return callback(null, true);
     }
 
-    // Log rejected origins
-    console.warn('[CORS] Rejected origin:', origin);
-    console.warn('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+    // Allow localhost with any port
+    if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    // Log rejected origins in development
+    if (!isProd) {
+      console.warn('[CORS] Rejected origin:', origin);
+      console.warn('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+    }
     
     return callback(new Error(`CORS: Origin ${origin} not allowed`));
   },
@@ -579,10 +592,14 @@ function setCachedSearch(key, value) {
 
 const apiLimiter = rateLimit({
   windowMs: Number(RATE_LIMIT_WINDOW_MS) || 60000,
-  max: Number(RATE_LIMIT_MAX) || 60,
+  max: Number(RATE_LIMIT_MAX) || 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'too_many_requests', message: 'Rate limit exceeded' },
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/health' || req.path === '/healthz';
+  },
 });
 
 app.use('/api/', apiLimiter);
@@ -595,7 +612,6 @@ app.use('/api/', apiLimiter);
  */
 app.get('/api/hh/jobs/search', async (req, res) => {
   const requestId = req.id;
-  console.log(`[${requestId}] Job search request:`, req.query);
 
   try {
     const query = req.query;
@@ -614,14 +630,12 @@ app.get('/api/hh/jobs/search', async (req, res) => {
     // Default search text if no filters provided
     if (!text && !city && !area && !experience && !salary && !only_with_salary) {
       text = 'разработчик';
-      console.log(`[${requestId}] No filters provided, using default text:`, text);
     }
 
     // Find area ID by city name
     let areaId = area;
     if (!areaId && city) {
       areaId = (await findAreaIdByCity(city, host)) || '';
-      console.log(`[${requestId}] City "${city}" resolved to areaId:`, areaId);
     }
 
     // Create cache key
@@ -638,7 +652,6 @@ app.get('/api/hh/jobs/search', async (req, res) => {
 
     // Check if request is already in flight
     if (inflightSearches.has(cacheKey)) {
-      console.log(`[${requestId}] Coalescing with existing request`);
       const result = await inflightSearches.get(cacheKey);
       return res.json(result);
     }
@@ -648,7 +661,6 @@ app.get('/api/hh/jobs/search', async (req, res) => {
       // Check fresh cache
       const freshCache = getCachedSearch(cacheKey, SEARCH_TTL);
       if (freshCache) {
-        console.log(`[${requestId}] Returning fresh cache`);
         return {
           ...freshCache,
           debug: { ...freshCache.debug, cached: true, stale: false },
@@ -674,7 +686,6 @@ app.get('/api/hh/jobs/search', async (req, res) => {
       }
 
       const url = `${HH_API}/vacancies?${params.toString()}`;
-      console.log(`[${requestId}] Fetching:`, url);
 
       // Fetch from HH API
       const { ok, status, data, headers } = await fetchJSONWithRetry(url);
@@ -690,18 +701,15 @@ app.get('/api/hh/jobs/search', async (req, res) => {
         };
 
         setCachedSearch(cacheKey, result);
-        console.log(`[${requestId}] Success: ${items.length} items`);
         return result;
       }
 
       // Handle rate limiting with stale cache
       if (status === 429) {
         const retryAfter = Number(headers?.get?.('Retry-After') || 0);
-        console.warn(`[${requestId}] Rate limited, retry after: ${retryAfter}s`);
 
         const staleCache = getCachedSearch(cacheKey, SEARCH_STALE_MAX);
         if (staleCache) {
-          console.log(`[${requestId}] Returning stale cache due to rate limit`);
           return {
             ...staleCache,
             debug: {
@@ -825,201 +833,91 @@ app.get('/api/hh/industries', (req, res) => proxyToHH('/industries', req, res));
 app.get('/api/hh/specializations', (req, res) => proxyToHH('/specializations', req, res));
 app.get('/api/hh/dictionaries', (req, res) => proxyToHH('/dictionaries', req, res));
 
-/* =========================== Translation Routes ============================== */
+/* ============================ Mount AI Routes ================================ */
 
 /**
- * Check if AI service is available
+ * Check if file exists
  */
-function checkAIService() {
-  const aiPath = path.resolve(__dirname, 'services', 'ai.js');
-  return fs.existsSync(aiPath);
+function checkFileExists(filePath) {
+  try {
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Get AI service
+ * Mount translation routes
  */
-async function getAIService() {
-  const aiPath = path.resolve(__dirname, 'services', 'ai.js');
-  
-  if (!fs.existsSync(aiPath)) {
-    throw new Error('AI service not available');
+const translatePath = path.resolve(__dirname, 'routes', 'translate.js');
+if (checkFileExists(translatePath)) {
+  try {
+    const translateRouter = require(translatePath);
+    app.use('/api/translate', translateRouter);
+    console.log('✓ Mounted /api/translate');
+  } catch (error) {
+    console.error('✗ Failed to mount /api/translate:', error.message);
   }
-
-  return await import(aiPath);
+} else {
+  console.log('∙ /api/translate not available (file not found)');
 }
 
 /**
- * Translate text
- * POST /api/translate
- * Body: { text: string, targetLanguage: 'en'|'kk'|'ru', sourceLanguage?: string }
+ * Mount recommendations routes
  */
-app.post('/api/translate', async (req, res) => {
+const recommendationsPath = path.resolve(__dirname, 'routes', 'recommendations.js');
+if (checkFileExists(recommendationsPath)) {
   try {
-    const { text, targetLanguage, sourceLanguage = 'auto' } = req.body;
-
-    if (!text || !targetLanguage) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'text and targetLanguage are required',
-      });
-    }
-
-    if (!checkAIService()) {
-      return res.status(503).json({
-        error: 'service_unavailable',
-        message: 'Translation service is not available',
-        translatedText: text, // Return original text as fallback
-      });
-    }
-
-    const ai = await getAIService();
-    
-    if (typeof ai.translateWithAI !== 'function') {
-      return res.status(503).json({
-        error: 'service_unavailable',
-        message: 'Translation function not available',
-        translatedText: text,
-      });
-    }
-
-    const languageNames = {
-      en: 'English',
-      kk: 'Kazakh',
-      ru: 'Russian',
-    };
-
-    const targetLangName = languageNames[targetLanguage] || targetLanguage;
-    const prompt = `Translate the following text to ${targetLangName}. Return ONLY the translation, without any explanations:\n\n${text}`;
-
-    const translatedText = await ai.translateWithAI(prompt);
-
-    res.json({
-      translatedText: translatedText.trim(),
-      sourceLanguage,
-      targetLanguage,
-    });
+    const recommendationsRouter = require(recommendationsPath);
+    app.use('/api/recommendations', recommendationsRouter);
+    console.log('✓ Mounted /api/recommendations');
   } catch (error) {
-    console.error('[Translate] Error:', error);
-    res.status(500).json({
-      error: 'translation_failed',
-      message: error.message || 'Translation failed',
-      translatedText: req.body.text, // Fallback to original
-    });
+    console.error('✗ Failed to mount /api/recommendations:', error.message);
   }
-});
+} else {
+  console.log('∙ /api/recommendations not available (file not found)');
+}
 
 /**
- * Batch translate
- * POST /api/translate/batch
- * Body: { texts: string[], targetLanguage: string, sourceLanguage?: string }
+ * Mount HH auth routes
  */
-app.post('/api/translate/batch', async (req, res) => {
+const hhAuthPath = path.resolve(__dirname, 'routes', 'hh.js');
+if (checkFileExists(hhAuthPath)) {
   try {
-    const { texts, targetLanguage, sourceLanguage = 'auto' } = req.body;
-
-    if (!Array.isArray(texts) || !targetLanguage) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'texts (array) and targetLanguage are required',
-      });
-    }
-
-    if (!checkAIService()) {
-      return res.json({
-        translatedTexts: texts, // Return originals as fallback
-        sourceLanguage,
-        targetLanguage,
-        fallback: true,
-      });
-    }
-
-    const ai = await getAIService();
-
-    if (typeof ai.translateWithAI !== 'function') {
-      return res.json({
-        translatedTexts: texts,
-        sourceLanguage,
-        targetLanguage,
-        fallback: true,
-      });
-    }
-
-    const languageNames = {
-      en: 'English',
-      kk: 'Kazakh',
-      ru: 'Russian',
-    };
-
-    const targetLangName = languageNames[targetLanguage] || targetLanguage;
-
-    const translatedTexts = await Promise.all(
-      texts.map(async (text) => {
-        if (!text) return text;
-
-        try {
-          const prompt = `Translate to ${targetLangName}: ${text}`;
-          const translated = await ai.translateWithAI(prompt);
-          return translated.trim();
-        } catch (error) {
-          console.error('[Batch translate] Item error:', error);
-          return text; // Fallback to original on error
-        }
-      })
-    );
-
-    res.json({
-      translatedTexts,
-      sourceLanguage,
-      targetLanguage,
-    });
+    const hhRouter = require(hhAuthPath);
+    app.use('/api/auth/hh', hhRouter);
+    console.log('✓ Mounted /api/auth/hh');
   } catch (error) {
-    console.error('[Batch translate] Error:', error);
-    res.status(500).json({
-      error: 'translation_failed',
-      message: error.message || 'Batch translation failed',
-      translatedTexts: req.body.texts || [],
-    });
+    console.error('✗ Failed to mount /api/auth/hh:', error.message);
   }
-});
-
-/* ============================ AI Recommendations ============================= */
-
-/**
- * Mount recommendations routes if available
- */
-(() => {
-  const recommendationsPath = path.resolve(__dirname, 'routes', 'recommendations.js');
-  
-  if (fs.existsSync(recommendationsPath)) {
-    try {
-      const recommendationsRouter = require(recommendationsPath);
-      app.use('/api/recommendations', recommendationsRouter);
-      console.log('✓ /api/recommendations mounted');
-    } catch (error) {
-      console.error('✗ Failed to mount /api/recommendations:', error.message);
-    }
-  } else {
-    console.log('∙ /api/recommendations not available');
-  }
-})();
+} else {
+  console.log('∙ /api/auth/hh not available (file not found)');
+}
 
 /* ============================= Health & Status =============================== */
 
 /**
  * Health check endpoint
- * GET /healthz
+ * GET /health or /healthz
  */
-app.get('/healthz', (_req, res) => {
+app.get(['/health', '/healthz'], (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.json({
-    ok: true,
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime()),
+    environment: NODE_ENV,
+    node: process.version,
     cache: {
       size: cache.size(),
       searches: searchCache.size,
       inflight: inflightSearches.size,
+    },
+    services: {
+      translation: checkFileExists(translatePath),
+      recommendations: checkFileExists(recommendationsPath),
+      hhAuth: checkFileExists(hhAuthPath),
+      hh: true,
     },
   });
 });
@@ -1030,7 +928,7 @@ app.get('/healthz', (_req, res) => {
  */
 app.get('/api/version', (_req, res) => {
   try {
-    const pkgPath = path.resolve(__dirname, '..', 'package.json');
+    const pkgPath = path.resolve(__dirname, 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 
     res.json({
@@ -1040,8 +938,9 @@ app.get('/api/version', (_req, res) => {
       node: process.version,
       timestamp: new Date().toISOString(),
       features: {
-        translation: checkAIService(),
-        recommendations: fs.existsSync(path.resolve(__dirname, 'routes', 'recommendations.js')),
+        translation: checkFileExists(translatePath),
+        recommendations: checkFileExists(recommendationsPath),
+        hhOAuth: checkFileExists(hhAuthPath),
       },
     });
   } catch (error) {
@@ -1049,6 +948,7 @@ app.get('/api/version', (_req, res) => {
       name: 'ai-resume-backend',
       version: 'unknown',
       environment: NODE_ENV,
+      node: process.version,
       timestamp: new Date().toISOString(),
     });
   }
@@ -1061,42 +961,77 @@ app.get('/api/version', (_req, res) => {
 app.get('/', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.type('text/plain').send(`
-AI Resume Builder - Backend API
-================================
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║   AI Resume Builder - Backend API                         ║
+║   Version: 2.0.0                                          ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
 
 Status: ✅ Running
 Environment: ${NODE_ENV}
 Node: ${process.version}
 
-Available Endpoints:
---------------------
+═══════════════════════════════════════════════════════════════
+  Available Endpoints
+═══════════════════════════════════════════════════════════════
 
 Health & Status:
-  GET  /healthz          - Health check
-  GET  /api/version      - Version info
+  GET  /health                   - Health check
+  GET  /healthz                  - Health check (alias)
+  GET  /api/version              - Version info
 
 HeadHunter API:
-  GET  /api/hh/jobs/search       - Search vacancies
-  GET  /api/hh/areas             - Get areas/cities
+  GET  /api/hh/jobs/search       - Search job vacancies
+  GET  /api/hh/areas             - Get areas/cities hierarchy
   GET  /api/hh/vacancies         - Raw vacancies endpoint
-  GET  /api/hh/industries        - Get industries
+  GET  /api/hh/industries        - Get industries list
   GET  /api/hh/specializations   - Get specializations
-  GET  /api/hh/dictionaries      - Get dictionaries
+  GET  /api/hh/dictionaries      - Get all dictionaries
 
-Translation:
-  POST /api/translate            - Translate text
-  POST /api/translate/batch      - Batch translate
+Translation (Gemini 2.0 Flash):
+  GET  /api/translate/languages  - Get supported languages
+  POST /api/translate            - Translate single text
+  POST /api/translate/batch      - Batch translate texts
+  POST /api/translate/resume     - Translate resume data
+  POST /api/translate/vacancies  - Translate vacancies
+  POST /api/translate/detect     - Detect language
 
-AI Recommendations:
-  POST /api/recommendations/generate  - Generate recommendations
-  POST /api/recommendations/improve   - Improve resume
+AI Recommendations (DeepSeek R1):
+  POST /api/recommendations/analyze    - Analyze resume
+  POST /api/recommendations/improve    - Improve content
+  POST /api/recommendations/generate   - Generate content
 
-Example:
---------
-GET /api/hh/jobs/search?text=react&city=Алматы&experience=1-3&per_page=10
+═══════════════════════════════════════════════════════════════
+  Example Requests
+═══════════════════════════════════════════════════════════════
 
-For CORS issues, ensure your origin is in FRONT_ORIGINS env variable.
-Allowed origins: ${ALLOWED_ORIGINS.join(', ')}
+Search jobs in Almaty:
+  GET /api/hh/jobs/search?text=react&city=Алматы&experience=1-3
+
+Translate text:
+  POST /api/translate
+  Body: {
+    "text": "Hello World",
+    "targetLanguage": "ru"
+  }
+
+Analyze resume:
+  POST /api/recommendations/analyze
+  Body: {
+    "resumeData": {...},
+    "language": "en"
+  }
+
+═══════════════════════════════════════════════════════════════
+  Configuration
+═══════════════════════════════════════════════════════════════
+
+CORS Origins: ${ALLOWED_ORIGINS.join(', ')}
+HH Client: ${HH_CLIENT_ID ? '✓ Configured' : '✗ Missing'}
+OpenRouter: ${OPENROUTER_API_KEY ? '✓ Configured' : '✗ Missing'}
+
+For issues, check server logs or contact support.
   `.trim());
 });
 
@@ -1111,6 +1046,13 @@ app.use((req, res) => {
     message: `Endpoint ${req.method} ${req.path} not found`,
     path: req.path,
     method: req.method,
+    availableEndpoints: [
+      'GET /health',
+      'GET /api/hh/jobs/search',
+      'GET /api/hh/areas',
+      'POST /api/translate',
+      'POST /api/recommendations/analyze',
+    ],
   });
 });
 
@@ -1120,8 +1062,9 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('[Global Error Handler]', {
     id: req.id,
+    path: req.path,
     error: err.message,
-    stack: err.stack,
+    stack: isProd ? undefined : err.stack,
   });
 
   const status = err.status || err.statusCode || 500;
@@ -1130,40 +1073,44 @@ app.use((err, req, res, next) => {
   res.status(status).json({
     error: err.name || 'server_error',
     message,
+    requestId: req.id,
     ...(isProd ? {} : { stack: err.stack }),
   });
 });
 
 /* ================================ Server Start =============================== */
 
-const PORT_NUMBER = Number(PORT) || 10000;
+const PORT_NUMBER = Number(PORT) || 8000;
 
 const server = app.listen(PORT_NUMBER, '0.0.0.0', () => {
   console.log('');
-  console.log('========================================');
-  console.log('  AI Resume Builder - Backend Server');
-  console.log('========================================');
+  console.log('╔════════════════════════════════════════════════════════════╗');
+  console.log('║                                                            ║');
+  console.log('║   🚀 AI Resume Builder - Backend Server                   ║');
+  console.log('║                                                            ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
   console.log('');
-  console.log(`✅ Server running on 0.0.0.0:${PORT_NUMBER}`);
+  console.log(`📡 Server:      http://0.0.0.0:${PORT_NUMBER}`);
   console.log(`📦 Environment: ${NODE_ENV}`);
-  console.log(`🌍 Node: ${process.version}`);
+  console.log(`🌍 Node:        ${process.version}`);
+  console.log(`🔧 Platform:    ${process.platform}`);
   console.log('');
   console.log('Configuration:');
-  console.log('  📍 RENDER:', !!process.env.RENDER);
-  console.log('  🌐 CORS Origins:', ALLOWED_ORIGINS.join(', '));
-  console.log('  🔑 HH_CLIENT_ID:', HH_CLIENT_ID ? '✓ configured' : '✗ missing');
-  console.log('  🔑 OPENAI_API_KEY:', OPENAI_API_KEY ? '✓ configured' : '✗ missing');
-  console.log('  🔑 OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ configured' : '✗ missing');
+  console.log(`  🌐 CORS Origins:    ${ALLOWED_ORIGINS.slice(0, 3).join(', ')}${ALLOWED_ORIGINS.length > 3 ? '...' : ''}`);
+  console.log(`  🔑 HH Client:       ${HH_CLIENT_ID ? '✓ Configured' : '✗ Missing'}`);
+  console.log(`  🔑 OpenRouter:      ${OPENROUTER_API_KEY ? '✓ Configured' : '✗ Missing'}`);
+  console.log(`  🔄 Rate Limit:      ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW_MS}ms`);
   console.log('');
   console.log('Features:');
   console.log('  ✓ Job search & caching');
   console.log('  ✓ Rate limiting');
   console.log('  ✓ CORS & Security');
-  console.log(`  ${checkAIService() ? '✓' : '✗'} Translation service`);
-  console.log(`  ${fs.existsSync(path.resolve(__dirname, 'routes', 'recommendations.js')) ? '✓' : '✗'} AI Recommendations`);
+  console.log(`  ${checkFileExists(path.resolve(__dirname, 'services', 'ai.js')) ? '✓' : '✗'} AI Service`);
+  console.log(`  ${checkFileExists(translatePath) ? '✓' : '✗'} Translation (7 languages)`);
+  console.log(`  ${checkFileExists(recommendationsPath) ? '✓' : '✗'} AI Recommendations`);
   console.log('');
-  console.log('Ready to accept requests! 🚀');
-  console.log('========================================');
+  console.log('Ready to accept requests! 🎉');
+  console.log('╚════════════════════════════════════════════════════════════╝');
   console.log('');
 });
 
@@ -1201,4 +1148,4 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-module.exports = app; // For testing
+module.exports = app;
