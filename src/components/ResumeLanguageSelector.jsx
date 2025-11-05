@@ -23,7 +23,6 @@ import PropTypes from 'prop-types';
 import { useTranslation } from '../hooks/useTranslation';
 import { useLanguage } from '../context/LanguageContext';
 import { translateResumeData } from '../services/translation';
-import { AVAILABLE_LANGUAGES } from '../locales/translations';
 
 // ============================================================================
 // CONSTANTS

@@ -8,33 +8,15 @@
  */
 
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import { 
+  AVAILABLE_LANGUAGES, 
+  LANGUAGE_CODES, 
+  DEFAULT_LANGUAGE 
+} from '../locales/translations';
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-/**
- * Available languages configuration
- */
-export const AVAILABLE_LANGUAGES = [
-  { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧', direction: 'ltr' },
-  { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺', direction: 'ltr' },
-  { code: 'kk', name: 'Kazakh', nativeName: 'Қазақша', flag: '🇰🇿', direction: 'ltr' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español', flag: '🇪🇸', direction: 'ltr' },
-  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷', direction: 'ltr' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪', direction: 'ltr' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文', flag: '🇨🇳', direction: 'ltr' },
-];
-
-/**
- * Language codes only
- */
-const LANGUAGE_CODES = AVAILABLE_LANGUAGES.map(lang => lang.code);
-
-/**
- * Default language (fallback)
- */
-const DEFAULT_LANGUAGE = 'en';
 
 /**
  * LocalStorage key for language preference
@@ -273,5 +255,9 @@ export const useLanguage = () => {
 // ============================================================================
 // EXPORTS
 // ============================================================================
+
+// Re-export language constants from translations module for convenience
+// This allows importing from either location for backward compatibility
+export { AVAILABLE_LANGUAGES, LANGUAGE_CODES, DEFAULT_LANGUAGE };
 
 export default LanguageProvider;
