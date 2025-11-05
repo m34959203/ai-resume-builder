@@ -601,7 +601,7 @@ export const clearTranslationCache = () => {
 /**
  * Get cache statistics
  */
-export const getC acheStats = () => {
+export const getCacheStats = () => {
   return {
     size: translationCache.cache.size,
     maxSize: translationCache.maxSize,
