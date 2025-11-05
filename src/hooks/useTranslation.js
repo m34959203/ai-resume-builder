@@ -1,20 +1,24 @@
-import { useContext, useMemo } from 'react';
+import { useContext } from 'react';
 import { LanguageContext } from '../context/LanguageContext';
-import { translations } from '../locales/translations'; // оставляем твой словарь
+import { translations } from '../locales/translations';
 
-export function useTranslation() {
-  const { language, changeLanguage, supportedLanguages } = useContext(LanguageContext);
-  const dict = translations?.[language] || translations?.ru || {};
+export const useTranslation = () => {
+  const { language } = useContext(LanguageContext);
 
-  const t = useMemo(() => {
-    return (key) => {
-      if (!key) return '';
-      const val = String(key)
-        .split('.')
-        .reduce((acc, k) => (acc && Object.prototype.hasOwnProperty.call(acc, k) ? acc[k] : undefined), dict);
-      return val == null ? key : val;
-    };
-  }, [dict]);
+  const t = (key) => {
+    const keys = key.split('.');
+    let value = translations[language];
 
-  return { t, language, changeLanguage, supportedLanguages };
-}
+    for (const k of keys) {
+      if (value && typeof value === 'object') {
+        value = value[k];
+      } else {
+        return key;
+      }
+    }
+
+    return value || key;
+  };
+
+  return { t, language };
+};

@@ -1,33 +1,35 @@
-import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 
-export const LanguageContext = createContext({
-  language: 'ru',
-  changeLanguage: () => {},
-  supportedLanguages: ['ru', 'kk', 'en'],
-});
+export const LanguageContext = createContext();
 
-export function LanguageProvider({ children, defaultLanguage = 'ru' }) {
+const AVAILABLE_LANGUAGES = ['en', 'kk', 'ru'];
+const DEFAULT_LANGUAGE = 'ru';
+
+export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
-    try {
-      return localStorage.getItem('app_lang') || defaultLanguage;
-    } catch {
-      return defaultLanguage;
+    const savedLang = localStorage.getItem('language');
+    if (savedLang && AVAILABLE_LANGUAGES.includes(savedLang)) {
+      return savedLang;
     }
+    
+    const browserLang = navigator.language.split('-')[0];
+    return AVAILABLE_LANGUAGES.includes(browserLang) ? browserLang : DEFAULT_LANGUAGE;
   });
 
   useEffect(() => {
-    try { localStorage.setItem('app_lang', language); } catch {}
+    localStorage.setItem('language', language);
+    document.documentElement.lang = language;
   }, [language]);
 
-  const changeLanguage = useCallback((lang) => {
-    if (['ru', 'kk', 'en'].includes(lang)) setLanguage(lang);
-  }, []);
+  const changeLanguage = (lang) => {
+    if (AVAILABLE_LANGUAGES.includes(lang)) {
+      setLanguage(lang);
+    }
+  };
 
-  const value = useMemo(() => ({
-    language,
-    changeLanguage,
-    supportedLanguages: ['ru', 'kk', 'en'],
-  }), [language, changeLanguage]);
-
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
-}
+  return (
+    <LanguageContext.Provider value={{ language, changeLanguage, availableLanguages: AVAILABLE_LANGUAGES }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+};
