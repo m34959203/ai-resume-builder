@@ -1,94 +1,143 @@
+// src/components/PersonalInfoSection.jsx
 import React from 'react';
-import { useTranslation } from '../hooks/useTranslation';
 
-const PersonalInfoSection = ({ data, onChange }) => {
-  const { t } = useTranslation();
+export default function PersonalInfoSection({ profile, onChange }) {
+  // onChange(field, value) – родитель обновляет состояние профиля
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold mb-6">{t('builder.personalInfo.title')}</h2>
-      
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.fullName')}
-          </label>
-          <input
-            type="text"
-            value={data.fullName || ''}
-            onChange={(e) => onChange('fullName', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.fullName')}
-          />
-        </div>
+    <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mb-8">
+      <h2 className="text-xl font-semibold text-gray-900 mb-6">Личная информация</h2>
 
+      {/* Фото */}
+      <div className="flex flex-col items-center mb-8">
+        {/* ... твой загрузчик аватара, без изменений ... */}
+        <p className="text-sm text-gray-500 mt-2">Рекомендуется загрузить фото</p>
+      </div>
+
+      {/* Имя */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Полное имя *
+        </label>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          placeholder="Иван Иванов"
+          value={profile.fullName || ''}
+          onChange={(e) => onChange('fullName', e.target.value)}
+        />
+      </div>
+
+      {/* Желаемая должность */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Желаемая должность
+        </label>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          placeholder="Frontend Developer"
+          value={profile.targetPosition || ''}
+          onChange={(e) => onChange('targetPosition', e.target.value)}
+        />
+      </div>
+
+      {/* Email / Телефон */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.email')}
+            Email *
           </label>
           <input
-            type="email"
-            value={data.email || ''}
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="ivan@example.com"
+            value={profile.email || ''}
             onChange={(e) => onChange('email', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.email')}
           />
         </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.phone')}
+            Телефон *
           </label>
           <input
-            type="tel"
-            value={data.phone || ''}
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="+7 (777) 123-45-67"
+            value={profile.phone || ''}
             onChange={(e) => onChange('phone', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.phone')}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.location')}
-          </label>
-          <input
-            type="text"
-            value={data.location || ''}
-            onChange={(e) => onChange('location', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.location')}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.position')}
-          </label>
-          <input
-            type="text"
-            value={data.position || ''}
-            onChange={(e) => onChange('position', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.position')}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('builder.personalInfo.summary')}
-          </label>
-          <textarea
-            value={data.summary || ''}
-            onChange={(e) => onChange('summary', e.target.value)}
-            rows="4"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={t('builder.personalInfo.summary')}
           />
         </div>
       </div>
-    </div>
-  );
-};
 
-export default PersonalInfoSection;
+      {/* Город */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Город
+        </label>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          placeholder="Алматы"
+          value={profile.city || ''}
+          onChange={(e) => onChange('city', e.target.value)}
+        />
+      </div>
+
+      {/* --- НОВЫЕ ПОЛЯ ------------------------------------- */}
+
+      {/* Возраст */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Возраст
+          </label>
+          <input
+            type="number"
+            min="14"
+            max="100"
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="29"
+            value={profile.age || ''}
+            onChange={(e) => onChange('age', e.target.value)}
+          />
+        </div>
+
+        {/* Семейное положение */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Семейное положение
+          </label>
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="Женат / замужем / не состою"
+            value={profile.maritalStatus || ''}
+            onChange={(e) => onChange('maritalStatus', e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Дети / Водительские права */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Дети
+          </label>
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="Есть / Нет (указать возраст при желании)"
+            value={profile.children || ''}
+            onChange={(e) => onChange('children', e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Водительские права
+          </label>
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm text-gray-900 border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            placeholder="B, B1 / нет прав"
+            value={profile.driversLicense || ''}
+            onChange={(e) => onChange('driversLicense', e.target.value)}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}

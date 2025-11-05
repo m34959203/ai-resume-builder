@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+// src/components/AIResumeBuilder.jsx
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   FileText, Briefcase, TrendingUp, Search, MapPin,
   Award, BookOpen, Sparkles, ExternalLink, Filter,
-  ChevronLeft, ChevronRight, RefreshCw, X, Calendar,
-  DollarSign, Building, Clock, AlertCircle
+  ChevronLeft, ChevronRight, RefreshCw, X
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
-import LanguageSwitcher from './LanguageSwitcher';
-import { useTranslation } from '../hooks/useTranslation';
-import { LanguageContext } from '../context/LanguageContext';
 import {
   searchJobsSmart,
   isHttpError,
@@ -23,7 +20,7 @@ const HOST = getDefaultHost();
 
 /* ========================== Вспомогательные хелперы ========================== */
 
-// Дебаунс для оптимизации поиска
+// простой дебаунс
 function useDebouncedValue(value, delay = 800) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -33,13 +30,8 @@ function useDebouncedValue(value, delay = 800) {
   return v;
 }
 
-// Безопасная работа с датами
-function safeDate(d) {
-  if (!d) return null;
-  const s = new Date(d);
-  return isNaN(+s) ? null : s;
-}
-
+// --- даты / опыт ---
+function safeDate(d) { if (!d) return null; const s = new Date(d); return isNaN(+s) ? null : s; }
 function bestOfDates(obj, keys = []) {
   for (const k of keys) {
     const v = safeDate(obj?.[k]);
@@ -48,11 +40,9 @@ function bestOfDates(obj, keys = []) {
   return null;
 }
 
-// Определение последнего места работы
 function pickLatestExperience(profile) {
   const items = Array.isArray(profile?.experience) ? profile.experience : [];
   if (!items.length) return null;
-  
   const scored = items.map((it, idx) => {
     const end = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']);
     const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
@@ -60,27 +50,23 @@ function pickLatestExperience(profile) {
     const startScore = start ? +start : 0;
     return { it, endScore, startScore };
   });
-  
   scored.sort((a, b) => (b.endScore - a.endScore) || (b.startScore - a.startScore));
   return scored[0]?.it || items[0];
 }
 
-// Расчет категории опыта
 function calcExperienceCategory(profile) {
   const items = Array.isArray(profile?.experience) ? profile.experience : [];
   if (!items.length) return 'noExperience';
-  
   let ms = 0;
   items.forEach((it) => {
     const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
-    const end = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']) || new Date();
+    const end   = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']) || new Date();
     if (start && end && end > start) {
       ms += (+end - +start);
     } else {
-      ms += 365 * 24 * 3600 * 1000;
+      ms += 365 * 24 * 3600 * 1000; // считаем год по умолчанию
     }
   });
-  
   const years = ms / (365 * 24 * 3600 * 1000);
   if (years < 1) return 'noExperience';
   if (years < 3) return 'between1And3';
@@ -88,10 +74,9 @@ function calcExperienceCategory(profile) {
   return 'moreThan6';
 }
 
-// Определение роли из образования
+// --- целевая роль ---
 function roleFromEducation(eduItem) {
   if (!eduItem) return '';
-  
   const raw = [
     eduItem?.specialization, eduItem?.speciality, eduItem?.major, eduItem?.faculty,
     eduItem?.field, eduItem?.program, eduItem?.department, eduItem?.degree,
@@ -110,14 +95,13 @@ function roleFromEducation(eduItem) {
   if (any('аналит', 'эконом', 'финан', 'бизнес'))
     return 'Business Analyst (Junior)';
   if (any('маркет', 'реклам', 'digital marketing'))
-    return 'Marketing Specialist (Junior)';
+    return 'Маркетолог (Junior)';
   if (any('менедж', 'управл', 'project'))
     return 'Project Manager (Junior)';
 
   return '';
 }
 
-// Определение желаемой роли
 function deriveDesiredRole(profile) {
   const explicit =
     profile?.position ||
@@ -153,61 +137,51 @@ function deriveDesiredRole(profile) {
 
   return '';
 }
-
 const deriveQueryFromProfile = (p) => deriveDesiredRole(p);
 
-// Конвертация опыта AI -> HH
+// --- опыт от ИИ к HH ---
 function hhExpFromAi(aiExp) {
   const v = String(aiExp || '').trim();
   if (v === 'none' || v === '0-1') return 'noExperience';
   if (v === '1-3') return 'between1And3';
   if (v === '3-6') return 'between3And6';
   if (v === '6+') return 'moreThan6';
-  if (['noExperience', 'between1And3', 'between3And6', 'moreThan6'].includes(v)) return v;
+  if (['noExperience','between1And3','between3And6','moreThan6'].includes(v)) return v;
   return '';
 }
-
-// Красивое отображение опыта
-function prettyExp(aiExp, t) {
+function prettyExp(aiExp) {
   const v = String(aiExp || '').trim();
-  if (v === 'none' || v === '0-1' || v === 'noExperience') return t('vacancies.experience.noExperience');
-  if (v === '1-3' || v === 'between1And3') return t('vacancies.experience.between1And3');
-  if (v === '3-6' || v === 'between3And6') return t('vacancies.experience.between3And6');
-  if (v === '6+' || v === 'moreThan6') return t('vacancies.experience.moreThan6');
-  return t('vacancies.experience.any');
+  if (v === 'none' || v === '0-1' || v === 'noExperience') return 'без опыта';
+  if (v === '1-3' || v === 'between1And3') return '1–3 года';
+  if (v === '3-6' || v === 'between3And6') return '3–6 лет';
+  if (v === '6+' || v === 'moreThan6') return '6+ лет';
+  return 'любой';
 }
 
-// Валидация профиля
+// --- валидация профиля для рекомендаций ---
 const normalizeText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-
 function hasProfileForRecs(p = {}) {
   const summaryOk = normalizeText(p.summary).length >= 20;
-  const skillsOk = Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3;
-  const expOk = Array.isArray(p.experience) && p.experience.some(
+  const skillsOk  = Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3;
+  const expOk     = Array.isArray(p.experience) && p.experience.some(
     e => normalizeText(e?.title || e?.position || e?.company || e?.description).length >= 5
   );
-  const eduOk = Array.isArray(p.education) && p.education.some(
+  const eduOk     = Array.isArray(p.education) && p.education.some(
     e => normalizeText(e?.degree || e?.major || e?.institution).length >= 3
   );
   return summaryOk || skillsOk || expOk || eduOk;
 }
-
-function missingProfileSections(p = {}, t) {
+function missingProfileSections(p = {}) {
   const miss = [];
-  if (!(Array.isArray(p.experience) && p.experience.length)) 
-    miss.push(t('builder.experience.title'));
-  if (!(Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3)) 
-    miss.push(t('builder.skills.title'));
-  if (!(Array.isArray(p.education) && p.education.length)) 
-    miss.push(t('builder.education.title'));
-  if (!(normalizeText(p.summary).length >= 20)) 
-    miss.push(t('builder.personalInfo.summary'));
+  if (!(Array.isArray(p.experience) && p.experience.length)) miss.push('Опыт работы');
+  if (!(Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3)) miss.push('Навыки');
+  if (!(Array.isArray(p.education) && p.education.length)) miss.push('Образование');
+  if (!(normalizeText(p.summary).length >= 20)) miss.push('О себе');
   return miss;
 }
 
-/* ===================== Компонент выбора города ===================== */
+/* ===================== Выбор города (только KZ) ===================== */
 function CitySelect({ value, onChange }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || '');
   const [cities, setCities] = useState([]);
@@ -219,16 +193,13 @@ function CitySelect({ value, onChange }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    
     (async () => {
       try {
         const areas = await fetchAreas(HOST);
         if (cancelled) return;
 
-        const kz = (areas || []).find((c) => 
-          /казахстан|kazakhstan|қазақстан/i.test(c?.name)
-        );
-        
+        // Ищем "Казахстан"
+        const kz = (areas || []).find((c) => /казахстан/i.test(c?.name));
         const acc = [];
         function walk(node) {
           if (!node) return;
@@ -241,18 +212,17 @@ function CitySelect({ value, onChange }) {
         }
         if (kz) walk(kz);
 
+        // убираем дубликаты
         const uniq = [];
         const seen = new Set();
         acc.forEach((x) => {
           const k = x.name.toLowerCase();
-          if (!seen.has(k)) {
-            seen.add(k);
-            uniq.push(x);
-          }
+          if (!seen.has(k)) { seen.add(k); uniq.push(x); }
         });
 
         setCities(uniq.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
       } catch {
+        // fallback на крупные города
         setCities([
           { id: 'almaty', name: 'Алматы' },
           { id: 'astana', name: 'Астана' },
@@ -262,7 +232,6 @@ function CitySelect({ value, onChange }) {
         if (!cancelled) setLoading(false);
       }
     })();
-    
     return () => { cancelled = true; };
   }, []);
 
@@ -284,32 +253,21 @@ function CitySelect({ value, onChange }) {
 
   return (
     <div className="relative" ref={ref}>
-      <div className="relative">
-        <MapPin className="absolute left-3 top-3 text-gray-400" size={18} />
-        <input
-          type="text"
-          placeholder={t('vacancies.cityPlaceholder')}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          aria-label={t('builder.personalInfo.location')}
-        />
-      </div>
-      
+      <input
+        type="text"
+        placeholder="Начните вводить город…"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        className="w-full px-4 py-2 border rounded-lg"
+        aria-label="Город"
+      />
       {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow-lg">
           {loading ? (
-            <div className="p-3 text-sm text-gray-500 text-center">
-              {t('common.loading')}
-            </div>
+            <div className="p-3 text-sm text-gray-500">Загрузка…</div>
           ) : filtered.length === 0 ? (
-            <div className="p-3 text-sm text-gray-500 text-center">
-              {t('vacancies.noCitiesFound')}
-            </div>
+            <div className="p-3 text-sm text-gray-500">Ничего не найдено</div>
           ) : (
             filtered.map((c) => (
               <button
@@ -317,11 +275,10 @@ function CitySelect({ value, onChange }) {
                 onClick={() => {
                   setQuery(c.name);
                   setOpen(false);
-                  onChange?.(c.name, c);
+                  onChange?.(c.name, c); // фронт отдаёт строку, бэкенд мапит её в area
                 }}
-                className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 hover:bg-gray-50"
               >
-                <MapPin size={14} className="text-gray-400" />
                 {c.name}
               </button>
             ))
@@ -332,104 +289,41 @@ function CitySelect({ value, onChange }) {
   );
 }
 
-/* ===================== Компонент карточки вакансии ===================== */
-function VacancyCard({ vacancy, t }) {
-  return (
-    <div className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow bg-white">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex-1">
-          <h3 className="text-xl font-bold mb-2 text-gray-900 hover:text-blue-600 transition-colors">
-            {vacancy.title}
-          </h3>
-          <div className="flex items-center gap-2 text-gray-600 mb-2">
-            <Building size={16} />
-            <p className="font-medium">{vacancy.company}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg font-semibold">
-          <DollarSign size={16} />
-          <span>{vacancy.salary}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3 text-sm text-gray-600 mb-4">
-        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-md">
-          <MapPin size={14} />
-          {vacancy.location || '—'}
-        </span>
-        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-md">
-          <Award size={14} />
-          {vacancy.experience || '—'}
-        </span>
-      </div>
-
-      {vacancy.description && (
-        <p className="text-gray-700 mb-4 line-clamp-3">
-          {vacancy.description}
-        </p>
-      )}
-
-      {!!(vacancy.skills || []).length && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {(vacancy.skills || []).slice(0, 8).map((skill, idx) => (
-            <span
-              key={`${vacancy.id}-skill-${idx}`}
-              className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium"
-            >
-              {skill}
-            </span>
-          ))}
-          {vacancy.skills.length > 8 && (
-            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">
-              +{vacancy.skills.length - 8}
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="flex gap-3 pt-4 border-t border-gray-100">
-        <button
-          onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank', 'noopener,noreferrer')}
-          className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
-        >
-          <ExternalLink size={16} />
-          {t('vacancies.applyOnHH')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ================================= Основной компонент ================================= */
 
-function AIResumeBuilder() {
-  const { t } = useTranslation();
-  const { language } = useContext(LanguageContext);
+const AIResumeBuilder = () => {
   const [currentPage, setCurrentPage] = useState('home');
 
-  const [profile, setProfile] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    location: '',
-    age: '',
-    maritalStatus: '',
-    children: '',
-    driverLicense: '',
-    summary: '',
-    experience: [],
-    education: [],
-    skills: [],
-    languages: []
-  });
+  // профиль пользователя
+const [profile, setProfile] = useState({
+  fullName: '',
+  email: '',
+  phone: '',
+  location: '',
+  age: '',               // 🆕 возраст
+  maritalStatus: '',     // 🆕 семейное положение
+  children: '',          // 🆕 дети
+  driverLicense: '',     // 🆕 водительские права
+  summary: '',
+  experience: [],
+  education: [],
+  skills: [],
+  languages: []
+});
 
+
+  // выбор шаблона для PDF
   const [selectedTemplate, setSelectedTemplate] = useState('modern');
+
+  // вакансии и строка поиска (глобально)
   const [vacancies, setVacancies] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // рекомендации
   const [recommendations, setRecommendations] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // URL параметры для навигации
+  // читаем ?page=... из урла один раз
   useEffect(() => {
     const url = new URL(window.location.href);
     const p = url.searchParams.get('page');
@@ -437,52 +331,51 @@ function AIResumeBuilder() {
     if (p) window.history.replaceState(null, '', window.location.pathname);
   }, []);
 
-  // Мок-данные для вакансий
+  // fallback-данные для карточек вакансий при ошибках HH
   const mockVacancies = useMemo(() => ([
     {
       id: 'm1',
-      title: t('vacancies.mockVacancy1.title') || 'Frontend Developer',
+      title: 'Frontend Developer',
       company: 'Tech Corp',
       salary: '200 000 – 300 000 ₸',
-      location: t('vacancies.cities.almaty') || 'Алматы',
-      experience: t('vacancies.experience.junior') || 'Junior',
-      description: t('vacancies.mockVacancy1.description') || 'Exciting opportunity for frontend developers',
+      location: 'Алматы',
+      experience: 'Junior',
+      description: 'Разработка современных веб-приложений на React',
       skills: ['React', 'JavaScript', 'TypeScript', 'CSS']
     },
     {
       id: 'm2',
-      title: t('vacancies.mockVacancy2.title') || 'UI/UX Designer',
+      title: 'UI/UX Designer',
       company: 'Design Studio',
       salary: '180 000 – 250 000 ₸',
-      location: t('vacancies.cities.astana') || 'Астана',
-      experience: t('vacancies.experience.junior') || 'Junior',
-      description: t('vacancies.mockVacancy2.description') || 'Creative design position',
+      location: 'Астана',
+      experience: 'Junior',
+      description: 'Создание интуитивных интерфейсов',
       skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping']
     },
     {
       id: 'm3',
-      title: t('vacancies.mockVacancy3.title') || 'Data Analyst',
+      title: 'Data Analyst',
       company: 'Analytics Pro',
       salary: '220 000 – 280 000 ₸',
-      location: t('vacancies.cities.almaty') || 'Алматы',
-      experience: t('vacancies.experience.junior') || 'Junior',
-      description: t('vacancies.mockVacancy3.description') || 'Data analysis position',
+      location: 'Алматы',
+      experience: 'Junior',
+      description: 'Анализ данных и отчётность',
       skills: ['Python', 'SQL', 'Excel', 'Power BI']
     }
-  ]), [t]);
+  ]), []);
 
-  // Генерация рекомендаций
+  // генерация рекомендаций (AI)
   const generateRecommendations = async () => {
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
       setIsGenerating(false);
       return;
     }
-    
     setIsGenerating(true);
     try {
       const city = (profile?.location || '').trim();
-      const rec = await fetchRecommendations(profile, { city, language });
+      const rec = await fetchRecommendations(profile, { city });
 
       const professions = (rec?.roles || rec?.professions || [])
         .map(r => (typeof r === 'string' ? r : (r?.title || '')))
@@ -504,17 +397,16 @@ function AIResumeBuilder() {
         professions: professions.slice(0, 6),
         skillsToLearn: skillsToLearn.slice(0, 10),
         courses: courses.slice(0, 10),
-        matchScore: isNaN(matchScore) ? 0 : Math.max(0, Math.min(100, matchScore)),
+        matchScore: isNaN(matchScore)
+          ? 0
+          : Math.max(0, Math.min(100, matchScore)),
         debug: rec?.debug || null,
       });
-    } catch (err) {
-      console.error('Recommendations error:', err);
-      
-      // Фоллбэк на основе навыков пользователя
+    } catch {
+      // fallback
       const userSkills = (profile.skills || []).map(s => String(s).toLowerCase());
       const hasDev = userSkills.some(s => ['react', 'javascript', 'python', 'java'].includes(s));
       const hasDesign = userSkills.some(s => ['figma', 'photoshop', 'design'].includes(s));
-      
       setRecommendations({
         professions: hasDev
           ? ['Frontend Developer', 'Full-Stack Developer', 'Software Engineer']
@@ -527,9 +419,9 @@ function AIResumeBuilder() {
           ? ['User Research', 'Interaction Design', 'Design Systems']
           : ['Agile', 'Data Analysis', 'Digital Marketing'],
         courses: [
-          { name: 'Coursera — React Specialization', duration: '3 ' + t('common.months'), url: 'https://www.coursera.org' },
-          { name: 'Udemy — Complete Web Development', duration: '2 ' + t('common.months'), url: 'https://www.udemy.com' },
-          { name: 'Stepik — Python Basics', duration: '1 ' + t('common.month'), url: 'https://stepik.org' }
+          { name: 'Coursera — React Специализация', duration: '3 месяца', url: '' },
+          { name: 'Udemy — Complete Web Development', duration: '2 месяца', url: '' },
+          { name: 'Stepik — Python для начинающих', duration: '1 месяц', url: '' }
         ],
         matchScore: 62
       });
@@ -539,56 +431,41 @@ function AIResumeBuilder() {
   };
 
   return (
-    <div className="font-sans min-h-screen bg-gray-50">
+    <div className="font-sans">
       {/* Навигация */}
-      <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
+      <nav className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <button
               onClick={() => setCurrentPage('home')}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-              aria-label={t('nav.home')}
+              className="flex items-center gap-2 cursor-pointer"
+              aria-label="На главную"
             >
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <FileText className="text-white" size={24} />
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                AI Resume
-              </span>
+              <span className="text-xl font-bold">AI Resume</span>
             </button>
 
-            <div className="flex gap-6 items-center">
+            <div className="flex gap-6">
               <button
                 onClick={() => setCurrentPage('builder')}
-                className={`text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2 transition-colors ${
-                  currentPage === 'builder' ? 'text-blue-600' : ''
-                }`}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <FileText size={18} />
-                <span className="hidden sm:inline">{t('nav.builder')}</span>
+                <FileText size={18} /> Резюме
               </button>
-              
               <button
                 onClick={() => setCurrentPage('vacancies')}
-                className={`text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2 transition-colors ${
-                  currentPage === 'vacancies' ? 'text-blue-600' : ''
-                }`}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <Briefcase size={18} />
-                <span className="hidden sm:inline">{t('nav.vacancies')}</span>
+                <Briefcase size={18} /> Вакансии
               </button>
-              
               <button
                 onClick={() => setCurrentPage('recommendations')}
-                className={`text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2 transition-colors ${
-                  currentPage === 'recommendations' ? 'text-blue-600' : ''
-                }`}
+                className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <TrendingUp size={18} />
-                <span className="hidden sm:inline">{t('nav.recommendations')}</span>
+                <TrendingUp size={18} /> Рекомендации
               </button>
-
-              <LanguageSwitcher />
             </div>
           </div>
         </div>
@@ -638,7 +515,7 @@ function AIResumeBuilder() {
       )}
 
       {/* Футер */}
-      <footer className="bg-gray-900 text-white py-12 mt-auto">
+      <footer className="bg-gray-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
@@ -649,160 +526,136 @@ function AIResumeBuilder() {
                 <span className="font-bold">AI Resume</span>
               </div>
               <p className="text-gray-400 text-sm">
-                {t('footer.description')}
+                Создавайте профессиональные резюме с помощью ИИ
               </p>
             </div>
-            
             <div>
-              <h4 className="font-semibold mb-4">{t('footer.product')}</h4>
+              <h4 className="font-semibold mb-4">Продукт</h4>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li>
-                  <button 
-                    className="hover:text-white transition-colors" 
+                  <button
+                    className="hover:text-white"
                     onClick={() => setCurrentPage('builder')}
                   >
-                    {t('footer.createResume')}
+                    Создать резюме
                   </button>
                 </li>
                 <li>
-                  <button 
-                    className="hover:text-white transition-colors" 
+                  <button
+                    className="hover:text-white"
                     onClick={() => setCurrentPage('builder')}
                   >
-                    {t('footer.templates')}
+                    Шаблоны
                   </button>
                 </li>
                 <li>
-                  <button 
-                    className="hover:text-white transition-colors" 
+                  <button
+                    className="hover:text-white"
                     onClick={() => setCurrentPage('vacancies')}
                   >
-                    {t('footer.vacancies')}
+                    Вакансии
                   </button>
                 </li>
                 <li>
-                  <button 
-                    className="hover:text-white transition-colors" 
+                  <button
+                    className="hover:text-white"
                     onClick={() => setCurrentPage('recommendations')}
                   >
-                    {t('footer.recommendations')}
+                    Рекомендации
                   </button>
                 </li>
               </ul>
             </div>
-            
             <div>
-              <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
+              <h4 className="font-semibold mb-4">Компания</h4>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.about')}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.blog')}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.careers')}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.contact')}</a></li>
+                <li><a href="#" className="hover:text-white">О нас</a></li>
+                <li><a href="#" className="hover:text-white">Блог</a></li>
+                <li><a href="#" className="hover:text-white">Карьера</a></li>
+                <li><a href="#" className="hover:text-white">Контакты</a></li>
               </ul>
             </div>
-            
             <div>
-              <h4 className="font-semibold mb-4">{t('footer.support')}</h4>
+              <h4 className="font-semibold mb-4">Поддержка</h4>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.help')}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.terms')}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{t('footer.privacy')}</a></li>
+                <li><a href="#" className="hover:text-white">Помощь</a></li>
+                <li><a href="#" className="hover:text-white">Условия использования</a></li>
+                <li><a href="#" className="hover:text-white">Политика конфиденциальности</a></li>
               </ul>
             </div>
           </div>
-          
           <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
-            <p>© {new Date().getFullYear()} {t('footer.copyright')}</p>
-            <p className="mt-2">{t('footer.integration')}</p>
+            <p>© 2025 AI Resume Builder. Все права защищены.</p>
+            <p className="mt-2">
+              Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика
+            </p>
           </div>
         </div>
       </footer>
     </div>
   );
-}
+};
+
+export default AIResumeBuilder;
 
 /* ========================== Вспомогательные страницы ========================== */
 
 function HomePage({ onCreate, onFindJobs }) {
-  const { t } = useTranslation();
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-6xl mx-auto px-4 py-12 md:py-20">
-        {/* Hero Section */}
+      <div className="max-w-6xl mx-auto px-4 py-12">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full mb-6 animate-pulse">
+          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full mb-6">
             <Sparkles size={16} />
-            <span className="text-sm font-medium">{t('home.badge')}</span>
+            <span className="text-sm font-medium">AI-powered Resume Builder</span>
           </div>
-          
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4">
-            {t('home.title')}
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+            Создайте идеальное резюме
+            <span className="text-blue-600"> за минуты</span>
           </h1>
-          
-          <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            {t('home.subtitle')}
+          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex gap-4 justify-center">
             <button
               onClick={onCreate}
-              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg"
             >
-              <FileText size={20} />
-              {t('home.createButton')}
+              <FileText size={20} /> Создать резюме
             </button>
-            
             <button
               onClick={onFindJobs}
-              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition-all border-2 border-blue-600 flex items-center justify-center gap-2"
+              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
             >
-              <Briefcase size={20} />
-              {t('home.findJobsButton')}
+              <Briefcase size={20} /> Найти вакансии
             </button>
           </div>
         </div>
 
-        {/* Features Grid */}
         <div className="grid md:grid-cols-3 gap-8 mb-16">
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
               <FileText className="text-blue-600" size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.ai.title')}</h3>
-            <p className="text-gray-600">{t('home.features.ai.description')}</p>
+            <h3 className="text-xl font-bold mb-2">Умное резюме</h3>
+            <p className="text-gray-600">Подсказки по улучшению каждого раздела</p>
           </div>
-          
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
               <Briefcase className="text-purple-600" size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.vacancies.title')}</h3>
-            <p className="text-gray-600">{t('home.features.vacancies.description')}</p>
+            <h3 className="text-xl font-bold mb-2">Поиск вакансий</h3>
+            <p className="text-gray-600">
+              Интеграция с HeadHunter для релевантных предложений
+            </p>
           </div>
-          
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
               <TrendingUp className="text-green-600" size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.recommendations.title')}</h3>
-            <p className="text-gray-600">{t('home.features.recommendations.description')}</p>
-          </div>
-        </div>
-
-        {/* Stats Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 grid md:grid-cols-3 gap-8 text-center">
-          <div>
-            <div className="text-4xl font-bold text-blue-600 mb-2">10,000+</div>
-            <div className="text-gray-600">{t('home.stats.resumes')}</div>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-purple-600 mb-2">5,000+</div>
-            <div className="text-gray-600">{t('home.stats.jobs')}</div>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-green-600 mb-2">95%</div>
-            <div className="text-gray-600">{t('home.stats.satisfaction')}</div>
+            <h3 className="text-xl font-bold mb-2">Рекомендации</h3>
+            <p className="text-gray-600">Навыки, роли и курсы для роста</p>
           </div>
         </div>
       </div>
@@ -820,198 +673,188 @@ function RecommendationsPage({
   setSearchQuery,
   profile
 }) {
-  const { t } = useTranslation();
   const profileOk = hasProfileForRecs(profile);
-  const missing = profileOk ? [] : missingProfileSections(profile, t);
+  const missing = profileOk ? [] : missingProfileSections(profile);
 
   useEffect(() => {
     if (!recommendations && profileOk) generateRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOk]);
-
-  const applyProfession = (p) => {
-    const q = String(p || '').trim();
-    if (!q) return;
-    setSearchQuery(q);
-    onFindVacancies?.();
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-6xl mx-auto px-4">
         <button
           onClick={onBack}
-          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2 transition-colors"
-          aria-label={t('common.back')}
+          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
+          aria-label="Назад"
         >
-          <ChevronLeft className="w-4 h-4" />
-          <span>{t('common.back')}</span>
+          ← Назад
         </button>
 
-        <div className="bg-white rounded-xl shadow-lg p-8">
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl flex items-center justify-center">
-              <TrendingUp className="text-purple-600" size={24} />
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Sparkles className="text-purple-600" size={24} />
             </div>
-            <h2 className="text-3xl font-bold">{t('recommendations.title')}</h2>
+            <div>
+              <h2 className="text-3xl font-bold">AI Рекомендации</h2>
+              <p className="text-gray-600">Советы на основе вашего резюме</p>
+            </div>
           </div>
 
           {!profileOk && (
-            <div className="mb-6 p-6 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200">
-              <div className="flex items-start gap-3 mb-4">
-                <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
-                <div>
-                  <div className="font-semibold text-amber-900 mb-2">
-                    {t('recommendations.needMoreData')}
-                  </div>
-                  <div className="text-sm text-amber-800 mb-3">
-                    {t('recommendations.missingSections')}:
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {missing.map((m, i) => (
-                      <span key={i} className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 text-sm font-medium">
-                        {m}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50 p-6">
+              <div className="text-lg font-semibold mb-2">
+                Рекомендации появятся после анализа резюме
               </div>
-              <button
-                onClick={onImproveResume}
-                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-              >
-                {t('recommendations.improveResume')}
-              </button>
+              <p className="text-gray-700 mb-4">
+                Заполните основные разделы — и мы подберём профессии, навыки и
+                курсы. Начните с:
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                {missing.map((m) => (
+                  <span
+                    key={m}
+                    className="px-3 py-1 rounded-full bg-white/70 border text-sm"
+                  >
+                    {m}
+                  </span>
+                ))}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={onImproveResume}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                >
+                  Заполнить резюме
+                </button>
+                <button
+                  onClick={onFindVacancies}
+                  className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                >
+                  Посмотреть вакансии
+                </button>
+              </div>
             </div>
           )}
 
           {profileOk && (
             <>
-              <div className="flex items-center gap-3 mb-6 p-4 bg-purple-50 rounded-lg border border-purple-100">
-                <Sparkles className="text-purple-600" size={20} />
-                <div className="text-gray-700">
-                  {t('recommendations.hint')}
+              {isGenerating ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />
+                  <p className="text-gray-600">Анализируем ваш профиль…</p>
                 </div>
-              </div>
-
-              <div className="mb-6">
-                <button
-                  onClick={generateRecommendations}
-                  disabled={isGenerating}
-                  className={`px-6 py-3 rounded-lg text-white font-medium transition-all flex items-center gap-2 ${
-                    isGenerating 
-                      ? 'bg-blue-400 cursor-not-allowed' 
-                      : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
-                  }`}
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      {t('recommendations.generating')}
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      {t('recommendations.generate')}
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {recommendations && !isGenerating && (
-                <>
-                  {/* Match Score */}
-                  {recommendations.matchScore > 0 && (
-                    <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm text-green-700 mb-1">{t('recommendations.marketFit')}</div>
-                          <div className="text-3xl font-bold text-green-600">
-                            {recommendations.matchScore}%
-                          </div>
-                        </div>
-                        <div className="w-20 h-20 rounded-full border-8 border-green-200 flex items-center justify-center">
-                          <Award className="text-green-600" size={32} />
-                        </div>
+              ) : recommendations && (
+                <div className="space-y-8">
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-bold">
+                        Оценка соответствия рынку
+                      </h3>
+                      <div className="text-3xl font-bold text-blue-600">
+                        {recommendations.matchScore}%
                       </div>
                     </div>
-                  )}
-
-                  <div className="grid md:grid-cols-3 gap-6">
-                    {/* Профессии */}
-                    <div className="p-6 rounded-xl border border-gray-200 hover:shadow-lg transition-shadow bg-gradient-to-br from-white to-green-50">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                          <TrendingUp size={20} className="text-green-600" />
-                        </div>
-                        <div className="font-semibold text-lg">{t('recommendations.professions')}</div>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {(recommendations.professions || []).map((p, i) => (
-                          <button
-                            key={i}
-                            onClick={() => applyProfession(p)}
-                            className="text-left px-4 py-3 rounded-lg hover:bg-white border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
-                            title={t('recommendations.searchVacancies')}
-                          >
-                            <div className="font-medium text-gray-900">{p}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Навыки для изучения */}
-                    <div className="p-6 rounded-xl border border-gray-200 hover:shadow-lg transition-shadow bg-gradient-to-br from-white to-blue-50">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <BookOpen size={20} className="text-blue-600" />
-                        </div>
-                        <div className="font-semibold text-lg">{t('recommendations.skillsToLearn')}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {(recommendations.skillsToLearn || []).map((s, i) => (
-                          <span 
-                            key={i} 
-                            className="px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-colors cursor-default"
-                          >
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Курсы */}
-                    <div className="p-6 rounded-xl border border-gray-200 hover:shadow-lg transition-shadow bg-gradient-to-br from-white to-purple-50">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <ExternalLink size={20} className="text-purple-600" />
-                        </div>
-                        <div className="font-semibold text-lg">{t('recommendations.courses')}</div>
-                      </div>
-                      <ul className="space-y-3">
-                        {(recommendations.courses || []).map((c, i) => (
-                          <li key={i} className="p-3 rounded-lg bg-white border border-purple-100 hover:border-purple-300 transition-colors">
-                            <div className="font-medium text-gray-900 mb-1">{c.name}</div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                              <Clock size={14} />
-                              <span>{c.duration}</span>
-                            </div>
-                            {c.url && (
-                              <a 
-                                href={c.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
-                              >
-                                {t('recommendations.openCourse')}
-                                <ExternalLink size={14} />
-                              </a>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+                    <div className="w-full bg-gray-200 rounded-full h-4">
+                      <div
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 h-4 rounded-full transition-all"
+                        style={{ width: `${recommendations.matchScore}%` }}
+                      />
                     </div>
                   </div>
-                </>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Briefcase className="text-blue-600" /> Рекомендуемые
+                      профессии
+                    </h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {recommendations.professions.map((profession, idx) => (
+                        <div
+                          key={`${profession}-${idx}`}
+                          className="border rounded-lg p-4 hover:shadow-md transition"
+                        >
+                          <h4 className="font-semibold mb-2">{profession}</h4>
+                          <button
+                            onClick={() => {
+                              setSearchQuery(profession);
+                              onFindVacancies();
+                            }}
+                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            Найти вакансии <ExternalLink size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <TrendingUp className="text-green-600" /> Навыки для
+                      развития
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {recommendations.skillsToLearn.map((skill, idx) => (
+                        <span
+                          key={`${skill}-${idx}`}
+                          className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <BookOpen className="text-purple-600" /> Рекомендуемые
+                      курсы
+                    </h3>
+                    <div className="space-y-3">
+                      {recommendations.courses.map((course, idx) => (
+                        <div
+                          key={`${course.name}-${idx}`}
+                          className="border rounded-lg p-4 flex justify-between items-center hover:shadow-md transition"
+                        >
+                          <div>
+                            <h4 className="font-semibold">{course.name}</h4>
+                            {course.duration ? (
+                              <p className="text-sm text-gray-600">
+                                Длительность: {course.duration}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            onClick={() =>
+                              course.url && window.open(course.url, '_blank')
+                            }
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+                          >
+                            Подробнее
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={onFindVacancies}
+                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                    >
+                      Найти вакансии
+                    </button>
+                    <button
+                      onClick={onImproveResume}
+                      className="flex-1 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold"
+                    >
+                      Улучшить резюме
+                    </button>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -1030,33 +873,47 @@ function VacanciesPage({
   mockVacancies,
   profile,
 }) {
-  const { t } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // bootstrap сделан ли уже стартовый реальный поиск
   const [bootstrapped, setBootstrapped] = useState(false);
+
+  // AI-подсказка
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const aiAskedRef = useRef(false);
   const aiAutoAppliedRef = useRef(false);
+
+  // пагинация
   const [page, setPage] = useState(0);
   const [perPage] = useState(20);
   const [found, setFound] = useState(0);
   const [pages, setPages] = useState(0);
+
+  // блокировка после 429
   const [retryAfter, setRetryAfter] = useState(null);
   const blocked = retryAfter && Date.now() < retryAfter;
+
+  // чекбокс "использовать данные резюме"
   const [useProfile, setUseProfile] = useState(true);
   const appliedRef = useRef(false);
+
+  // обрывы старых запросов
   const reqIdRef = useRef(0);
 
-  useEffect(() => {
-    setPage(0);
-  }, [searchQuery, filters.location, filters.experience, filters.salary]);
+  // при изменении фильтров или строки поиска — сбрасываем страницу
+  useEffect(() => { setPage(0); }, [searchQuery, filters.location, filters.experience, filters.salary]);
 
+  // автоподстановка из профиля: город, опыт, роль
   useEffect(() => {
     if (!useProfile) return;
+
+    // не трогать повторно, если уже применяли и профиль не поменялся
     if (appliedRef.current && !profile) return;
 
     const next = { ...filters };
@@ -1085,8 +942,10 @@ function VacanciesPage({
       setPage(0);
       appliedRef.current = true;
     }
-  }, [useProfile, profile, searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useProfile, profile]);
 
+  // разовая AI-подсказка из профиля
   useEffect(() => {
     const hasProfileData =
       !!(profile?.summary && profile.summary.trim()) ||
@@ -1108,13 +967,14 @@ function VacanciesPage({
           setAiSuggestion(s);
         }
       } catch {
-        setAiError(t('vacancies.aiError'));
+        setAiError('Не удалось получить подсказку ИИ.');
       } finally {
         setAiLoading(false);
       }
     })();
-  }, [useProfile, profile, t]);
+  }, [useProfile, profile]);
 
+  // автоматическое применение AI-подсказки (если уверенность высокая и пользователь не вводил свой текст)
   useEffect(() => {
     if (!useProfile || aiAutoAppliedRef.current || !aiSuggestion || aiLoading) return;
 
@@ -1133,6 +993,7 @@ function VacanciesPage({
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiSuggestion, aiLoading, useProfile, searchQuery]);
 
   const applyAISuggestion = () => {
@@ -1157,6 +1018,7 @@ function VacanciesPage({
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
+  // дебаунс полей
   const debouncedSearch = useDebouncedValue(searchQuery, 800);
   const filtersKey = useMemo(
     () =>
@@ -1169,6 +1031,7 @@ function VacanciesPage({
   );
   const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
 
+  // единая функция поиска вакансий
   const runSearch = async ({
     typedText,
     chosenCity,
@@ -1184,15 +1047,17 @@ function VacanciesPage({
 
     const inferredRole = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
     const inferredCity = aiSuggestion?.city || (profile?.location || '');
-    const inferredExp = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
+    const inferredExp  = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
 
     const effectiveText = (typedText || '').trim() || inferredRole || 'разработчик';
     const effectiveCity = chosenCity || inferredCity || undefined;
-    const effectiveExp = (chosenExp === 'none')
+    const effectiveExp  = (chosenExp === 'none')
       ? 'noExperience'
       : (chosenExp || inferredExp || '');
 
-    const salaryNum = salaryVal ? String(salaryVal).replace(/\D/g, '') : undefined;
+    const salaryNum = salaryVal
+      ? String(salaryVal).replace(/\D/g, '')
+      : undefined;
 
     const params = {
       text: effectiveText,
@@ -1208,10 +1073,11 @@ function VacanciesPage({
 
     try {
       const data = await searchJobsSmart(params);
-      if (reqIdRef.current !== myId) return;
+      if (reqIdRef.current !== myId) return; // был отменён
 
       const items = Array.isArray(data?.items) ? data.items : [];
 
+      // чистим шумовые навыки
       const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
       const mapSkill = (s) => String(s || '').trim();
       const goodSkills = (arr) =>
@@ -1232,21 +1098,21 @@ function VacanciesPage({
           .trim();
 
       const mapped = items.map((v) => {
-        let salaryText = t('vacancies.salaryNegotiable');
+        let salaryText = 'по договорённости';
         const raw = v.salary_raw || v.salary || {};
         if (typeof v.salary === 'string' && v.salary.trim()) {
           salaryText = v.salary.trim();
         } else if (raw && (raw.from || raw.to)) {
           const from = raw.from ? String(raw.from) : '';
-          const to = raw.to ? String(raw.to) : '';
-          const cur = raw.currency || raw.cur || '';
+          const to   = raw.to   ? String(raw.to)   : '';
+          const cur  = raw.currency || raw.cur || '';
           const range = [from, to].filter(Boolean).join(' – ');
-          salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
+          salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || 'по договорённости';
         }
 
         return {
           id: v.id,
-          title: v.title || v.name || t('vacancies.vacancyTitle'),
+          title: v.title || v.name || 'Вакансия',
           company:
             typeof v.employer === 'string'
               ? v.employer
@@ -1281,9 +1147,9 @@ function VacanciesPage({
           const retryMs = serverRetry ? serverRetry * 1000 : 3000;
           setRetryAfter(Date.now() + retryMs);
           setError(
-            `${t('vacancies.rateLimited')} ~${Math.ceil(
+            `HeadHunter ограничил частоту запросов. Повтор через ~${Math.ceil(
               retryMs / 1000
-            )} ${t('vacancies.sec')}`
+            )} сек.`
           );
         } else {
           const details =
@@ -1291,15 +1157,16 @@ function VacanciesPage({
               ? e.body
               : (e.body?.details || e.body?.message || '');
           setError(
-            `${t('vacancies.searchError')} (HTTP ${status})${
+            `Поиск недоступен (HTTP ${status})${
               details ? ` — ${details}` : ''
             }`
           );
         }
       } else {
-        setError(t('vacancies.loadError'));
+        setError('Ошибка загрузки вакансий.');
       }
 
+      // graceful fallback
       setVacancies(mockVacancies);
       setFound(mockVacancies.length);
       setPages(1);
@@ -1311,6 +1178,7 @@ function VacanciesPage({
     }
   };
 
+  // основной эффект поиска (строка поиска, фильтры, страница)
   useEffect(() => {
     if (blocked) return;
 
@@ -1329,11 +1197,27 @@ function VacanciesPage({
     });
 
     return () => {
-      try {
-        ac.abort();
-      } catch {}
+      try { ac.abort(); } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
+
+  // bootstrap при первом заходе:
+  // как только у нас есть хоть что-то осмысленное (searchQuery ИЛИ deriveQueryFromProfile(profile)),
+  // и мы ещё не делали стабильный первый поиск -> отмечаем bootstrapped
+  useEffect(() => {
+    if (bootstrapped) return;
+
+    const derivedRole = deriveQueryFromProfile(profile) || '';
+    const haveMeaningfulQuery =
+      (searchQuery && searchQuery.trim()) ||
+      (derivedRole && derivedRole.trim());
+
+    if (!haveMeaningfulQuery) return;
+
+    // у нас уже есть стартовые данные => считаем, что стартовый автопоиск должен быть запущен
+    setBootstrapped(true);
+  }, [bootstrapped, searchQuery, profile]);
 
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
@@ -1343,126 +1227,106 @@ function VacanciesPage({
       <div className="max-w-6xl mx-auto px-4">
         <button
           onClick={onBack}
-          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2 transition-colors"
-          aria-label={t('common.back')}
+          className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
+          aria-label="Назад"
         >
-          <ChevronLeft className="w-4 h-4" />
-          <span>{t('common.back')}</span>
+          ← Назад
         </button>
 
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center">
-              <Briefcase className="text-blue-600" size={24} />
-            </div>
-            <h2 className="text-3xl font-bold">{t('vacancies.title')}</h2>
-          </div>
+          <h2 className="text-3xl font-bold mb-6">Поиск вакансий</h2>
 
-          {/* AI Suggestion Banner */}
           {(aiLoading || aiSuggestion || aiError) && (
-            <div className="mb-6 rounded-xl p-5 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 shadow-sm">
+            <div className="mb-6 rounded-xl p-5 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1">
-                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
                     <Sparkles className="text-purple-600" size={20} />
                   </div>
-                  <div className="flex-1">
-                    <div className="font-semibold mb-2 text-purple-900">
-                      {t('vacancies.aiSuggestion')}
+                  <div>
+                    <div className="font-semibold mb-1">
+                      Подсказка ИИ из вашего резюме
                     </div>
 
                     {aiLoading && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                        {t('vacancies.aiAnalyzing')}
+                        <span className="inline-block w-4 h-4 rounded-full border-2 border-purple-600 border-t-transparent animate-spin" />
+                        Анализируем профиль…
                       </div>
                     )}
 
                     {aiError && !aiLoading && (
-                      <div className="text-sm text-red-600 flex items-center gap-2">
-                        <AlertCircle size={16} />
-                        {aiError}
-                      </div>
+                      <div className="text-sm text-red-600">{aiError}</div>
                     )}
 
                     {aiSuggestion && !aiLoading && (
                       <div className="text-sm text-gray-700">
-                        <div className="mb-2">
-                          {t('vacancies.aiSuggestSearch')}{' '}
-                          <span className="font-semibold text-purple-700">
-                            {aiSuggestion.role || t('vacancies.suitableRole')}
-                          </span>
-                          {aiSuggestion.city && (
-                            <>
-                              {' '}{t('vacancies.in')}{' '}
-                              <span className="font-semibold text-purple-700">
-                                {aiSuggestion.city}
-                              </span>
-                            </>
-                          )}
-                          {aiSuggestion.experience && (
-                            <>
-                              {' '}• {t('builder.experience.label')}:{' '}
-                              <span className="font-semibold">
-                                {prettyExp(aiSuggestion.experience, t)}
-                              </span>
-                            </>
-                          )}
-                        </div>
+                        Предлагаем искать:{' '}
+                        <b>{aiSuggestion.role || 'подходящую роль'}</b>
+                        {aiSuggestion.city ? (
+                          <>
+                            {' '}
+                            в <b>{aiSuggestion.city}</b>
+                          </>
+                        ) : null}
+                        {aiSuggestion.experience ? (
+                          <>
+                            {' '}
+                            • опыт:{' '}
+                            <b>
+                              {prettyExp(aiSuggestion.experience)}
+                            </b>
+                          </>
+                        ) : null}
+                        {typeof aiSuggestion.confidence === 'number' ? (
+                          <>
+                            {' '}
+                            • уверенность:{' '}
+                            <b>
+                              {Math.round(
+                                aiSuggestion.confidence * 100
+                              )}
+                              %
+                            </b>
+                          </>
+                        ) : null}
 
-                        {typeof aiSuggestion.confidence === 'number' && (
-                          <div className="mb-3 flex items-center gap-2">
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all"
-                                style={{ width: `${aiSuggestion.confidence * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium">
-                              {Math.round(aiSuggestion.confidence * 100)}%
-                            </span>
-                          </div>
-                        )}
-
-                        {(aiSuggestion.skills || []).length > 0 && (
-                          <div className="mt-3">
-                            <div className="text-xs text-gray-600 mb-2">
-                              {t('vacancies.suggestedSkills')}:
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {(aiSuggestion.skills || []).slice(0, 8).map((s, i) => (
+                        {(aiSuggestion.skills || []).length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(aiSuggestion.skills || [])
+                              .slice(0, 8)
+                              .map((s, i) => (
                                 <button
                                   key={`${s}-${i}`}
                                   onClick={() => addSkillToQuery(s)}
-                                  className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200 transition-colors font-medium"
-                                  title={t('vacancies.addToSearch')}
+                                  className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
+                                  title="Добавить в запрос"
                                 >
                                   + {s}
                                 </button>
                               ))}
-                            </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex gap-2 shrink-0">
                   {aiSuggestion && !aiLoading && (
                     <button
                       onClick={applyAISuggestion}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition-colors font-medium"
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
                     >
-                      {t('vacancies.aiApply')}
+                      Применить
                     </button>
                   )}
                   {aiSuggestion && (
                     <button
                       onClick={() => setAiSuggestion(null)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
-                      title={t('vacancies.aiHide')}
-                      aria-label={t('vacancies.aiHide')}
+                      className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                      title="Скрыть"
+                      aria-label="Скрыть подсказку"
                     >
                       <X size={16} />
                     </button>
@@ -1476,12 +1340,14 @@ function VacanciesPage({
                         setAiLoading(true);
                         inferSearchFromProfile(profile, { lang: 'ru' })
                           .then((s) => setAiSuggestion(s))
-                          .catch(() => setAiError(t('vacancies.aiError')))
+                          .catch(() =>
+                            setAiError('Не удалось получить подсказку ИИ.')
+                          )
                           .finally(() => setAiLoading(false));
                       }}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
-                      title={t('vacancies.aiRefresh')}
-                      aria-label={t('vacancies.aiRefresh')}
+                      className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                      title="Обновить подсказку"
+                      aria-label="Обновить подсказку"
                     >
                       <RefreshCw size={16} />
                     </button>
@@ -1491,74 +1357,67 @@ function VacanciesPage({
             </div>
           )}
 
-          {/* Rate Limit Warning */}
           {blocked && (
-            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-3">
-              <AlertCircle className="text-amber-600 flex-shrink-0" size={20} />
-              <span className="text-amber-800 text-sm">
-                {t('vacancies.rateLimited')}{' '}
-                <strong>
-                  {Math.max(1, Math.ceil((retryAfter - Date.now()) / 1000))}{' '}
-                  {t('vacancies.sec')}
-                </strong>
-              </span>
+            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              HeadHunter временно ограничил частоту запросов. Подождите{' '}
+              <b>
+                {Math.max(
+                  1,
+                  Math.ceil((retryAfter - Date.now()) / 1000)
+                )}{' '}
+                сек.
+              </b>
             </div>
           )}
 
-          {/* Search Bar */}
-          <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center">
+          <div className="flex flex-col gap-4 mb-4 md:flex-row md:items-center">
             <div className="flex-1 relative">
               <Search
-                className="absolute left-4 top-3.5 text-gray-400"
+                className="absolute left-3 top-3 text-gray-400"
                 size={20}
+                aria-hidden
               />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('vacancies.searchPlaceholder')}
-                className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                aria-label={t('vacancies.title')}
+                placeholder="Поиск по должности или компании..."
+                className="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                aria-label="Поиск"
               />
             </div>
 
-            <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+            <label className="inline-flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="rounded text-blue-600 focus:ring-blue-500"
+                className="rounded"
                 checked={useProfile}
                 onChange={(e) => {
                   setUseProfile(e.target.checked);
                   appliedRef.current = false;
                 }}
               />
-              <span className="font-medium text-gray-700">
-                {t('vacancies.useProfileData')}
-              </span>
+              Использовать данные резюме
             </label>
 
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-6 py-3 border rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-all font-medium ${
-                showFilters ? 'bg-gray-50 border-blue-500' : 'border-gray-300'
-              }`}
+              className="px-6 py-3 border rounded-lg hover:bg-gray-50 flex items-center gap-2"
               aria-expanded={showFilters}
               aria-controls="filters-panel"
             >
-              <Filter size={20} />
-              {t('vacancies.filters')}
+              <Filter size={20} /> Фильтры
             </button>
           </div>
 
-          {/* Filters Panel */}
           {showFilters && (
             <div
               id="filters-panel"
-              className="grid md:grid-cols-3 gap-4 mb-6 p-6 bg-gray-50 rounded-lg border border-gray-200"
+              className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"
             >
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700">
-                  {t('vacancies.cityLabel')}
+                <label className="block text-sm font-medium mb-2">
+                  Город (только Казахстан)
                 </label>
                 <CitySelect
                   value={filters.location}
@@ -1569,138 +1428,160 @@ function VacanciesPage({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700">
-                  {t('vacancies.experienceLabel')}
+                <label className="block text-sm font-medium mb-2">
+                  Опыт
                 </label>
                 <select
                   value={filters.experience}
                   onChange={(e) =>
                     setFilters({ ...filters, experience: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border rounded-lg"
                 >
-                  <option value="">{t('vacancies.experience.any')}</option>
-                  <option value="noExperience">{t('vacancies.experience.noExperience')}</option>
-                  <option value="between1And3">{t('vacancies.experience.between1And3')}</option>
-                  <option value="between3And6">{t('vacancies.experience.between3And6')}</option>
-                  <option value="moreThan6">{t('vacancies.experience.moreThan6')}</option>
+                  <option value="">Любой</option>
+                  <option value="noExperience">Без опыта</option>
+                  <option value="between1And3">1–3 года</option>
+                  <option value="between3And6">3–6 лет</option>
+                  <option value="moreThan6">6+ лет</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700">
-                  {t('vacancies.salaryLabel')}
+                <label className="block text-sm font-medium mb-2">
+                  Зарплата от
                 </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                  <input
-                    type="text"
-                    value={filters.salary}
-                    onChange={(e) =>
-                      setFilters({ ...filters, salary: e.target.value })
-                    }
-                    placeholder={t('vacancies.salaryPlaceholder')}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    inputMode="numeric"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={filters.salary}
+                  onChange={(e) =>
+                    setFilters({ ...filters, salary: e.target.value })
+                  }
+                  placeholder="150 000 ₸"
+                  className="w-full px-4 py-2 border rounded-lg"
+                  inputMode="numeric"
+                />
               </div>
             </div>
           )}
 
-          {/* Results Info & Pagination */}
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-            <div className="text-sm text-gray-600">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  {t('vacancies.loading')}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Briefcase size={16} className="text-gray-400" />
-                  <span>
-                    {t('vacancies.found')}: <strong className="text-gray-900">{found}</strong>
-                  </span>
-                  {pages > 0 && (
-                    <span className="text-gray-400">
-                      • {t('vacancies.page')} <strong className="text-gray-900">{page + 1}</strong> {t('vacancies.of')} <strong className="text-gray-900">{pages}</strong>
-                    </span>
-                  )}
-                </div>
-              )}
+          <div className="flex items-center justify-between mb-4 text-sm text-gray-600">
+            <div>
+              {loading
+                ? 'Загружаем вакансии…'
+                : (
+                  <>
+                    Найдено в HH:{' '}
+                    <span className="font-semibold">{found}</span>
+                    {pages
+                      ? ` • Страница ${page + 1} из ${pages}`
+                      : ''}
+                  </>
+                )}
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 disabled={!canPrev || loading}
                 onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
-                className={`px-4 py-2 border rounded-lg flex items-center gap-1 font-medium transition-all ${
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
                   !canPrev || loading
-                    ? 'opacity-50 cursor-not-allowed bg-gray-50'
-                    : 'hover:bg-gray-50 hover:border-gray-400'
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-gray-50'
                 }`}
-                title={t('vacancies.previous')}
-                aria-label={t('vacancies.previous')}
+                title="Предыдущая страница"
+                aria-label="Предыдущая страница"
               >
-                <ChevronLeft size={16} />
-                <span className="hidden sm:inline">{t('vacancies.previous')}</span>
+                <ChevronLeft size={16} /> Назад
               </button>
-              
               <button
                 disabled={!canNext || loading}
                 onClick={() => canNext && setPage((p) => p + 1)}
-                className={`px-4 py-2 border rounded-lg flex items-center gap-1 font-medium transition-all ${
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
                   !canNext || loading
-                    ? 'opacity-50 cursor-not-allowed bg-gray-50'
-                    : 'hover:bg-gray-50 hover:border-gray-400'
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-gray-50'
                 }`}
-                title={t('vacancies.next')}
-                aria-label={t('vacancies.next')}
+                title="Следующая страница"
+                aria-label="Следующая страница"
               >
-                <span className="hidden sm:inline">{t('vacancies.next')}</span>
-                <ChevronRight size={16} />
+                Вперёд <ChevronRight size={16} />
               </button>
             </div>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-center gap-3">
-              <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
-              <span className="text-red-700 text-sm">{error}</span>
-            </div>
-          )}
+          {error && <div className="text-red-600 mb-4">{error}</div>}
 
-          {/* Vacancies List */}
           <div className="space-y-4">
             {vacancies.map((vacancy) => (
-              <VacancyCard key={vacancy.id} vacancy={vacancy} t={t} />
+              <div
+                key={vacancy.id}
+                className="border rounded-lg p-6 hover:shadow-md transition"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="text-xl font-bold mb-1">
+                      {vacancy.title}
+                    </h3>
+                    <p className="text-gray-600">{vacancy.company}</p>
+                  </div>
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                    {vacancy.salary}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
+                  <span className="flex items-center gap-1">
+                    <MapPin size={14} /> {vacancy.location || '—'}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Award size={14} /> {vacancy.experience || '—'}
+                  </span>
+                </div>
+
+                {vacancy.description && (
+                  <p className="text-gray-700 mb-4">
+                    {vacancy.description}
+                  </p>
+                )}
+
+                {!!(vacancy.skills || []).length && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {(vacancy.skills || []).map((skill, idx) => (
+                      <span
+                        key={`${vacancy.id}-skill-${idx}`}
+                        className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() =>
+                      vacancy.alternate_url &&
+                      window.open(vacancy.alternate_url, '_blank')
+                    }
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                  >
+                    Откликнуться на HH
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
 
-          {/* Empty State */}
           {!loading && vacancies.length === 0 && (
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Briefcase className="text-gray-400" size={40} />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {t('vacancies.noVacancies')}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {t('vacancies.changeParams')}
+            <div className="text-center py-12">
+              <Briefcase
+                className="mx-auto text-gray-400 mb-4"
+                size={48}
+              />
+              <p className="text-gray-600">Вакансии не найдены</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Измените параметры поиска
               </p>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setFilters({ location: '', experience: '', salary: '' });
-                  setPage(0);
-                }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                {t('vacancies.resetFilters')}
-              </button>
             </div>
           )}
         </div>
@@ -1708,5 +1589,3 @@ function VacanciesPage({
     </div>
   );
 }
-
-export default AIResumeBuilder;

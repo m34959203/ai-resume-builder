@@ -1,87 +1,32 @@
 import React from "react";
 import { View, Text, StyleSheet, Image } from "@react-pdf/renderer";
-import { pdfLabels } from '../pdfLabels';
 
-/* ===== Утилиты ===== */
-
+/* ---------- utils ---------- */
 const safe = (v) => (v !== undefined && v !== null ? String(v) : "");
-
-const trim = (v) => safe(v).trim();
-
-const has = (v) => !!trim(v);
-
-/**
- * Разделение имени на две строки
- */
 function splitNameTwoLines(fullName) {
-  const parts = (safe(fullName).trim() || "FULL NAME").split(/\s+/);
-  
-  if (parts.length === 1) {
-    return [parts[0].toUpperCase(), ""];
-  }
-  
-  if (parts.length === 2) {
-    return [parts[0].toUpperCase(), parts[1].toUpperCase()];
-  }
-  
-  // Имя на первой строке, остальное на второй
+  const parts = (safe(fullName).trim() || "Ваше имя").split(/\s+/);
+  if (parts.length === 1) return [parts[0].toUpperCase(), ""];
+  if (parts.length === 2) return [parts[0].toUpperCase(), parts[1].toUpperCase()];
   return [parts[0].toUpperCase(), parts.slice(1).join(" ").toUpperCase()];
 }
-
-/**
- * Форматирование даты в зависимости от языка
- */
-const formatMonth = (dateStr, language = 'ru') => {
-  if (!dateStr) return "";
-  
-  const match = /^(\d{4})-(\d{2})/.exec(dateStr);
-  if (!match) return dateStr;
-  
-  const [, year, month] = match;
-  
-  const monthNames = {
-    en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-    kk: ['Қаң', 'Ақп', 'Нау', 'Сәу', 'Мам', 'Мау', 'Шіл', 'Там', 'Қыр', 'Қаз', 'Қар', 'Жел'],
-    ru: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
-  };
-  
-  const monthIndex = parseInt(month, 10) - 1;
-  const monthName = (monthNames[language] || monthNames.ru)[monthIndex];
-  
-  return `${monthName} ${year}`;
+const fmtMonth = (m) => {
+  if (!m) return "";
+  const t = /^(\d{4})-(\d{2})$/.exec(m);
+  if (!t) return m;
+  const [, y, mo] = t;
+  return `${mo}.${y}`;
 };
-
-/**
- * Форматирование периода работы/учебы
- */
-const formatPeriod = (entry, labels, language) => {
-  const start = formatMonth(entry?.startDate || entry?.start, language);
-  const end = entry?.currentlyWorking || entry?.current 
-    ? labels.present 
-    : formatMonth(entry?.endDate || entry?.end, language);
-  
+const expPeriod = (e) => {
+  const start = fmtMonth(e?.startDate);
+  const end = e?.currentlyWorking ? "настоящее время" : fmtMonth(e?.endDate);
   if (!start && !end) return "";
-  
   return `${start || "—"} — ${end || "—"}`;
 };
+const joinList = (v, sep = " • ") =>
+  Array.isArray(v) ? v.map((x) => safe(x)).filter(Boolean).join(sep) : safe(v);
 
-/**
- * Объединение массива в строку с разделителем
- */
-const joinList = (arr, separator = " • ") => {
-  if (!Array.isArray(arr)) return safe(arr);
-  return arr.map((x) => safe(x)).filter(Boolean).join(separator);
-};
-
-/**
- * Нормализация строки (убираем лишние пробелы, исправляем пунктуацию)
- */
 function normalizeInline(str) {
-  let s = safe(str)
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .trim();
-  
+  let s = safe(str).replace(/\u00A0/g, " ").replace(/[ \t]+/g, " ").trim();
   s = s
     .replace(/\s*—\s*/g, " — ")
     .replace(/\s*-\s*/g, " — ")
@@ -89,736 +34,311 @@ function normalizeInline(str) {
     .replace(/\s+,\s+/g, ", ")
     .replace(/\s+\.\s+/g, ". ")
     .replace(/\s+\.\s*$/g, ".");
-  
+  s = s.replace(/реения/gi, "решения");
   return s.trim();
 }
-
-/**
- * Преобразование текста в список пунктов (bullets)
- */
 function toBullets(text) {
   const raw = safe(text);
   if (!raw) return [];
-  
-  // Разбиваем на строки
   let lines = raw
     .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*[\u2022\-–—•*]\s*/, "").trim())
-    .flatMap((l) => {
-      // Разбиваем длинные строки на предложения
-      return l.split(/(?<=[.!?])\s+(?=[А-ЯA-ZЁ])/);
-    });
-  
-  // Нормализуем и фильтруем
-  lines = lines
-    .map(normalizeInline)
-    .filter((l) => l.length > 0);
-  
-  // Убираем дубликаты
+    .map((l) => l.replace(/^\s*[\u2022\-–•]\s*/, "").trim())
+    .flatMap((l) => l.split(/(?<=[.!?])\s+(?=[А-ЯA-ZЁ])/));
+  lines = lines.map(normalizeInline).filter((l) => l.length > 0);
   const seen = new Set();
   const out = [];
-  
-  for (const line of lines) {
-    const key = line.toLowerCase();
+  for (const l of lines) {
+    const key = l.toLowerCase();
     if (!seen.has(key)) {
       seen.add(key);
-      out.push(line);
+      out.push(l);
     }
   }
-  
   return out;
 }
-
-/**
- * Уникальные элементы массива
- */
+/* uniq helper for merging bullet sources */
 function uniqKeep(arr) {
   const out = [];
   const seen = new Set();
-  
   for (const v of Array.isArray(arr) ? arr : []) {
     const s = safe(v).trim();
     if (!s) continue;
-    
     const k = s.toLowerCase();
     if (seen.has(k)) continue;
-    
     seen.add(k);
     out.push(s);
   }
-  
   return out;
 }
 
-/* ===== Стили ===== */
-
-function buildStyles(accentColor = "#16a34a") {
-  const colorText = "#1F2937";
-  const colorIcon = "#9CA3AF";
-  const colorPosition = "#374151";
-  const colorMuted = "#6B7280";
-  const colorBorder = "#E5E7EB";
-  const colorLight = "#F9FAFB";
+/* ---------- стили под образец ---------- */
+function buildStyles() {
+  const colorText = "#2F2F2E";
+  const colorIcon = "#A1AAB3";
+  const colorPosition = "#2B3A45";
+  const muted = "#6B7280";
+  const border = "#E5E7EB";
 
   return StyleSheet.create({
     page: {
       fontFamily: "Inter",
-      fontSize: 10.5,
+      fontSize: 11,
       color: colorText,
-      padding: 32,
-      lineHeight: 1.5,
+      padding: 28,
+      lineHeight: 1.45,
       flexDirection: "column",
-      backgroundColor: "#FFFFFF",
     },
 
     /* Шапка */
-    header: {
-      flexDirection: "row",
-      marginBottom: 16,
-      paddingBottom: 16,
-      borderBottomWidth: 2,
-      borderBottomColor: accentColor,
-    },
-    
-    headerLeft: {
-      width: "68%",
-      paddingRight: 16,
-      justifyContent: "center",
-    },
-    
-    headerRight: {
-      width: "32%",
-      alignItems: "flex-end",
-      justifyContent: "center",
-    },
+    header: { flexDirection: "row", marginBottom: 10 },
+    headerLeft: { width: "70%", paddingRight: 12 },
+    headerRight: { width: "30%", alignItems: "flex-end" },
 
-    fullNameLine: {
-      fontFamily: "NotoSerif",
-      fontSize: 24,
-      fontWeight: 700,
-      lineHeight: 1.15,
-      color: colorText,
-      letterSpacing: 0.5,
-    },
-    
-    fullNameLine2: {
-      fontFamily: "NotoSerif",
-      fontSize: 24,
-      fontWeight: 700,
-      lineHeight: 1.15,
-      marginTop: 2,
-      color: colorText,
-      letterSpacing: 0.5,
-    },
+    fullNameLine: { fontFamily: "NotoSerif", fontSize: 20, fontWeight: 700, lineHeight: 1.2 },
+    fullNameLine2: { fontFamily: "NotoSerif", fontSize: 20, fontWeight: 700, lineHeight: 1.2, marginTop: 2 },
 
     position: {
-      fontSize: 11,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderStyle: "solid",
+      borderColor: colorIcon,
+      paddingTop: 8,
+      paddingBottom: 8,
+      fontSize: 10,
       fontWeight: 600,
       color: colorPosition,
       textTransform: "uppercase",
-      letterSpacing: 1,
       marginTop: 8,
-      paddingTop: 8,
-      paddingBottom: 8,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: colorIcon,
     },
 
-    photo: {
-      width: 120,
-      height: 120,
-      borderRadius: 60,
-      objectFit: "cover",
-      borderWidth: 3,
-      borderColor: accentColor,
-    },
+    photo: { width: 140, height: 140, borderRadius: 999 },
 
-    contacts: {
-      marginTop: 12,
-    },
-    
-    contactRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 4,
-    },
-    
-    contactIcon: {
-      fontSize: 9,
-      color: colorIcon,
-      width: 14,
-      marginRight: 6,
-    },
-    
-    contactText: {
-      fontSize: 10,
-      color: colorText,
-    },
+    contacts: { marginTop: 10, marginBottom: 0 },
+    contact: { fontSize: 10.5, marginBottom: 4, color: colorText },
 
-    /* Основной layout */
-    main: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 20,
-    },
-    
-    leftCol: {
-      width: "32%",
-    },
-    
-    rightCol: {
-      width: "68%",
-    },
+    /* Колонки */
+    main: { flexDirection: "row", alignItems: "flex-start" },
+    leftCol: { width: "30%", paddingRight: "5%" },
+    rightCol: { width: "65%" },
 
     /* Заголовки секций */
     sectionTitle: {
       fontFamily: "NotoSerif",
       fontWeight: 700,
       textTransform: "uppercase",
-      fontSize: 12,
-      color: colorText,
-      paddingBottom: 6,
-      borderBottomWidth: 2,
-      borderBottomColor: accentColor,
-      marginBottom: 12,
-      marginTop: 0,
-      letterSpacing: 1,
-    },
-
-    /* Левая колонка - блоки */
-    sideBlock: {
-      marginBottom: 16,
-      backgroundColor: colorLight,
-      padding: 10,
-      borderRadius: 4,
-    },
-    
-    sideBlockTitle: {
-      fontSize: 10,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      marginBottom: 6,
-      color: colorPosition,
-      letterSpacing: 0.5,
-    },
-    
-    sideText: {
-      fontSize: 9.5,
-      lineHeight: 1.4,
-      textAlign: "left",
-      color: colorText,
-    },
-    
-    skillsList: {
-      fontSize: 9.5,
-      lineHeight: 1.5,
-      textAlign: "left",
-      color: colorText,
-    },
-    
-    langRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: 4,
-    },
-    
-    langName: {
-      fontSize: 9.5,
-      fontWeight: 600,
-      color: colorText,
-    },
-    
-    langLevel: {
-      fontSize: 8.5,
-      color: colorMuted,
-    },
-
-    /* Буллеты */
-    bulletItem: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      marginBottom: 3,
-    },
-    
-    bulletMarker: {
-      width: 12,
-      fontSize: 10,
-      lineHeight: 1.4,
-      textAlign: "center",
-      color: accentColor,
-      fontWeight: 700,
-    },
-    
-    bulletText: {
-      flex: 1,
-      fontSize: 9.5,
-      lineHeight: 1.4,
-      textAlign: "left",
-      color: colorText,
-    },
-
-    /* Правая колонка - записи */
-    entryBox: {
-      marginBottom: 14,
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colorBorder,
-    },
-    
-    entryTitle: {
       fontSize: 11,
-      fontWeight: 700,
-      lineHeight: 1.3,
-      color: colorText,
-    },
-    
-    entryOrganization: {
-      fontSize: 10,
-      fontWeight: 600,
-      lineHeight: 1.3,
-      color: colorPosition,
-      marginTop: 2,
-    },
-    
-    entryMeta: {
-      fontSize: 9,
-      color: colorMuted,
-      lineHeight: 1.3,
-      marginTop: 2,
-      marginBottom: 6,
-      fontStyle: "italic",
-    },
-    
-    entryText: {
-      fontSize: 9.5,
-      lineHeight: 1.5,
-      textAlign: "justify",
-      color: colorText,
-    },
-    
-    subLabel: {
-      fontSize: 9,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      marginTop: 6,
-      marginBottom: 4,
-      color: colorPosition,
-      letterSpacing: 0.3,
+      paddingBottom: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: colorIcon,
+      borderBottomStyle: "solid",
+      marginBottom: 10,
+      marginTop: 0,
     },
 
-    /* Дополнительная информация */
-    infoGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 8,
-    },
-    
-    infoItem: {
-      fontSize: 9,
-      color: colorText,
-      paddingVertical: 3,
-      paddingHorizontal: 8,
-      backgroundColor: colorLight,
-      borderRadius: 4,
-    },
+    /* Левый сайдбар */
+    aboutBlock: { marginBottom: 12 },
+    aboutTitle: { fontSize: 10, fontWeight: 600, textTransform: "uppercase", marginBottom: 4 },
+    aboutText: { fontSize: 10, lineHeight: 1.35, textAlign: "left" },
+    skills: { fontSize: 10, lineHeight: 1.35, textAlign: "left" },
+    langLine: { fontSize: 10, lineHeight: 1.35, marginBottom: 2 },
+
+    /* Маркированные списки */
+    bulletItem: { flexDirection: "row", alignItems: "flex-start", marginBottom: 2 },
+    bulletMarker: { width: 10, fontSize: 10, lineHeight: 1.35, textAlign: "center", marginTop: 1 },
+    bulletText: { flex: 1, fontSize: 10, lineHeight: 1.35, textAlign: "left" },
+
+    /* Правые секции */
+    entryBox: { marginBottom: 10 },
+    pos: { fontSize: 10.5, fontWeight: 700, lineHeight: 1.33 },
+    org: { fontSize: 10, fontWeight: 600, lineHeight: 1.33 },
+    date: { fontSize: 9, color: muted, lineHeight: 1.33, marginTop: 2, marginBottom: 4 },
+    text: { fontSize: 10, lineHeight: 1.5, textAlign: "justify" },
+
+    subLabel: { fontSize: 10, fontWeight: 600, textTransform: "uppercase", marginTop: 2, marginBottom: 2 },
+
+    hrThin: { height: 1, backgroundColor: border, marginTop: 6 },
   });
 }
 
-/* ===== Компоненты ===== */
-
-/**
- * Компонент списка с буллетами
- */
-const BulletList = ({ items, styles }) => {
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return null;
-  }
-  
+const BulletList = ({ items, s }) => {
+  if (!items?.length) return null;
   return (
     <View>
-      {items.map((text, index) => (
-        <View key={index} style={styles.bulletItem} wrap={false}>
-          <Text style={styles.bulletMarker}>•</Text>
-          <Text style={styles.bulletText}>{text}</Text>
+      {items.map((t, i) => (
+        <View key={i} style={s.bulletItem}>
+          <Text style={s.bulletMarker}>•</Text>
+          <Text style={s.bulletText}>{t}</Text>
         </View>
       ))}
     </View>
   );
 };
 
-/**
- * Компонент блока в левой колонке
- */
-const SideBlock = ({ title, children, styles }) => {
-  if (!children) return null;
-  
-  return (
-    <View style={styles.sideBlock} wrap={false}>
-      {title && <Text style={styles.sideBlockTitle}>{title}</Text>}
-      {children}
-    </View>
-  );
-};
+/* ---------- Template ---------- */
+export default function Minimal({ profile = {}, theme = { accent: "#16a34a" } }) {
+  const s = buildStyles();
 
-/**
- * Компонент записи (опыт/образование)
- */
-const Entry = ({ 
-  title, 
-  organization, 
-  meta, 
-  description, 
-  bullets, 
-  styles,
-  bulletsTitle 
-}) => {
-  return (
-    <View style={styles.entryBox} wrap={false}>
-      {has(title) && (
-        <Text style={styles.entryTitle}>{title}</Text>
-      )}
-      
-      {has(organization) && (
-        <Text style={styles.entryOrganization}>{organization}</Text>
-      )}
-      
-      {has(meta) && (
-        <Text style={styles.entryMeta}>{meta}</Text>
-      )}
-      
-      {has(description) && (
-        <Text style={styles.entryText}>{description}</Text>
-      )}
-      
-      {bullets && bullets.length > 0 && (
-        <View>
-          {bulletsTitle && (
-            <Text style={styles.subLabel}>{bulletsTitle}</Text>
-          )}
-          <BulletList items={bullets} styles={styles} />
-        </View>
-      )}
-    </View>
-  );
-};
-
-/* ===== Основной компонент ===== */
-
-export default function MinimalTemplate({ 
-  profile = {}, 
-  theme = { accent: "#16a34a" },
-  language = "ru" 
-}) {
-  const labels = pdfLabels[language] || pdfLabels.ru;
-  const accentColor = theme?.accent || "#16a34a";
-  const styles = buildStyles(accentColor);
-
-  // Извлечение данных
-  const fullName = safe(profile.fullName) || labels.defaultName || "FULL NAME";
+  const fullName = safe(profile.fullName) || "Ваше имя";
   const [nameLine1, nameLine2] = splitNameTwoLines(fullName);
-  
-  const position = safe(
-    profile.position || 
-    profile.targetPosition || 
-    profile.title || 
-    profile.professionalTitle
-  );
+  const position =
+    safe(profile.position) ||
+    safe(profile.targetPosition) ||
+    safe(profile.title) ||
+    "";
 
-  const email = safe(profile.email);
-  const phone = safe(profile.phone);
-  const location = safe(profile.location);
-  const website = safe(profile.website);
-  const linkedin = safe(profile.linkedin);
+  const hasContacts = profile.email || profile.phone || profile.location;
 
-  const age = safe(profile.age);
-  const maritalStatus = safe(profile.maritalStatus);
-  const children = safe(profile.children);
-  const driversLicense = safe(profile.driversLicense);
-
-  const summary = safe(profile.summary);
-  const photoUrl = safe(profile.photoUrl || profile.photo);
-
-  // Массивы данных
-  const experience = Array.isArray(profile.experience) ? profile.experience : [];
-  const education = Array.isArray(profile.education) ? profile.education : [];
-  const skills = Array.isArray(profile.skills) ? profile.skills.filter(has) : [];
   const languages = Array.isArray(profile.languages) ? profile.languages : [];
-  const certifications = Array.isArray(profile.certifications) ? profile.certifications : [];
-
-  // Уникальные языки
-  const uniqueLanguages = [];
-  const seenLangs = new Set();
-  
-  for (const lang of languages) {
-    const langName = typeof lang === "string" ? lang : safe(lang?.language || lang?.name);
-    const langLevel = typeof lang === "string" ? "" : safe(lang?.level || lang?.proficiency);
-    const key = `${langName}__${langLevel}`.toLowerCase();
-    
-    if (!seenLangs.has(key) && langName) {
-      seenLangs.add(key);
-      uniqueLanguages.push({ language: langName, level: langLevel });
+  const uniqueLangs = [];
+  const seen = new Set();
+  for (const l of languages) {
+    const nm = typeof l === "string" ? l : safe(l?.language || l?.name);
+    const lv = typeof l === "string" ? "" : safe(l?.level);
+    const key = `${nm}__${lv}`.toLowerCase();
+    if (!seen.has(key) && nm) {
+      seen.add(key);
+      uniqueLangs.push({ language: nm, level: lv });
     }
   }
 
-  const hasContacts = has(email) || has(phone) || has(location) || has(website) || has(linkedin);
-  const hasPersonalInfo = has(age) || has(maritalStatus) || has(children) || has(driversLicense);
-
   return (
-    <View style={styles.page}>
-      {/* ===== ШАПКА ===== */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.fullNameLine}>{nameLine1}</Text>
-          {nameLine2 && <Text style={styles.fullNameLine2}>{nameLine2}</Text>}
-          
-          {has(position) && (
-            <Text style={styles.position}>{position}</Text>
-          )}
+    <View style={s.page}>
+      {/* Header */}
+      <View style={s.header}>
+        <View style={s.headerLeft}>
+          <Text style={s.fullNameLine}>{nameLine1}</Text>
+          {nameLine2 ? <Text style={s.fullNameLine2}>{nameLine2}</Text> : null}
+          {position ? <Text style={s.position}>{position}</Text> : null}
 
-          {hasContacts && (
-            <View style={styles.contacts}>
-              {has(email) && (
-                <View style={styles.contactRow}>
-                  <Text style={styles.contactIcon}>✉</Text>
-                  <Text style={styles.contactText}>{email}</Text>
-                </View>
-              )}
-              
-              {has(phone) && (
-                <View style={styles.contactRow}>
-                  <Text style={styles.contactIcon}>☎</Text>
-                  <Text style={styles.contactText}>{phone}</Text>
-                </View>
-              )}
-              
-              {has(location) && (
-                <View style={styles.contactRow}>
-                  <Text style={styles.contactIcon}>📍</Text>
-                  <Text style={styles.contactText}>{location}</Text>
-                </View>
-              )}
-              
-              {has(website) && (
-                <View style={styles.contactRow}>
-                  <Text style={styles.contactIcon}>🌐</Text>
-                  <Text style={styles.contactText}>{website}</Text>
-                </View>
-              )}
-              
-              {has(linkedin) && (
-                <View style={styles.contactRow}>
-                  <Text style={styles.contactIcon}>in</Text>
-                  <Text style={styles.contactText}>{linkedin}</Text>
-                </View>
-              )}
+          {hasContacts ? (
+            <View style={s.contacts}>
+              {profile.email ? <Text style={s.contact}>{safe(profile.email)}</Text> : null}
+              {profile.phone ? <Text style={s.contact}>{safe(profile.phone)}</Text> : null}
+              {profile.location ? <Text style={s.contact}>{safe(profile.location)}</Text> : null}
             </View>
-          )}
+          ) : null}
         </View>
 
-        <View style={styles.headerRight}>
-          {has(photoUrl) && (
-            <Image src={photoUrl} style={styles.photo} />
-          )}
+        <View style={s.headerRight}>
+          {profile.photoUrl ? <Image src={safe(profile.photoUrl)} style={s.photo} /> : null}
         </View>
       </View>
 
-      {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
-      <View style={styles.main}>
-        {/* ЛЕВАЯ КОЛОНКА */}
-        <View style={styles.leftCol}>
-          <Text style={styles.sectionTitle}>{labels.profile || 'Profile'}</Text>
+      {/* Две колонки */}
+      <View style={s.main}>
+        {/* Левый сайдбар */}
+        <View style={s.leftCol}>
+          <Text style={s.sectionTitle}>Профиль</Text>
 
-          {/* О себе */}
-          {has(summary) && (
-            <SideBlock title={labels.summary} styles={styles}>
-              {toBullets(summary).length > 1 ? (
-                <BulletList items={toBullets(summary)} styles={styles} />
+          {safe(profile.summary) ? (
+            <View style={s.aboutBlock}>
+              <Text style={s.aboutTitle}>О себе</Text>
+              {toBullets(profile.summary).length > 1 ? (
+                <BulletList items={toBullets(profile.summary)} s={s} />
               ) : (
-                <Text style={styles.sideText}>{normalizeInline(summary)}</Text>
+                <Text style={s.aboutText}>{normalizeInline(profile.summary)}</Text>
               )}
-            </SideBlock>
-          )}
+            </View>
+          ) : null}
 
-          {/* Навыки */}
-          {skills.length > 0 && (
-            <SideBlock title={labels.skills} styles={styles}>
-              <Text style={styles.skillsList}>{joinList(skills, " • ")}</Text>
-            </SideBlock>
-          )}
+          {Array.isArray(profile.skills) && profile.skills.length ? (
+            <View style={s.aboutBlock}>
+              <Text style={s.aboutTitle}>Навыки</Text>
+              <Text style={s.skills}>{joinList(profile.skills, " • ")}</Text>
+            </View>
+          ) : null}
 
-          {/* Языки */}
-          {uniqueLanguages.length > 0 && (
-            <SideBlock title={labels.languages} styles={styles}>
-              {uniqueLanguages.map((lang, index) => (
-                <View key={index} style={styles.langRow}>
-                  <Text style={styles.langName}>{lang.language}</Text>
-                  {has(lang.level) && (
-                    <Text style={styles.langLevel}>{lang.level}</Text>
-                  )}
-                </View>
+          {uniqueLangs.length ? (
+            <View style={s.aboutBlock}>
+              <Text style={s.aboutTitle}>Языки</Text>
+              {uniqueLangs.map((lng, i) => (
+                <Text key={i} style={s.langLine}>
+                  {lng.language}{lng.level ? ` — ${lng.level}` : ""}
+                </Text>
               ))}
-            </SideBlock>
-          )}
-
-          {/* Личная информация */}
-          {hasPersonalInfo && (
-            <SideBlock title={labels.personalInfo || 'Personal Info'} styles={styles}>
-              {has(age) && (
-                <Text style={styles.sideText}>
-                  {labels.age || 'Age'}: {age}
-                </Text>
-              )}
-              {has(maritalStatus) && (
-                <Text style={styles.sideText}>
-                  {labels.maritalStatus || 'Status'}: {maritalStatus}
-                </Text>
-              )}
-              {has(children) && (
-                <Text style={styles.sideText}>
-                  {labels.children || 'Children'}: {children}
-                </Text>
-              )}
-              {has(driversLicense) && (
-                <Text style={styles.sideText}>
-                  {labels.license || 'License'}: {driversLicense}
-                </Text>
-              )}
-            </SideBlock>
-          )}
+            </View>
+          ) : null}
         </View>
 
-        {/* ПРАВАЯ КОЛОНКА */}
-        <View style={styles.rightCol}>
-          {/* Опыт работы */}
-          {experience.length > 0 && (
+        {/* Правая колонка */}
+        <View style={s.rightCol}>
+          {/* Опыт */}
+          {Array.isArray(profile.experience) && profile.experience.length ? (
             <View>
-              <Text style={styles.sectionTitle}>{labels.experience}</Text>
-              
-              {experience.map((exp, index) => {
-                const expPosition = safe(exp?.position || exp?.title);
-                const company = safe(exp?.company || exp?.employer);
-                const expLocation = safe(exp?.location);
-                
-                const period = safe(exp?.period) || formatPeriod(exp, labels, language);
-                const metaRow = [period, expLocation].filter(Boolean).join(" • ");
+              <Text style={s.sectionTitle}>Опыт</Text>
+              {profile.experience.map((e, idx) => {
+                const pos = safe(e?.position);
+                const org = safe(e?.company);
+                const where = safe(e?.location);
+                const period = safe(e?.period) || expPeriod(e);
+                const metaRow = [period, where].filter(Boolean).join(" • ");
 
-                // Буллеты: используем готовые или генерируем
-                const bullets = Array.isArray(exp?.bullets) && exp.bullets.length > 0
-                  ? exp.bullets
-                  : uniqKeep([
-                      ...toBullets(exp?.responsibilities),
-                      ...toBullets(exp?.description),
-                      ...toBullets(exp?.duties),
-                    ]);
+                // ✅ приоритет: уже подготовленные bullets из оболочки → иначе собираем из responsibilities/description
+                const mergedBullets =
+                  (Array.isArray(e?.bullets) && e.bullets.length
+                    ? e.bullets
+                    : uniqKeep([
+                        ...toBullets(e?.responsibilities),
+                        ...toBullets(e?.description),
+                      ]));
 
                 return (
-                  <Entry
-                    key={exp?.id || index}
-                    title={expPosition || labels.position}
-                    organization={company}
-                    meta={metaRow}
-                    bullets={bullets}
-                    bulletsTitle={labels.responsibilities || 'Responsibilities'}
-                    styles={styles}
-                  />
+                  <View key={e?.id || idx} style={s.entryBox}>
+                    <Text style={s.pos}>{pos || "Должность"}</Text>
+                    {org ? <Text style={s.org}>{org}</Text> : null}
+                    {metaRow ? <Text style={s.date}>{metaRow}</Text> : null}
+
+                    {mergedBullets.length > 0 ? (
+                      <View>
+                        <Text style={s.subLabel}>Обязанности и достижения</Text>
+                        <BulletList items={mergedBullets} s={s} />
+                      </View>
+                    ) : null}
+
+                    <View style={s.hrThin} />
+                  </View>
                 );
               })}
             </View>
-          )}
+          ) : null}
 
           {/* Образование */}
-          {education.length > 0 && (
-            <View style={{ marginTop: experience.length > 0 ? 8 : 0 }}>
-              <Text style={styles.sectionTitle}>{labels.education}</Text>
-              
-              {education.map((edu, index) => {
-                const degree = safe(edu?.degree || edu?.level);
-                const field = safe(edu?.specialization || edu?.major || edu?.field);
-                const title = [degree, field].filter(Boolean).join(" • ");
+          {Array.isArray(profile.education) && profile.education.length ? (
+            <View style={{ marginTop: 4 }}>
+              <Text style={s.sectionTitle}>Образование</Text>
+              {profile.education.map((ed, idx) => {
+                const degreeOrLevel = safe(ed?.degree || ed?.level);
+                const spec = safe(ed?.specialization || ed?.major);
+                const title = [degreeOrLevel, spec].filter(Boolean).join(" • ");
 
-                const institution = safe(edu?.institution || edu?.university);
-                const eduLocation = safe(edu?.location);
-                const year = safe(edu?.year || edu?.graduationYear);
-                
-                const period = safe(edu?.period) || year || [
-                  formatMonth(edu?.startDate, language),
-                  formatMonth(edu?.endDate, language)
-                ].filter(Boolean).join(" — ");
-                
-                const metaRow = [period, eduLocation].filter(Boolean).join(" • ");
+                const inst = safe(ed?.institution || ed?.university);
+                const where = safe(ed?.location);
+                const period =
+                  safe(ed?.period) ||
+                  safe(ed?.year) ||
+                  [fmtMonth(ed?.startDate), fmtMonth(ed?.endDate)].filter(Boolean).join(" — ");
+                const metaRow = [period, where].filter(Boolean).join(" • ");
 
                 const eduBullets = uniqKeep([
-                  ...toBullets(edu?.description),
-                  ...toBullets(edu?.achievements),
+                  ...toBullets(ed?.description),
                 ]);
 
                 return (
-                  <Entry
-                    key={edu?.id || index}
-                    title={title || labels.degree}
-                    organization={institution}
-                    meta={metaRow}
-                    bullets={eduBullets}
-                    styles={styles}
-                  />
+                  <View key={ed?.id || idx} style={s.entryBox}>
+                    <Text style={s.pos}>{title || "Степень / Специальность"}</Text>
+                    {inst ? <Text style={s.org}>{inst}</Text> : null}
+                    {metaRow ? <Text style={s.date}>{metaRow}</Text> : null}
+
+                    {eduBullets.length > 0 ? (
+                      <BulletList items={eduBullets} s={s} />
+                    ) : null}
+
+                    <View style={s.hrThin} />
+                  </View>
                 );
               })}
             </View>
-          )}
-
-          {/* Сертификаты */}
-          {certifications.length > 0 && (
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.sectionTitle}>{labels.certifications}</Text>
-              
-              {certifications.map((cert, index) => {
-                const certName = safe(cert?.name || cert?.title);
-                const issuer = safe(cert?.issuer || cert?.organization);
-                const date = safe(cert?.date || cert?.year);
-                const metaRow = [issuer, date].filter(Boolean).join(" • ");
-
-                return (
-                  <Entry
-                    key={index}
-                    title={certName}
-                    meta={metaRow}
-                    description={safe(cert?.description)}
-                    styles={styles}
-                  />
-                );
-              })}
-            </View>
-          )}
-
-          {/* Проекты */}
-          {Array.isArray(profile?.projects) && profile.projects.length > 0 && (
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.sectionTitle}>{labels.projects}</Text>
-              
-              {profile.projects.map((project, index) => {
-                const projectName = safe(project?.name || project?.title);
-                const role = safe(project?.role);
-                const tech = Array.isArray(project?.technologies)
-                  ? project.technologies.join(", ")
-                  : "";
-                
-                const projectBullets = toBullets(project?.description);
-
-                return (
-                  <Entry
-                    key={index}
-                    title={projectName}
-                    organization={role}
-                    meta={tech}
-                    bullets={projectBullets}
-                    styles={styles}
-                  />
-                );
-              })}
-            </View>
-          )}
+          ) : null}
         </View>
       </View>
     </View>
