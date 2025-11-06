@@ -3,17 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=18 <23"
-  },
+  "engines": { "node": ">=18 <23" },
   "scripts": {
     "dev": "vite",
-    "dev:all": "concurrently \"npm run server:dev\" \"npm run dev\"",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.js",
+    "start": "npm --prefix server run start",
     "server:dev": "npm --prefix server run start:dev",
-    "server:start": "npm --prefix server run start"
+    "server:start": "npm --prefix server run start",
+
+    // 👇 ЭТО ИСПОЛЬЗУЕМ В RENDER → Build Command
+    "ci:render": "npm ci --include=dev && npm --prefix server ci --omit=dev || npm --prefix server i --omit=dev && npm run build",
+
+    // гарантированная установка server/ deps при локальной установке/Render
+    "postinstall": "npm --prefix server ci --omit=dev || npm --prefix server i --omit=dev"
   },
   "dependencies": {
     "@react-pdf/renderer": "^3.4.5",
