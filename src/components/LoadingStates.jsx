@@ -1,141 +1,248 @@
-// src/components/LoadingStates.jsx - Production Loading Components
+// src/components/LoadingStates.jsx
 import React from 'react';
-import { Loader2, FileText, Sparkles, Search } from 'lucide-react';
+import { FileText, Loader } from 'lucide-react';
+import { useTranslation } from '../hooks/useTranslation';
 
-// Full page loader
-export function PageLoader({ message = 'Загрузка...' }) {
+/**
+ * Загрузка страницы (полноэкранная)
+ */
+export const PageLoader = ({ message }) => {
+  const { t } = useTranslation();
+  
   return (
-    <div className="fixed inset-0 bg-white z-50 flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="text-center">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-        <p className="text-gray-600 font-medium">{message}</p>
+        <div className="inline-flex items-center justify-center w-16 h-16 mb-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl animate-pulse">
+          <FileText className="text-white" size={32} />
+        </div>
+        
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <Loader className="animate-spin text-blue-600" size={24} />
+          <p className="text-lg font-medium text-gray-700">
+            {message || t('loading.page')}
+          </p>
+        </div>
+        
+        <p className="text-sm text-gray-500">
+          {t('loading.pleaseWait')}
+        </p>
       </div>
     </div>
   );
-}
+};
 
-// Inline loader
-export function InlineLoader({ size = 'md', message = '' }) {
-  const sizes = {
-    sm: 'w-4 h-4',
-    md: 'w-8 h-8',
-    lg: 'w-12 h-12',
+/**
+ * Загрузка компонента (inline)
+ */
+export const ComponentLoader = ({ message, size = 'md' }) => {
+  const { t } = useTranslation();
+  
+  const sizeClasses = {
+    sm: 'py-4',
+    md: 'py-8',
+    lg: 'py-12'
   };
-
+  
+  const spinnerSizes = {
+    sm: 16,
+    md: 24,
+    lg: 32
+  };
+  
   return (
-    <div className="flex items-center justify-center gap-3 py-8">
-      <Loader2 className={`${sizes[size]} text-blue-600 animate-spin`} />
-      {message && <span className="text-gray-600">{message}</span>}
-    </div>
-  );
-}
-
-// AI Processing loader with animation
-export function AILoader({ message = 'Анализируем ваш профиль...' }) {
-  return (
-    <div className="text-center py-12">
-      <div className="relative inline-block mb-6">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full blur-lg opacity-50 animate-pulse"></div>
-        <div className="relative w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-          <Sparkles className="w-8 h-8 text-white animate-pulse" />
-        </div>
-      </div>
-      <p className="text-gray-700 font-medium mb-2">{message}</p>
-      <div className="flex justify-center gap-1">
-        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+    <div className={`flex items-center justify-center ${sizeClasses[size]}`}>
+      <div className="text-center">
+        <Loader 
+          className="animate-spin text-blue-600 mx-auto mb-3" 
+          size={spinnerSizes[size]} 
+        />
+        <p className="text-sm text-gray-600">
+          {message || t('loading.component')}
+        </p>
       </div>
     </div>
   );
-}
+};
 
-// Skeleton loaders
-export function VacancySkeleton() {
+/**
+ * Скелетон для карточки резюме
+ */
+export const ResumeSkeleton = () => {
   return (
-    <div className="border rounded-lg p-6 animate-pulse">
-      <div className="flex justify-between mb-3">
-        <div className="space-y-2 flex-1">
-          <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-        <div className="h-6 bg-gray-200 rounded w-24"></div>
-      </div>
-      <div className="space-y-2 mb-4">
-        <div className="h-4 bg-gray-200 rounded w-full"></div>
-        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-      </div>
-      <div className="flex gap-2">
-        <div className="h-6 bg-gray-200 rounded w-16"></div>
-        <div className="h-6 bg-gray-200 rounded w-16"></div>
-        <div className="h-6 bg-gray-200 rounded w-16"></div>
-      </div>
-    </div>
-  );
-}
-
-export function ResumeSkeleton() {
-  return (
-    <div className="bg-white rounded-lg p-6 border animate-pulse">
-      <div className="mb-4">
-        <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
-        <div className="flex gap-3">
-          <div className="h-4 bg-gray-200 rounded w-32"></div>
-          <div className="h-4 bg-gray-200 rounded w-32"></div>
-        </div>
-      </div>
+    <div className="bg-white rounded-xl shadow-lg p-8 animate-pulse">
+      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4" />
       <div className="space-y-3">
-        <div className="h-4 bg-gray-200 rounded w-full"></div>
-        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-        <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+        <div className="h-4 bg-gray-200 rounded w-full" />
+        <div className="h-4 bg-gray-200 rounded w-5/6" />
+        <div className="h-4 bg-gray-200 rounded w-4/6" />
+      </div>
+      
+      <div className="mt-6 space-y-3">
+        <div className="h-6 bg-gray-200 rounded w-1/2 mb-3" />
+        <div className="h-4 bg-gray-200 rounded w-full" />
+        <div className="h-4 bg-gray-200 rounded w-3/4" />
+      </div>
+      
+      <div className="mt-6 flex gap-2">
+        <div className="h-10 bg-gray-200 rounded-lg w-24" />
+        <div className="h-10 bg-gray-200 rounded-lg w-24" />
+        <div className="h-10 bg-gray-200 rounded-lg w-24" />
       </div>
     </div>
   );
-}
+};
 
-// Button loading state
-export function LoadingButton({ loading, children, disabled, ...props }) {
+/**
+ * Скелетон для списка вакансий
+ */
+export const VacanciesSkeleton = ({ count = 3 }) => {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }).map((_, idx) => (
+        <div key={idx} className="border rounded-lg p-6 animate-pulse">
+          <div className="flex justify-between items-start mb-3">
+            <div className="flex-1">
+              <div className="h-6 bg-gray-200 rounded w-2/3 mb-2" />
+              <div className="h-4 bg-gray-200 rounded w-1/3" />
+            </div>
+            <div className="h-6 bg-gray-200 rounded-full w-24" />
+          </div>
+          
+          <div className="flex gap-4 mb-3">
+            <div className="h-4 bg-gray-200 rounded w-20" />
+            <div className="h-4 bg-gray-200 rounded w-20" />
+          </div>
+          
+          <div className="space-y-2 mb-4">
+            <div className="h-4 bg-gray-200 rounded w-full" />
+            <div className="h-4 bg-gray-200 rounded w-4/5" />
+          </div>
+          
+          <div className="flex gap-2 mb-4">
+            <div className="h-6 bg-gray-200 rounded-full w-16" />
+            <div className="h-6 bg-gray-200 rounded-full w-20" />
+            <div className="h-6 bg-gray-200 rounded-full w-24" />
+          </div>
+          
+          <div className="h-10 bg-gray-200 rounded-lg w-40" />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Индикатор загрузки с прогрессом
+ */
+export const ProgressLoader = ({ progress, message }) => {
+  const { t } = useTranslation();
+  
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-8">
+      <div className="text-center mb-6">
+        <Loader className="animate-spin text-blue-600 mx-auto mb-3" size={32} />
+        <p className="text-lg font-medium text-gray-700">
+          {message || t('loading.processing')}
+        </p>
+      </div>
+      
+      {typeof progress === 'number' && (
+        <div className="w-full">
+          <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <span>{t('loading.progress')}</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-gradient-to-r from-blue-600 to-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Скелетон для генерации AI
+ */
+export const AIGeneratingSkeleton = () => {
+  const { t } = useTranslation();
+  
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-8 border border-blue-200">
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center animate-pulse">
+          <FileText className="text-white" size={24} />
+        </div>
+        <div className="flex-1">
+          <div className="h-6 bg-white/60 rounded w-3/4 mb-2" />
+          <div className="h-4 bg-white/40 rounded w-1/2" />
+        </div>
+      </div>
+      
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="flex items-start gap-3">
+            <div className="w-6 h-6 bg-blue-200 rounded-full animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-white/60 rounded w-full" />
+              <div className="h-4 bg-white/40 rounded w-4/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <p className="mt-6 text-center text-sm text-gray-600">
+        {t('loading.aiGenerating')}
+      </p>
+    </div>
+  );
+};
+
+/**
+ * Простой спиннер
+ */
+export const Spinner = ({ size = 20, className = '' }) => {
+  return (
+    <Loader 
+      className={`animate-spin ${className}`} 
+      size={size} 
+    />
+  );
+};
+
+/**
+ * Кнопка с загрузкой
+ */
+export const LoadingButton = ({ 
+  loading, 
+  children, 
+  disabled, 
+  onClick,
+  className = '',
+  ...props 
+}) => {
+  const { t } = useTranslation();
+  
   return (
     <button
+      onClick={onClick}
       disabled={loading || disabled}
-      className={`relative ${loading ? 'opacity-75 cursor-wait' : ''}`}
+      className={`
+        relative inline-flex items-center justify-center gap-2
+        px-6 py-3 rounded-lg font-semibold
+        transition-all duration-200
+        disabled:opacity-50 disabled:cursor-not-allowed
+        ${className}
+      `}
       {...props}
     >
       {loading && (
-        <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin" />
+        <Spinner size={16} className="text-current" />
       )}
-      <span className={loading ? 'opacity-0' : ''}>{children}</span>
+      {loading ? t('loading.processing') : children}
     </button>
   );
-}
-
-// Search loading state
-export function SearchLoader() {
-  return (
-    <div className="flex items-center justify-center gap-3 py-8 text-gray-600">
-      <Search className="w-6 h-6 animate-pulse" />
-      <span>Ищем вакансии...</span>
-    </div>
-  );
-}
-
-// PDF Generation loader
-export function PDFLoader() {
-  return (
-    <div className="flex items-center justify-center gap-3 py-4 text-green-600">
-      <FileText className="w-6 h-6 animate-pulse" />
-      <span className="font-medium">Генерируем PDF...</span>
-    </div>
-  );
-}
-
-export default {
-  PageLoader,
-  InlineLoader,
-  AILoader,
-  VacancySkeleton,
-  ResumeSkeleton,
-  LoadingButton,
-  SearchLoader,
-  PDFLoader,
 };

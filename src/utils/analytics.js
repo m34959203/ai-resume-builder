@@ -1,342 +1,217 @@
-/**
- * ═══════════════════════════════════════════════════════════
- * 📊 ANALYTICS & TRACKING SYSTEM
- * ═══════════════════════════════════════════════════════════
- * 
- * Google Analytics 4 + Yandex Metrika + Web Vitals
- */
+// src/utils/analytics.js - Production Analytics & Tracking
+const ANALYTICS_ENABLED = process.env.NODE_ENV === 'production' && 
+                          process.env.ENABLE_ANALYTICS === 'true';
 
-const CONFIG = {
-  enabled: import.meta.env.PROD && import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
-  debug: import.meta.env.DEV,
-  
-  ga: {
-    measurementId: import.meta.env.VITE_GA_ID,
-    enabled: !!import.meta.env.VITE_GA_ID,
-  },
-  
-  ym: {
-    counterId: import.meta.env.VITE_YM_ID,
-    enabled: !!import.meta.env.VITE_YM_ID,
-  },
-};
+// Initialize Google Analytics
+export function initGA() {
+  if (!ANALYTICS_ENABLED || !process.env.GA_MEASUREMENT_ID) return;
 
-const eventQueue = [];
-let analyticsReady = false;
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${process.env.GA_MEASUREMENT_ID}`;
+  document.head.appendChild(script);
 
-// ═══════════════════════════════════════════════════════════
-// 🎬 INITIALIZATION
-// ═══════════════════════════════════════════════════════════
-
-export async function initAnalytics() {
-  if (!CONFIG.enabled) {
-    log('Analytics disabled');
-    return;
+  window.dataLayer = window.dataLayer || [];
+  function gtag() {
+    window.dataLayer.push(arguments);
   }
+  window.gtag = gtag;
 
-  try {
-    await Promise.all([
-      CONFIG.ga.enabled && initGoogleAnalytics(),
-      CONFIG.ym.enabled && initYandexMetrika(),
-    ].filter(Boolean));
-
-    analyticsReady = true;
-    flushEventQueue();
-
-    initSessionTracking();
-    initPerformanceTracking();
-    initWebVitalsTracking();
-    initErrorTracking();
-
-    log('Analytics initialized', {
-      ga: CONFIG.ga.enabled,
-      ym: CONFIG.ym.enabled,
-    });
-  } catch (error) {
-    console.error('[Analytics] Init failed:', error);
-  }
-}
-
-function initGoogleAnalytics() {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${CONFIG.ga.measurementId}`;
-    script.onerror = reject;
-    script.onload = () => {
-      window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        window.dataLayer.push(arguments);
-      }
-      window.gtag = gtag;
-
-      gtag('js', new Date());
-      gtag('config', CONFIG.ga.measurementId, {
-        send_page_view: false,
-        anonymize_ip: true,
-      });
-
-      log('Google Analytics ready');
-      resolve();
-    };
-    document.head.appendChild(script);
+  gtag('js', new Date());
+  gtag('config', process.env.GA_MEASUREMENT_ID, {
+    send_page_view: false, // Manual page view tracking
+    anonymize_ip: true,
   });
+
+  console.log('[Analytics] Google Analytics initialized');
 }
 
-function initYandexMetrika() {
-  return new Promise((resolve) => {
-    try {
-      (function(m, e, t, r, i, k, a) {
-        m[i] = m[i] || function() {
-          (m[i].a = m[i].a || []).push(arguments);
-        };
-        m[i].l = 1 * new Date();
-        k = e.createElement(t);
-        a = e.getElementsByTagName(t)[0];
-        k.async = 1;
-        k.src = r;
-        a.parentNode.insertBefore(k, a);
-      })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+// Track page views
+export function trackPageView(path, title) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
 
-      window.ym(CONFIG.ym.counterId, 'init', {
-        clickmap: true,
-        trackLinks: true,
-        accurateTrackBounce: true,
-        webvisor: true,
-      });
-
-      log('Yandex Metrika ready');
-      resolve();
-    } catch (error) {
-      console.error('[Analytics] YM init failed:', error);
-      resolve();
-    }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-// 📄 TRACKING
-// ═══════════════════════════════════════════════════════════
-
-export function trackPageView(path, title = document.title, language = 'ru') {
-  const data = {
+  window.gtag('event', 'page_view', {
     page_path: path,
     page_title: title,
-    page_language: language,
-  };
+  });
 
-  if (window.gtag) {
-    window.gtag('event', 'page_view', data);
-  }
-
-  if (window.ym) {
-    window.ym(CONFIG.ym.counterId, 'hit', path, { title, params: { language } });
-  }
-
-  log('Page view', data);
+  console.log('[Analytics] Page view:', path);
 }
 
-export function trackEvent(category, action, label = '', value = 0, params = {}) {
-  if (!CONFIG.enabled && !CONFIG.debug) return;
+// Track custom events
+export function trackEvent(category, action, label = '', value = 0) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
 
-  const eventData = {
+  window.gtag('event', action, {
     event_category: category,
     event_label: label,
     value: value,
-    ...params,
-  };
+  });
 
-  if (analyticsReady) {
-    sendEvent(action, eventData);
-  } else {
-    eventQueue.push({ action, data: eventData });
-  }
+  console.log('[Analytics] Event:', { category, action, label, value });
 }
 
-function sendEvent(action, data) {
-  if (window.gtag) {
-    window.gtag('event', action, data);
-  }
-
-  if (window.ym) {
-    window.ym(CONFIG.ym.counterId, 'reachGoal', action, data);
-  }
-
-  log('Event', { action, ...data });
-}
-
-function flushEventQueue() {
-  while (eventQueue.length > 0) {
-    const { action, data } = eventQueue.shift();
-    sendEvent(action, data);
-  }
-}
-
-export function trackTiming(category, variable, time, label = '') {
-  if (!CONFIG.enabled && !CONFIG.debug) return;
-
-  const data = {
-    name: variable,
-    value: Math.round(time),
-    event_category: category,
-    event_label: label,
-  };
-
-  if (window.gtag) {
-    window.gtag('event', 'timing_complete', data);
-  }
-
-  log('Timing', data);
-}
-
-export function trackError(error, errorInfo = {}) {
-  const errorData = {
-    description: error.message || String(error),
-    fatal: errorInfo.fatal || false,
-  };
-
-  if (window.gtag) {
-    window.gtag('event', 'exception', errorData);
-  }
-
-  if (window.ym) {
-    window.ym(CONFIG.ym.counterId, 'params', { error: errorData });
-  }
-
-  console.error('[Analytics] Error tracked:', errorData);
-}
-
-// ═══════════════════════════════════════════════════════════
-// 📊 EVENTS
-// ═══════════════════════════════════════════════════════════
-
+// Track user actions
 export const AnalyticsEvents = {
-  RESUME_CREATED: (language = 'ru') => 
-    trackEvent('Resume', 'created', `Created (${language})`, 1),
-  
-  RESUME_DOWNLOADED: (format, language = 'ru') => 
-    trackEvent('Resume', 'downloaded', `${format} (${language})`, 1, { format, language }),
-  
-  AI_TRANSLATION_USED: (fromLang, toLang, wordCount) => 
-    trackEvent('AI', 'translation_used', `${fromLang}_to_${toLang}`, wordCount, { fromLang, toLang }),
+  // Resume builder events
+  RESUME_CREATED: () => trackEvent('Resume', 'created', 'Resume Created'),
+  RESUME_EDITED: (step) => trackEvent('Resume', 'edited', `Step ${step}`),
+  RESUME_DOWNLOADED: (format) => trackEvent('Resume', 'downloaded', format),
+  TEMPLATE_SELECTED: (template) => trackEvent('Resume', 'template_selected', template),
 
-  LANGUAGE_CHANGED: (fromLang, toLang) => 
-    trackEvent('Settings', 'language_changed', `${fromLang}_to_${toLang}`, 0, { fromLang, toLang }),
+  // AI events
+  AI_RECOMMENDATION_REQUESTED: () => trackEvent('AI', 'recommendation_requested'),
+  AI_RECOMMENDATION_RECEIVED: (time) => trackEvent('AI', 'recommendation_received', '', time),
+  AI_SUGGESTION_ACCEPTED: (type) => trackEvent('AI', 'suggestion_accepted', type),
 
-  ERROR_OCCURRED: (errorType, errorMessage) => 
-    trackError(new Error(errorMessage), { errorType }),
+  // Job search events
+  JOB_SEARCHED: (query) => trackEvent('Jobs', 'searched', query),
+  JOB_VIEWED: (jobId) => trackEvent('Jobs', 'viewed', jobId),
+  JOB_APPLIED: (jobId) => trackEvent('Jobs', 'applied', jobId),
+  FILTER_APPLIED: (filterType) => trackEvent('Jobs', 'filter_applied', filterType),
+
+  // Import events
+  HH_IMPORT_STARTED: () => trackEvent('Import', 'hh_started'),
+  HH_IMPORT_COMPLETED: () => trackEvent('Import', 'hh_completed'),
+  HH_IMPORT_FAILED: (reason) => trackEvent('Import', 'hh_failed', reason),
+
+  // Navigation events
+  NAV_TO_BUILDER: () => trackEvent('Navigation', 'to_builder'),
+  NAV_TO_VACANCIES: () => trackEvent('Navigation', 'to_vacancies'),
+  NAV_TO_RECOMMENDATIONS: () => trackEvent('Navigation', 'to_recommendations'),
+
+  // Error events
+  ERROR_OCCURRED: (errorType) => trackEvent('Error', 'occurred', errorType),
+  ERROR_BOUNDARY_TRIGGERED: (component) => trackEvent('Error', 'boundary_triggered', component),
 };
 
-// ═══════════════════════════════════════════════════════════
-// 📈 WEB VITALS
-// ═══════════════════════════════════════════════════════════
+// Track timing (performance)
+export function trackTiming(category, variable, time, label = '') {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
 
-function initWebVitalsTracking() {
-  if (!('PerformanceObserver' in window)) return;
+  window.gtag('event', 'timing_complete', {
+    name: variable,
+    value: time,
+    event_category: category,
+    event_label: label,
+  });
 
-  try {
-    // LCP
-    new PerformanceObserver((list) => {
-      const entries = list.getEntries();
+  console.log('[Analytics] Timing:', { category, variable, time, label });
+}
+
+// Track user engagement
+export function trackEngagement(action, duration = 0) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
+
+  window.gtag('event', 'user_engagement', {
+    engagement_time_msec: duration,
+    action: action,
+  });
+}
+
+// Track conversions
+export function trackConversion(conversionType, value = 0) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
+
+  window.gtag('event', 'conversion', {
+    conversion_type: conversionType,
+    value: value,
+    currency: 'USD',
+  });
+
+  console.log('[Analytics] Conversion:', conversionType);
+}
+
+// Track outbound links
+export function trackOutboundLink(url, label) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
+
+  window.gtag('event', 'click', {
+    event_category: 'Outbound Link',
+    event_label: label || url,
+    transport_type: 'beacon',
+  });
+}
+
+// Performance monitoring
+export function trackPerformance() {
+  if (!ANALYTICS_ENABLED || !window.performance) return;
+
+  const perfData = window.performance.timing;
+  const pageLoadTime = perfData.loadEventEnd - perfData.navigationStart;
+  const connectTime = perfData.responseEnd - perfData.requestStart;
+  const renderTime = perfData.domComplete - perfData.domLoading;
+
+  trackTiming('Performance', 'Page Load Time', pageLoadTime);
+  trackTiming('Performance', 'Server Response Time', connectTime);
+  trackTiming('Performance', 'DOM Render Time', renderTime);
+
+  // Core Web Vitals
+  if ('PerformanceObserver' in window) {
+    // Largest Contentful Paint (LCP)
+    const lcpObserver = new PerformanceObserver((entryList) => {
+      const entries = entryList.getEntries();
       const lastEntry = entries[entries.length - 1];
-      const lcp = lastEntry.renderTime || lastEntry.loadTime;
-      trackTiming('Web Vitals', 'LCP', lcp);
-    }).observe({ entryTypes: ['largest-contentful-paint'] });
+      trackTiming('Web Vitals', 'LCP', Math.round(lastEntry.renderTime || lastEntry.loadTime));
+    });
+    lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
 
-    // FID
-    new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
-        const fid = entry.processingStart - entry.startTime;
-        trackTiming('Web Vitals', 'FID', fid);
+    // First Input Delay (FID)
+    const fidObserver = new PerformanceObserver((entryList) => {
+      const entries = entryList.getEntries();
+      entries.forEach((entry) => {
+        trackTiming('Web Vitals', 'FID', Math.round(entry.processingStart - entry.startTime));
       });
-    }).observe({ entryTypes: ['first-input'] });
-
-    log('Web Vitals initialized');
-  } catch (error) {
-    console.error('[Analytics] Web Vitals failed:', error);
+    });
+    fidObserver.observe({ entryTypes: ['first-input'] });
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 🎭 SESSION
-// ═══════════════════════════════════════════════════════════
-
+// Session tracking
 let sessionStart = Date.now();
+let lastActivityTime = Date.now();
 
-function initSessionTracking() {
-  const sessionId = getSessionId();
-  trackEvent('Session', 'started', sessionId);
+export function initSessionTracking() {
+  if (!ANALYTICS_ENABLED) return;
 
+  // Track session start
+  trackEvent('Session', 'started');
+
+  // Track user activity
+  const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+  activityEvents.forEach((event) => {
+    document.addEventListener(event, () => {
+      lastActivityTime = Date.now();
+    }, { passive: true });
+  });
+
+  // Track session end on page unload
   window.addEventListener('beforeunload', () => {
-    const duration = Math.round((Date.now() - sessionStart) / 1000);
-    trackEvent('Session', 'ended', sessionId, duration);
-  });
-
-  log('Session tracking initialized');
-}
-
-function getSessionId() {
-  let sessionId = sessionStorage.getItem('analytics_session_id');
-  if (!sessionId) {
-    sessionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    sessionStorage.setItem('analytics_session_id', sessionId);
-  }
-  return sessionId;
-}
-
-// ═══════════════════════════════════════════════════════════
-// ⚠️ ERROR TRACKING
-// ═══════════════════════════════════════════════════════════
-
-function initErrorTracking() {
-  window.addEventListener('error', (event) => {
-    trackError(event.error || new Error(event.message), { fatal: true });
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    trackError(event.reason || new Error('Unhandled Promise'), { fatal: false });
-  });
-
-  log('Error tracking initialized');
-}
-
-// ═══════════════════════════════════════════════════════════
-// 🚀 PERFORMANCE
-// ═══════════════════════════════════════════════════════════
-
-function initPerformanceTracking() {
-  if (!window.performance?.timing) return;
-
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      const perfData = window.performance.timing;
-      const pageLoadTime = perfData.loadEventEnd - perfData.navigationStart;
-      trackTiming('Performance', 'Page Load', pageLoadTime);
-      log('Performance tracked');
-    }, 0);
+    const sessionDuration = Math.round((lastActivityTime - sessionStart) / 1000);
+    trackEngagement('session_end', sessionDuration);
+    trackEvent('Session', 'ended', '', sessionDuration);
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// 🛠️ UTILS
-// ═══════════════════════════════════════════════════════════
+// User properties
+export function setUserProperty(property, value) {
+  if (!ANALYTICS_ENABLED || !window.gtag) return;
 
-function log(message, data = null) {
-  if (CONFIG.debug) {
-    console.log(`[Analytics] ${message}`, data || '');
-  }
-}
-
-export function isAnalyticsReady() {
-  return analyticsReady;
+  window.gtag('set', 'user_properties', {
+    [property]: value,
+  });
 }
 
 export default {
-  initAnalytics,
-  isAnalyticsReady,
+  initGA,
   trackPageView,
   trackEvent,
   trackTiming,
-  trackError,
+  trackEngagement,
+  trackConversion,
+  trackOutboundLink,
+  trackPerformance,
+  initSessionTracking,
+  setUserProperty,
   AnalyticsEvents,
 };
