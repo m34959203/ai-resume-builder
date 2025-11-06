@@ -13,10 +13,8 @@
     "server:dev": "npm --prefix server run start:dev",
     "server:start": "npm --prefix server run start",
 
-    // 👇 ЭТО ИСПОЛЬЗУЕМ В RENDER → Build Command
     "ci:render": "npm ci --include=dev && npm --prefix server ci --omit=dev || npm --prefix server i --omit=dev && npm run build",
 
-    // гарантированная установка server/ deps при локальной установке/Render
     "postinstall": "npm --prefix server ci --omit=dev || npm --prefix server i --omit=dev"
   },
   "dependencies": {
