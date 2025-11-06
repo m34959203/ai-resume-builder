@@ -4,7 +4,7 @@
   "private": true,
   "description": "Backend-for-Frontend (Express) для AI Resume Builder: прокси HH API, OAuth, утилиты",
   "main": "index.js",
-  "type": "commonjs",
+  "type": "module",
   "engines": {
     "node": ">=18.18.0 <21"
   },
