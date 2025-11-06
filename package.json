@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=18 <23"
+  },
   "scripts": {
     "dev": "vite",
-    "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
+    "dev:all": "concurrently \"npm run server:dev\" \"npm run dev\"",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "concurrently \"npm run server:start\" \"npm run preview\"",
+    "start": "node server/index.js",
     "server:dev": "npm --prefix server run start:dev",
     "server:start": "npm --prefix server run start"
   },
