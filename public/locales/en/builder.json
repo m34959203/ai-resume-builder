@@ -1,0 +1,151 @@
+{
+  "sections": {
+    "personal": "Personal Information",
+    "summary": "About Me",
+    "experience": "Work Experience",
+    "education": "Education",
+    "skills": "Skills",
+    "languages": "Languages",
+    "projects": "Projects",
+    "certifications": "Certifications",
+    "achievements": "Achievements",
+    "interests": "Interests"
+  },
+  "fields": {
+    "fullName": "Full Name",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "phone": "Phone",
+    "location": "Location",
+    "city": "City",
+    "country": "Country",
+    "website": "Website",
+    "linkedin": "LinkedIn",
+    "github": "GitHub",
+    "portfolio": "Portfolio",
+    "summary": "Summary",
+    "position": "Position",
+    "company": "Company",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "current": "Present",
+    "description": "Description",
+    "responsibilities": "Responsibilities",
+    "achievements": "Achievements",
+    "degree": "Degree",
+    "field": "Field of Study",
+    "institution": "Institution",
+    "gpa": "GPA",
+    "skillName": "Skill Name",
+    "skillLevel": "Level",
+    "yearsOfExperience": "Years of Experience",
+    "language": "Language",
+    "proficiency": "Proficiency",
+    "projectName": "Project Name",
+    "projectUrl": "Project URL",
+    "technologies": "Technologies",
+    "certificateName": "Certificate Name",
+    "issuer": "Issuer",
+    "issueDate": "Issue Date",
+    "credentialId": "Credential ID"
+  },
+  "placeholders": {
+    "fullName": "John Doe",
+    "email": "john@example.com",
+    "phone": "+1 (555) 123-4567",
+    "position": "Senior Frontend Developer",
+    "company": "Company Inc.",
+    "summary": "Experienced developer with 5+ years...",
+    "description": "Describe your responsibilities and achievements...",
+    "skillName": "React.js",
+    "institution": "University of Technology",
+    "degree": "Bachelor",
+    "field": "Computer Science"
+  },
+  "actions": {
+    "add": "Add",
+    "addExperience": "Add Work Experience",
+    "addEducation": "Add Education",
+    "addSkill": "Add Skill",
+    "addLanguage": "Add Language",
+    "addProject": "Add Project",
+    "addCertification": "Add Certification",
+    "remove": "Remove",
+    "edit": "Edit",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "duplicate": "Duplicate",
+    "clear": "Clear",
+    "reset": "Reset"
+  },
+  "ai": {
+    "improve": "Improve with AI",
+    "improveDescription": "Improve Description",
+    "generateSummary": "Generate Summary",
+    "suggestSkills": "Suggest Skills",
+    "analyzing": "Analyzing...",
+    "generating": "Generating...",
+    "recommendations": "Recommendations",
+    "aiSuggestions": "AI Suggestions",
+    "acceptSuggestion": "Accept",
+    "rejectSuggestion": "Reject",
+    "applyAll": "Apply All",
+    "regenerate": "Regenerate"
+  },
+  "templates": {
+    "title": "Resume Templates",
+    "modern": "Modern",
+    "professional": "Professional",
+    "creative": "Creative",
+    "minimal": "Minimal",
+    "select": "Select Template",
+    "preview": "Preview"
+  },
+  "skillLevels": {
+    "beginner": "Beginner",
+    "intermediate": "Intermediate",
+    "advanced": "Advanced",
+    "expert": "Expert"
+  },
+  "languageProficiency": {
+    "elementary": "Elementary",
+    "limited": "Limited Working",
+    "professional": "Professional Working",
+    "native": "Native"
+  },
+  "validation": {
+    "required": "This field is required",
+    "invalidEmail": "Enter a valid email address",
+    "invalidPhone": "Enter a valid phone number",
+    "invalidUrl": "Enter a valid URL",
+    "dateInFuture": "Date cannot be in the future",
+    "endDateBeforeStart": "End date cannot be before start date"
+  },
+  "tips": {
+    "personal": "Provide up-to-date contact information",
+    "summary": "Brief summary (2-3 sentences) about your experience and goals",
+    "experience": "Start with your most recent position",
+    "education": "Include your highest degree",
+    "skills": "List key technical and soft skills",
+    "achievements": "Use specific numbers and results"
+  },
+  "help": {
+    "useAI": "Use AI to improve descriptions and generate content",
+    "importHH": "Import data from your HeadHunter profile",
+    "templates": "Choose a suitable template for your industry",
+    "export": "Download your resume in PDF or Word format"
+  },
+  "status": {
+    "draft": "Draft",
+    "complete": "Complete",
+    "incomplete": "Incomplete",
+    "lastSaved": "Last saved",
+    "autoSaving": "Auto-saving..."
+  },
+  "progress": {
+    "title": "Resume Completion",
+    "percentage": "{{percent}}% completed",
+    "nextStep": "Next step: {{section}}"
+  }
+}

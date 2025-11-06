@@ -1,33 +1,30 @@
 {
   "name": "resume-bff",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Backend-for-Frontend (Express) для AI Resume Builder: прокси HH API, OAuth, утилиты",
+  "description": "Backend-for-Frontend (Express) для AI Resume Builder: прокси HH API, OAuth, AI переводы",
   "main": "index.js",
   "type": "module",
   "engines": {
-    "node": ">=18.18.0 <21"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "start": "cross-env NODE_ENV=production node index.js",
-    "dev": "cross-env NODE_ENV=development nodemon --watch . --ext js,json --signal SIGTERM index.js",
+    "dev": "cross-env NODE_ENV=development nodemon --watch . --ext js --signal SIGTERM index.js",
     "start:dev": "npm run dev",
-    "start:inspect": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js"
+    "start:inspect": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js",
+    "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
-    "compression": "^1.7.4",
-    "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "docx": "^9.5.1",
-    "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express-rate-limit": "^7.3.1",
-    "file-saver": "^2.0.5",
-    "helmet": "^7.1.0",
-    "i18next": "^25.6.0",
-    "i18next-fs-backend": "^2.6.0",
-    "morgan": "^1.10.0",
     "node-cache": "^5.1.2"
+  },
+  "optionalDependencies": {
+    "compression": "^1.7.4",
+    "helmet": "^7.1.0"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
@@ -39,7 +36,9 @@
     "bff",
     "proxy",
     "hh",
+    "ai",
+    "translation",
     "resume",
-    "vite"
+    "i18n"
   ]
 }

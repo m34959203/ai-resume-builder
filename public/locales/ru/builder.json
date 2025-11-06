@@ -1,24 +1,151 @@
 {
   "sections": {
     "personal": "Личная информация",
+    "summary": "О себе",
     "experience": "Опыт работы",
     "education": "Образование",
     "skills": "Навыки",
-    "languages": "Языки"
+    "languages": "Языки",
+    "projects": "Проекты",
+    "certifications": "Сертификаты",
+    "achievements": "Достижения",
+    "interests": "Интересы"
   },
   "fields": {
     "fullName": "ФИО",
+    "firstName": "Имя",
+    "lastName": "Фамилия",
     "email": "Email",
     "phone": "Телефон",
+    "location": "Местоположение",
+    "city": "Город",
+    "country": "Страна",
+    "website": "Веб-сайт",
+    "linkedin": "LinkedIn",
+    "github": "GitHub",
+    "portfolio": "Портфолио",
+    "summary": "Краткое описание",
     "position": "Должность",
     "company": "Компания",
     "startDate": "Дата начала",
     "endDate": "Дата окончания",
-    "current": "По настоящее время"
+    "current": "По настоящее время",
+    "description": "Описание",
+    "responsibilities": "Обязанности",
+    "achievements": "Достижения",
+    "degree": "Степень",
+    "field": "Специальность",
+    "institution": "Учебное заведение",
+    "gpa": "Средний балл",
+    "skillName": "Название навыка",
+    "skillLevel": "Уровень",
+    "yearsOfExperience": "Лет опыта",
+    "language": "Язык",
+    "proficiency": "Уровень владения",
+    "projectName": "Название проекта",
+    "projectUrl": "Ссылка на проект",
+    "technologies": "Технологии",
+    "certificateName": "Название сертификата",
+    "issuer": "Выдавший орган",
+    "issueDate": "Дата выдачи",
+    "credentialId": "ID сертификата"
+  },
+  "placeholders": {
+    "fullName": "Иван Иванов",
+    "email": "ivan@example.com",
+    "phone": "+7 (777) 123-45-67",
+    "position": "Senior Frontend Developer",
+    "company": "ООО \"Компания\"",
+    "summary": "Опытный разработчик с 5+ летним стажем...",
+    "description": "Опишите ваши обязанности и достижения...",
+    "skillName": "React.js",
+    "institution": "Казахский Национальный Университет",
+    "degree": "Бакалавр",
+    "field": "Информационные технологии"
+  },
+  "actions": {
+    "add": "Добавить",
+    "addExperience": "Добавить опыт работы",
+    "addEducation": "Добавить образование",
+    "addSkill": "Добавить навык",
+    "addLanguage": "Добавить язык",
+    "addProject": "Добавить проект",
+    "addCertification": "Добавить сертификат",
+    "remove": "Удалить",
+    "edit": "Редактировать",
+    "moveUp": "Переместить вверх",
+    "moveDown": "Переместить вниз",
+    "duplicate": "Дублировать",
+    "clear": "Очистить",
+    "reset": "Сбросить"
   },
   "ai": {
     "improve": "Улучшить с AI",
+    "improveDescription": "Улучшить описание",
+    "generateSummary": "Сгенерировать резюме",
+    "suggestSkills": "Предложить навыки",
     "analyzing": "Анализирую...",
-    "recommendations": "Рекомендации"
+    "generating": "Генерирую...",
+    "recommendations": "Рекомендации",
+    "aiSuggestions": "AI предложения",
+    "acceptSuggestion": "Принять",
+    "rejectSuggestion": "Отклонить",
+    "applyAll": "Применить все",
+    "regenerate": "Сгенерировать заново"
+  },
+  "templates": {
+    "title": "Шаблоны резюме",
+    "modern": "Современный",
+    "professional": "Профессиональный",
+    "creative": "Креативный",
+    "minimal": "Минималистичный",
+    "select": "Выбрать шаблон",
+    "preview": "Предварительный просмотр"
+  },
+  "skillLevels": {
+    "beginner": "Начальный",
+    "intermediate": "Средний",
+    "advanced": "Продвинутый",
+    "expert": "Эксперт"
+  },
+  "languageProficiency": {
+    "elementary": "Элементарный",
+    "limited": "Ограниченный",
+    "professional": "Профессиональный",
+    "native": "Родной"
+  },
+  "validation": {
+    "required": "Это поле обязательно",
+    "invalidEmail": "Введите корректный email",
+    "invalidPhone": "Введите корректный номер телефона",
+    "invalidUrl": "Введите корректную ссылку",
+    "dateInFuture": "Дата не может быть в будущем",
+    "endDateBeforeStart": "Дата окончания не может быть раньше даты начала"
+  },
+  "tips": {
+    "personal": "Укажите актуальные контактные данные",
+    "summary": "Краткое резюме (2-3 предложения) о вашем опыте и целях",
+    "experience": "Начинайте с последнего места работы",
+    "education": "Укажите наивысшую степень образования",
+    "skills": "Перечислите ключевые технические и soft skills",
+    "achievements": "Используйте конкретные цифры и результаты"
+  },
+  "help": {
+    "useAI": "Используйте AI для улучшения описаний и генерации контента",
+    "importHH": "Импортируйте данные из вашего профиля на HeadHunter",
+    "templates": "Выберите подходящий шаблон для вашей сферы",
+    "export": "Скачайте резюме в формате PDF или Word"
+  },
+  "status": {
+    "draft": "Черновик",
+    "complete": "Завершено",
+    "incomplete": "Не завершено",
+    "lastSaved": "Последнее сохранение",
+    "autoSaving": "Автосохранение..."
+  },
+  "progress": {
+    "title": "Заполненность резюме",
+    "percentage": "{{percent}}% заполнено",
+    "nextStep": "Следующий шаг: {{section}}"
   }
 }

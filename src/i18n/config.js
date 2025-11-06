@@ -81,7 +81,9 @@ i18n
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',
       requestOptions: {
-        cache: 'no-cache',
+        mode: 'cors',
+        credentials: 'same-origin',
+        cache: 'default', // ✅ ИСПРАВЛЕНО: используем браузерный кэш
       },
     },
     
@@ -103,12 +105,12 @@ i18n
     
     // React опции
     react: {
-      useSuspense: true,
+      useSuspense: false, // ✅ ИСПРАВЛЕНО: избегаем проблем с async
       bindI18n: 'languageChanged loaded',
       bindI18nStore: 'added removed',
       transEmptyNodeValue: '',
       transSupportBasicHtmlNodes: true,
-      transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'p'],
+      transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'p', 'span'],
     },
     
     // Интерполяция
@@ -123,8 +125,11 @@ i18n
     // Оптимизация
     saveMissing: import.meta.env.DEV,
     missingKeyHandler: import.meta.env.DEV 
-      ? (lng, ns, key) => console.warn(`Missing translation: ${lng}.${ns}.${key}`)
+      ? (lng, ns, key) => console.warn(`🔍 Missing translation: ${lng}.${ns}.${key}`)
       : undefined,
+  })
+  .catch((err) => {
+    console.error('❌ i18n initialization failed:', err);
   });
 
 // ===================================
@@ -146,15 +151,15 @@ i18n.on('languageChanged', (lng) => {
     });
   }
   
-  console.log(`Language changed to: ${lng}`);
+  console.log(`🌐 Language changed to: ${lng}`);
 });
 
 i18n.on('loaded', (loaded) => {
-  console.log('Translations loaded:', loaded);
+  console.log('✅ Translations loaded:', loaded);
 });
 
 i18n.on('failedLoading', (lng, ns, msg) => {
-  console.error(`Failed loading translation: ${lng} ${ns}`, msg);
+  console.error(`❌ Failed loading translation: ${lng} ${ns}`, msg);
 });
 
 export default i18n;

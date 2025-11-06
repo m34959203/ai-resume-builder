@@ -51,6 +51,14 @@ export const getAllLanguages = () => {
 };
 
 /**
+ * Получить направление текста (LTR/RTL)
+ */
+export const getTextDirection = (code) => {
+  const lang = code || getCurrentLanguage();
+  return LANGUAGES[lang]?.dir || 'ltr';
+};
+
+/**
  * Форматирование даты для текущего языка
  */
 export const formatDate = (date, options = {}) => {
@@ -61,7 +69,12 @@ export const formatDate = (date, options = {}) => {
     en: 'en-US'
   };
   
-  return new Intl.DateTimeFormat(localeMap[locale], options).format(new Date(date));
+  try {
+    return new Intl.DateTimeFormat(localeMap[locale], options).format(new Date(date));
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return date.toString();
+  }
 };
 
 /**
@@ -75,7 +88,12 @@ export const formatNumber = (number, options = {}) => {
     en: 'en-US'
   };
   
-  return new Intl.NumberFormat(localeMap[locale], options).format(number);
+  try {
+    return new Intl.NumberFormat(localeMap[locale], options).format(number);
+  } catch (error) {
+    console.error('Number formatting error:', error);
+    return number.toString();
+  }
 };
 
 /**
@@ -88,4 +106,35 @@ export const formatCurrency = (amount, currency = 'KZT') => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   });
+};
+
+/**
+ * Относительное время (например: "2 дня назад")
+ */
+export const formatRelativeTime = (date) => {
+  const locale = getCurrentLanguage();
+  const localeMap = {
+    ru: 'ru-RU',
+    kz: 'kk-KZ',
+    en: 'en-US'
+  };
+  
+  try {
+    const rtf = new Intl.RelativeTimeFormat(localeMap[locale], { numeric: 'auto' });
+    const diff = new Date(date) - new Date();
+    const days = Math.round(diff / (1000 * 60 * 60 * 24));
+    
+    if (Math.abs(days) < 1) {
+      const hours = Math.round(diff / (1000 * 60 * 60));
+      return rtf.format(hours, 'hour');
+    }
+    if (Math.abs(days) < 30) {
+      return rtf.format(days, 'day');
+    }
+    const months = Math.round(days / 30);
+    return rtf.format(months, 'month');
+  } catch (error) {
+    console.error('Relative time formatting error:', error);
+    return formatDate(date);
+  }
 };

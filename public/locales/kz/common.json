@@ -1,18 +1,79 @@
 {
   "app": {
-    "title": "AI Түйіндеме Құрастырушы",
-    "subtitle": "Бірнеше минутта кәсіби түйіндеме жасаңыз"
+    "title": "AI Түйіндеме Құрастырушысы",
+    "subtitle": "Бірнеше минутта кәсіби түйіндеме жасаңыз",
+    "loading": "Жүктелуде...",
+    "saving": "Сақталуда...",
+    "error": "Қате орын алды"
   },
   "nav": {
     "builder": "Құрастырушы",
     "templates": "Үлгілер",
-    "vacancies": "Бос орындар"
+    "vacancies": "Бос орындар",
+    "profile": "Профиль",
+    "home": "Басты бет"
   },
   "actions": {
     "save": "Сақтау",
+    "cancel": "Болдырмау",
+    "delete": "Жою",
+    "edit": "Өңдеу",
     "download": "Жүктеп алу",
     "export_pdf": "PDF-ке экспорттау",
     "export_word": "Word-ке экспорттау",
-    "import_hh": "HH-дан импорттау"
+    "import_hh": "HH-дан импорттау",
+    "translating": "Аударылуда...",
+    "create": "Жасау",
+    "update": "Жаңарту",
+    "close": "Жабу",
+    "back": "Артқа",
+    "next": "Келесі",
+    "finish": "Аяқтау"
+  },
+  "common": {
+    "yes": "Иә",
+    "no": "Жоқ",
+    "ok": "Жарайды",
+    "close": "Жабу",
+    "search": "Іздеу",
+    "filter": "Сүзгі",
+    "loading": "Жүктелуде...",
+    "noResults": "Нәтиже табылмады",
+    "error": "Қате",
+    "success": "Сәтті",
+    "warning": "Ескерту",
+    "info": "Ақпарат"
+  },
+  "errors": {
+    "languageChangeFailed": "Тілді ауыстыру мүмкін болмады",
+    "loadingFailed": "Жүктеу қатесі",
+    "savingFailed": "Сақтау қатесі",
+    "translationFailed": "Аударма қатесі",
+    "networkError": "Желіге қосылу мәселесі",
+    "serverError": "Сервер қатесі",
+    "unknown": "Белгісіз қате",
+    "tryAgain": "Қайталап көріңіз",
+    "contactSupport": "Қолдау қызметіне хабарласыңыз"
+  },
+  "validation": {
+    "required": "Міндетті өріс",
+    "invalidEmail": "Email дұрыс емес",
+    "invalidPhone": "Телефон нөмірі дұрыс емес",
+    "tooShort": "Өте қысқа мән",
+    "tooLong": "Өте ұзын мән"
+  },
+  "time": {
+    "now": "Қазір",
+    "today": "Бүгін",
+    "yesterday": "Кеше",
+    "tomorrow": "Ертең",
+    "daysAgo": "{{count}} күн бұрын",
+    "hoursAgo": "{{count}} сағат бұрын",
+    "minutesAgo": "{{count}} минут бұрын"
+  },
+  "language": {
+    "select": "Тілді таңдаңыз",
+    "current": "Ағымдағы тіл",
+    "change": "Тілді ауыстыру"
   }
 }
