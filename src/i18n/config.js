@@ -1,130 +1,96 @@
+// src/i18n/config.js
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpBackend from 'i18next-http-backend';
 
-// ===================================
-// ЯЗЫКОВЫЕ КОНСТАНТЫ
-// ===================================
-
+/* =========================
+ * ЯЗЫКИ
+ * ======================= */
 export const LANGUAGES = {
-  ru: {
-    code: 'ru',
-    name: 'Русский',
-    nativeName: 'Русский',
-    flag: '🇷🇺',
-    dir: 'ltr'
-  },
-  kz: {
-    code: 'kz',
-    name: 'Kazakh',
-    nativeName: 'Қазақша',
-    flag: '🇰🇿',
-    dir: 'ltr'
-  },
-  en: {
-    code: 'en',
-    name: 'English',
-    nativeName: 'English',
-    flag: '🇬🇧',
-    dir: 'ltr'
-  }
+  ru: { code: 'ru', name: 'Русский', nativeName: 'Русский', flag: '🇷🇺', dir: 'ltr' },
+  kz: { code: 'kz', name: 'Kazakh',  nativeName: 'Қазақша',  flag: '🇰🇿', dir: 'ltr' },
+  en: { code: 'en', name: 'English', nativeName: 'English',  flag: '🇬🇧', dir: 'ltr' },
 };
 
 export const DEFAULT_LANGUAGE = 'ru';
-export const SUPPORTED_LANGUAGES = Object.keys(LANGUAGES);
+export const SUPPORTED_LANGUAGES = ['ru', 'kz', 'en'];
 
-// ===================================
-// NAMESPACES
-// ===================================
+/* =========================
+ * НЕЙМСПЕЙСЫ
+ * ======================= */
+// БАЗОВЫЕ (есть в public/locales/*/)
+const CORE_NAMESPACES = ['common', 'builder', 'validation'];
+// ОПЦИОНАЛЬНЫЕ (могут отсутствовать сейчас; появятся позже)
+const OPTIONAL_NAMESPACES = ['pdf', 'vacancies', 'courses', 'ai'];
 
 export const NAMESPACES = {
   COMMON: 'common',
   BUILDER: 'builder',
-  PDF: 'pdf',
   VALIDATION: 'validation',
+  PDF: 'pdf',
   VACANCIES: 'vacancies',
   COURSES: 'courses',
-  AI: 'ai'
+  AI: 'ai',
 };
 
-// ===================================
-// i18n КОНФИГУРАЦИЯ
-// ===================================
-
+/* =========================
+ * I18N INIT
+ * ======================= */
 i18n
-  // Загрузка переводов с сервера
   .use(HttpBackend)
-  
-  // Автоопределение языка
   .use(LanguageDetector)
-  
-  // React интеграция
   .use(initReactI18next)
-  
-  // Инициализация
   .init({
-    // Язык по умолчанию
+    // языки
     fallbackLng: DEFAULT_LANGUAGE,
-    
-    // Поддерживаемые языки
     supportedLngs: SUPPORTED_LANGUAGES,
-    
-    // Не загружать языки вне списка
+    nonExplicitSupportedLngs: true, // ru-RU → ru
     load: 'languageOnly',
-    
-    // Пространства имен
-    ns: Object.values(NAMESPACES),
-    defaultNS: NAMESPACES.COMMON,
-    
-    // Backend конфигурация
+    cleanCode: true,
+
+    // НЕ подгружаем всё разом — только core.
+    // Остальные неймспейсы будут запрошены лениво,
+    // когда где-то вызовут useTranslation('pdf') и т.п.
+    ns: CORE_NAMESPACES,
+    defaultNS: 'common',
+    fallbackNS: ['common'],
+
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',
       requestOptions: {
         mode: 'cors',
         credentials: 'same-origin',
-        cache: 'default', // ✅ ИСПРАВЛЕНО: используем браузерный кэш
+        cache: 'default',
       },
     },
-    
-    // Определение языка
+
+    // порядок определения языка: URL → localStorage → браузер
     detection: {
-      order: [
-        'localStorage',
-        'cookie',
-        'navigator',
-        'htmlTag',
-        'path',
-        'subdomain'
-      ],
-      caches: ['localStorage', 'cookie'],
+      order: ['querystring', 'localStorage', 'navigator'],
+      lookupQuerystring: 'lang',
+      caches: ['localStorage'],
       lookupLocalStorage: 'i18nextLng',
-      lookupCookie: 'i18next',
-      cookieMinutes: 10080, // 7 дней
     },
-    
-    // React опции
+
+    interpolation: {
+      escapeValue: false,
+      formatSeparator: ',',
+    },
+
+    // В проде используем Suspense (мы обернули <App/> в <Suspense/>)
     react: {
-      useSuspense: false, // ✅ ИСПРАВЛЕНО: избегаем проблем с async
+      useSuspense: true,
       bindI18n: 'languageChanged loaded',
       bindI18nStore: 'added removed',
       transEmptyNodeValue: '',
       transSupportBasicHtmlNodes: true,
       transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'p', 'span'],
     },
-    
-    // Интерполяция
-    interpolation: {
-      escapeValue: false, // React уже экранирует
-      formatSeparator: ',',
-    },
-    
-    // Дебаг (только в dev)
+
     debug: import.meta.env.DEV,
-    
-    // Оптимизация
     saveMissing: import.meta.env.DEV,
-    missingKeyHandler: import.meta.env.DEV 
+    missingKeyHandler: import.meta.env.DEV
       ? (lng, ns, key) => console.warn(`🔍 Missing translation: ${lng}.${ns}.${key}`)
       : undefined,
   })
@@ -132,34 +98,35 @@ i18n
     console.error('❌ i18n initialization failed:', err);
   });
 
-// ===================================
-// ОБРАБОТЧИКИ СОБЫТИЙ
-// ===================================
+/* =========================
+ * СОБЫТИЯ
+ * ======================= */
 
-i18n.on('languageChanged', (lng) => {
-  // Обновить HTML атрибуты
-  document.documentElement.lang = lng;
-  document.documentElement.dir = LANGUAGES[lng]?.dir || 'ltr';
-  
-  // Сохранить в localStorage
-  localStorage.setItem('i18nextLng', lng);
-  
-  // Аналитика
-  if (window.gtag) {
-    window.gtag('event', 'language_change', {
-      language: lng
-    });
+// Аккуратно ведём себя с отсутствующими optional-неймспейсами
+i18n.on('failedLoading', (lng, ns, msg) => {
+  if (OPTIONAL_NAMESPACES.includes(ns)) {
+    console.warn(`ℹ️ Optional namespace not found (skipped): ${lng}/${ns}`);
+    return;
   }
-  
-  console.log(`🌐 Language changed to: ${lng}`);
+  console.error(`❌ Failed loading translation: ${lng}/${ns}`, msg);
 });
 
 i18n.on('loaded', (loaded) => {
-  console.log('✅ Translations loaded:', loaded);
+  if (import.meta.env.DEV) {
+    console.log('✅ Translations loaded:', loaded);
+  }
 });
 
-i18n.on('failedLoading', (lng, ns, msg) => {
-  console.error(`❌ Failed loading translation: ${lng} ${ns}`, msg);
+i18n.on('languageChanged', (lng) => {
+  try {
+    document.documentElement.lang = lng;
+    document.documentElement.dir = LANGUAGES[lng]?.dir || 'ltr';
+    localStorage.setItem('i18nextLng', lng);
+  } catch {}
+  if (window.gtag) {
+    window.gtag('event', 'language_change', { language: lng });
+  }
+  console.log(`🌐 Language changed to: ${lng}`);
 });
 
 export default i18n;
