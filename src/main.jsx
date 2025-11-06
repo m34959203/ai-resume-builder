@@ -39,18 +39,6 @@ if (import.meta.env.PROD) {
     .catch((err) => {
       console.log('ℹ️ Performance monitoring not available:', err.message);
     });
-
-  // PWA Service Worker
-  if ('serviceWorker' in navigator) {
-    import('./utils/pwa.js')
-      .then(({ registerServiceWorker }) => {
-        registerServiceWorker();
-        console.log('✅ Service Worker registered');
-      })
-      .catch((err) => {
-        console.log('ℹ️ PWA not available:', err.message);
-      });
-  }
 }
 
 // ===================================
