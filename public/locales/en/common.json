@@ -1,0 +1,18 @@
+{
+  "app": {
+    "title": "AI Resume Builder",
+    "subtitle": "Create a professional resume in minutes"
+  },
+  "nav": {
+    "builder": "Builder",
+    "templates": "Templates",
+    "vacancies": "Vacancies"
+  },
+  "actions": {
+    "save": "Save",
+    "download": "Download",
+    "export_pdf": "Export to PDF",
+    "export_word": "Export to Word",
+    "import_hh": "Import from HH"
+  }
+}

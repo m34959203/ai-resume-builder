@@ -1,0 +1,24 @@
+{
+  "sections": {
+    "personal": "Личная информация",
+    "experience": "Опыт работы",
+    "education": "Образование",
+    "skills": "Навыки",
+    "languages": "Языки"
+  },
+  "fields": {
+    "fullName": "ФИО",
+    "email": "Email",
+    "phone": "Телефон",
+    "position": "Должность",
+    "company": "Компания",
+    "startDate": "Дата начала",
+    "endDate": "Дата окончания",
+    "current": "По настоящее время"
+  },
+  "ai": {
+    "improve": "Улучшить с AI",
+    "analyzing": "Анализирую...",
+    "recommendations": "Рекомендации"
+  }
+}

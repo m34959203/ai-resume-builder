@@ -1,924 +1,612 @@
-// server/index.js
-/* eslint-disable no-console */
+#!/usr/bin/env node
 'use strict';
 
-/*
- * HeadHunter BFF / Proxy (Express)
- * - CORS и redirect из ENV
- * - Поиск вакансий (host=hh.kz|hh.ru, area по городу/areaId, опыт, salary=KZT)
- * - Кеш справочников, rate-limit, helmet, morgan, compression
- * - Дополнительно: passthrough к HH
- * - /api/polish, /api/polish/batch — полировка текста через OpenRouter (опционально)
- * - /api/ai/infer-search — эвристика/LLM (опционально)
- * - /api/recommendations — AI рекомендации/улучшение резюме (опционально)
- * - /api/hh/me, /api/hh/resumes, /api/hh/respond — проверка сессии и отклики
- * Требуется Node 18+ (встроенный fetch)
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🚀 AI RESUME BUILDER - BFF/PROXY SERVER
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Функционал:
+ * - HeadHunter API Proxy (поиск вакансий, OAuth, отклики)
+ * - AI переводы и рекомендации (Gemini, DeepSeek)
+ * - Многоязычность (RU/KZ/EN)
+ * - Кэширование с stale-while-revalidate
+ * - Rate limiting
+ * - Structured logging
+ * - Graceful shutdown
+ * 
+ * @version 2.0.0
+ * @requires Node.js 18+
  */
 
 const path = require('path');
 const fs = require('fs');
 
-/* ============================ ENV LOADING (SAFE) ============================ */
-/** На Render переменные приходят из Dashboard. Не перетираем их .env-файлами. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔧 ENVIRONMENT LOADING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 (() => {
   const isRender = !!process.env.RENDER;
-  if (!isRender) {
+  const isVercel = !!process.env.VERCEL;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // В production на хостингах переменные уже есть в окружении
+  if (!isRender && !isVercel && !isProduction) {
     const rootEnv = path.resolve(__dirname, '..', '.env');
     const localEnv = path.resolve(__dirname, '.env');
-    // Сначала корневой .env, затем локальный, и НЕ override, чтобы не ломать Render
+    
     require('dotenv').config({ path: rootEnv, override: false });
     require('dotenv').config({ path: localEnv, override: false });
   }
 })();
 
-/* ================================== IMPORTS ================================= */
+/* ═══════════════════════════════════════════════════════════════════════════
+   📦 IMPORTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const morgan = require('morgan');
 const compression = require('compression');
 const crypto = require('crypto');
 
-/* =================================== ENV ==================================== */
-const {
-  PORT,
-  NODE_ENV = (process.env.RENDER ? 'production' : 'development'),
-  FRONT_ORIGINS,
+// Утилиты
+const logger = require('./utils/logger');
+const { createRateLimiter } = require('./middleware/rateLimiter');
+const errorHandler = require('./middleware/errorHandler');
+const requestLogger = require('./middleware/requestLogger');
+const { validateEnv } = require('./utils/validation');
+const cacheService = require('./services/cache');
 
-  HH_USER_AGENT = 'AI Resume Builder/1.0 (dev) admin@example.com',
-  HH_HOST = 'hh.kz',
+// Роуты
+const hhRoutes = require('./routes/hh');
+const translateRoutes = require('./routes/translate');
+const aiRoutes = require('./routes/ai');
+const recommendationsRoutes = require('./routes/recommendations');
 
-  // токены в cookies/Authorization
-  COOKIE_DOMAIN,
-  COOKIE_SECURE,
+/* ═══════════════════════════════════════════════════════════════════════════
+   ⚙️ CONFIGURATION
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-  HH_TIMEOUT_MS = '15000',
-  SEARCH_TTL_MS = '90000',
-  SEARCH_STALE_MAX_MS = '900000',
+const config = {
+  // Основные настройки
+  port: parseInt(process.env.PORT || '10000', 10),
+  nodeEnv: process.env.NODE_ENV || 'development',
+  isProduction: process.env.NODE_ENV === 'production',
+  isDevelopment: process.env.NODE_ENV === 'development',
+  
+  // CORS
+  frontOrigins: (process.env.FRONT_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
+  
+  // HeadHunter
+  hh: {
+    apiUrl: 'https://api.hh.ru',
+    host: process.env.HH_HOST || 'hh.kz',
+    userAgent: process.env.HH_USER_AGENT || 'AI Resume Builder/2.0 (contact@example.com)',
+    clientId: process.env.HH_CLIENT_ID,
+    clientSecret: process.env.HH_CLIENT_SECRET,
+    redirectUri: process.env.HH_REDIRECT_URI,
+    timeout: parseInt(process.env.HH_TIMEOUT_MS || '15000', 10),
+    defaultResumeId: process.env.HH_RESUME_ID,
+  },
+  
+  // AI сервисы
+  ai: {
+    gemini: {
+      apiKey: process.env.VITE_GEMINI_API_KEY,
+      model: 'google/gemini-2.0-flash-exp:free',
+    },
+    deepseek: {
+      apiKey: process.env.VITE_DEEPSEEK_API_KEY,
+      model: 'deepseek-chat',
+    },
+    openrouter: {
+      apiKey: process.env.OPENROUTER_API_KEY,
+    },
+  },
+  
+  // Кэширование
+  cache: {
+    searchTTL: parseInt(process.env.SEARCH_TTL_MS || '90000', 10),
+    searchStaleMax: parseInt(process.env.SEARCH_STALE_MAX_MS || '900000', 10),
+    areasTTL: 24 * 3600 * 1000, // 24 часа
+    translationTTL: 7 * 24 * 3600 * 1000, // 7 дней
+  },
+  
+  // Rate Limiting
+  rateLimit: {
+    windowMs: 60 * 1000, // 1 минута
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '60', 10),
+    maxAIRequests: parseInt(process.env.RATE_LIMIT_AI_MAX || '10', 10),
+  },
+  
+  // Cookies
+  cookie: {
+    domain: process.env.COOKIE_DOMAIN,
+    secure: process.env.COOKIE_SECURE === 'true',
+    sameSite: process.env.COOKIE_SECURE === 'true' ? 'none' : 'lax',
+  },
+  
+  // Monitoring
+  monitoring: {
+    enabled: process.env.MONITORING_ENABLED === 'true',
+    sentryDsn: process.env.SENTRY_DSN,
+  },
+};
 
-  // опционально — дефолтное резюме для /api/hh/respond
-  HH_RESUME_ID,
+// Валидация обязательных переменных
+try {
+  validateEnv(config);
+  logger.info('✓ Environment validation passed');
+} catch (error) {
+  logger.error('✗ Environment validation failed:', error.message);
+  if (config.isProduction) {
+    process.exit(1);
+  }
+}
 
-  // инфо-логи о секретах
-  HH_CLIENT_ID,
-  OPENROUTER_API_KEY,
-} = process.env;
+/* ═══════════════════════════════════════════════════════════════════════════
+   🚀 EXPRESS APP SETUP
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-const isProd = NODE_ENV === 'production';
-const TIMEOUT_MS = Math.max(1000, Number(HH_TIMEOUT_MS) || 15000);
-const HH_API = 'https://api.hh.ru';
-
-/* ==================================== APP =================================== */
 const app = express();
+
+// Trust proxy (для Render, Vercel, etc)
 app.set('trust proxy', 1);
-app.set('etag', false);               // убираем ETag, чтобы избежать 304 на "/" при поисковых query
+app.set('etag', false);
 app.disable('x-powered-by');
 
-app.use(express.json({ limit: '2mb' }));
-app.use(cookieParser());
-app.use(compression());
+/* ═══════════════════════════════════════════════════════════════════════════
+   🛡️ SECURITY MIDDLEWARE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: false,
-    hsts: isProd ? undefined : false,
+    hsts: config.isProduction
+      ? {
+          maxAge: 31536000,
+          includeSubDomains: true,
+          preload: true,
+        }
+      : false,
   })
 );
 
-// request-id
+/* ═══════════════════════════════════════════════════════════════════════════
+   📝 BASIC MIDDLEWARE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(cookieParser());
+app.use(compression());
+
+// Request ID
 app.use((req, res, next) => {
   req.id = req.headers['x-request-id'] || crypto.randomUUID();
-  res.setHeader('x-request-id', req.id);
+  res.setHeader('X-Request-ID', req.id);
+  res.setHeader('X-Powered-By', 'AI Resume Builder');
   next();
 });
 
-// morgan
-morgan.token('id', (req) => req.id);
-app.use(morgan(isProd ? 'combined' : ':id :method :url :status :res[content-length] - :response-time ms'));
+// Request Logger
+app.use(requestLogger);
 
-/* ================================== CORS ==================================== */
-// ИСПРАВЛЕНИЕ 1: Парсинг FRONT_ORIGINS
+/* ═══════════════════════════════════════════════════════════════════════════
+   🌐 CORS CONFIGURATION
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
-  'http://localhost:4180',
+  'http://localhost:3000',
 ];
 
-const ORIGINS = String(FRONT_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const allowedOrigins = config.frontOrigins.length 
+  ? config.frontOrigins 
+  : defaultOrigins;
 
-const ALLOWED = ORIGINS.length ? ORIGINS : defaultOrigins;
-
-// ИСПРАВЛЕНИЕ 2: CORS с лучшей диагностикой (+ onrender.com)
-const corsMw = cors({
-  origin: (origin, cb) => {
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Разрешить запросы без origin (mobile apps, curl, etc)
     if (!origin) {
-      console.log('[CORS] Request without origin - allowed');
-      return cb(null, true);
+      logger.debug('[CORS] Request without origin - allowed');
+      return callback(null, true);
     }
-    if (ALLOWED.includes(origin)) {
-      console.log('[CORS] Allowed origin:', origin);
-      return cb(null, true);
+
+    // Проверка в белом списке
+    if (allowedOrigins.includes(origin)) {
+      logger.debug(`[CORS] Allowed origin: ${origin}`);
+      return callback(null, true);
     }
+
+    // Разрешить *.onrender.com
     if (origin.includes('onrender.com')) {
-      console.log('[CORS] Render domain allowed:', origin);
-      return cb(null, true);
+      logger.debug(`[CORS] Render domain allowed: ${origin}`);
+      return callback(null, true);
     }
-    console.warn('[CORS] Rejected origin:', origin, 'Allowed:', ALLOWED);
-    return cb(new Error(`Not allowed by CORS: ${origin}`));
+
+    // Разрешить *.vercel.app
+    if (origin.includes('vercel.app')) {
+      logger.debug(`[CORS] Vercel domain allowed: ${origin}`);
+      return callback(null, true);
+    }
+
+    // В development разрешить localhost с любым портом
+    if (config.isDevelopment && origin.match(/^https?:\/\/localhost:\d+$/)) {
+      logger.debug(`[CORS] Localhost allowed: ${origin}`);
+      return callback(null, true);
+    }
+
+    logger.warn(`[CORS] Rejected origin: ${origin}`);
+    callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-});
-app.use(corsMw);
-app.options('*', corsMw);
-
-/* ================================== UTILS =================================== */
-function bool(v) {
-  if (typeof v === 'boolean') return v;
-  if (v === undefined || v === null) return false;
-  const s = String(v).toLowerCase();
-  return s === '1' || s === 'true' || s === 'yes';
-}
-const toInt = (v, def = 0) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : def;
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Accept-Language'],
+  exposedHeaders: ['X-Request-ID', 'X-Rate-Limit-Remaining'],
+  maxAge: 86400, // 24 часа
 };
 
-// fetch с таймаутом (Node 18+)
-async function fetchWithTimeout(resource, options = {}, ms = TIMEOUT_MS) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(new Error('Fetch timeout')), ms);
-  try {
-    return await fetch(resource, { ...options, signal: ctrl.signal });
-  } finally {
-    clearTimeout(id);
-  }
-}
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
-async function fetchJSON(url, opts = {}) {
-  const r = await fetchWithTimeout(url, {
-    ...opts,
-    headers: {
-      Accept: 'application/json',
-      'Accept-Language': 'ru',
-      'HH-User-Agent': HH_USER_AGENT,
-      'User-Agent': HH_USER_AGENT,
-      ...(opts.headers || {}),
+/* ═══════════════════════════════════════════════════════════════════════════
+   🚦 RATE LIMITING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Общий rate limiter
+const generalLimiter = createRateLimiter({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxRequests,
+  message: 'Слишком много запросов, попробуйте позже',
+});
+
+// AI endpoints - более строгий лимит
+const aiLimiter = createRateLimiter({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxAIRequests,
+  message: 'Превышен лимит AI запросов, подождите минуту',
+});
+
+// Применяем rate limiting
+app.use('/api', generalLimiter);
+app.use(['/api/translate', '/api/ai', '/api/recommendations'], aiLimiter);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎯 HEALTH & INFO ENDPOINTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Health check endpoint
+ */
+app.get('/healthz', (req, res) => {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: config.nodeEnv,
+    version: getVersion(),
+    cache: {
+      size: cacheService.getSize(),
+      hits: cacheService.getHits(),
+      misses: cacheService.getMisses(),
     },
-  });
-
-  const txt = await r.text();
-  const isJSON = (r.headers.get('content-type') || '').includes('application/json');
-  let data = txt;
-  try {
-    if (isJSON && txt) data = JSON.parse(txt);
-  } catch {}
-  return { ok: r.ok, status: r.status, data, headers: r.headers };
-}
-
-// retry для 429/5xx
-async function fetchJSONWithRetry(url, opts = {}, { retries = 2, minDelay = 400 } = {}) {
-  let attempt = 0;
-  while (true) {
-    const res = await fetchJSON(url, opts);
-    const retryAfter = Number(res.headers?.get?.('Retry-After') || 0);
-    if (res.ok) return res;
-
-    const shouldRetry =
-      (res.status === 429 || (res.status >= 500 && res.status < 600)) && attempt < retries;
-
-    if (!shouldRetry) return res;
-
-    const delay =
-      retryAfter > 0 ? retryAfter * 1000 : Math.min(minDelay * Math.pow(2, attempt), 3000);
-    await new Promise((r) => setTimeout(r, delay));
-    attempt += 1;
-  }
-}
-
-/* ========================== In-memory cache (areas, search) ================== */
-const cache = (() => {
-  const m = new Map();
-  return {
-    async getOrSet(key, ttlMs, producer) {
-      const now = Date.now();
-      const v = m.get(key);
-      if (v && v.expires > now) return v.value;
-      const value = await producer();
-      m.set(key, { value, expires: now + ttlMs });
-      return value;
-    },
-    clear: (k) => m.delete(k),
+    memory: process.memoryUsage(),
   };
-})();
 
-/* =============================== Опыт (HH codes) ============================ */
-const EXP_MAP_IN = {
-  none: 'noExperience',
-  '0-1': 'noExperience',
-  '1-3': 'between1And3',
-  '3-6': 'between3And6',
-  '6+': 'moreThan6',
-};
-function normalizeExperience(val) {
-  if (!val) return undefined;
-  if (EXP_MAP_IN[val]) return EXP_MAP_IN[val];
-  const allowed = new Set(['noExperience', 'between1And3', 'between3And6', 'moreThan6']);
-  return allowed.has(val) ? val : undefined;
-}
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.json(health);
+});
 
-/* ====================== Алиасы городов и поиск areaId ======================= */
-const cityAliases = {
-  'нур-султан': 'астана',
-  'астана': 'астана',
-  'алма-ата': 'алматы',
-  'алматы': 'алматы',
-  'караганда': 'караганда',
-};
-
-async function findAreaIdByCity(cityName, host) {
-  if (!cityName) return undefined;
-
-  const key = `areas:${host}`;
-  const areas = await cache.getOrSet(key, 24 * 3600 * 1000, async () => {
-    const { ok, data, status } = await fetchJSON(`${HH_API}/areas?host=${encodeURIComponent(host)}`);
-    if (!ok) throw new Error(`areas ${status}`);
-    return data;
-  });
-
-  const q0 = cityName.trim().toLowerCase();
-  const q = cityAliases[q0] || q0;
-
-  for (const country of areas) {
-    for (const region of country.areas || []) {
-      if ((region.name || '').toLowerCase() === q) return region.id;
-      for (const city of region.areas || []) {
-        if ((city.name || '').toLowerCase() === q) return city.id;
-      }
-    }
-  }
-  return undefined;
-}
-
-/* ================================ Passthrough =============================== */
-async function passthrough(url, req, res, extraHeaders = {}) {
-  try {
-    const r = await fetchWithTimeout(url, {
-      method: req.method || 'GET',
-      headers: {
-        Accept: 'application/json',
-        'Accept-Language': 'ru',
-        'HH-User-Agent': HH_USER_AGENT,
-        'User-Agent': HH_USER_AGENT,
-        ...(extraHeaders || {}),
-      },
-    });
-
-    res.status(r.status);
-    r.headers.forEach((v, k) => {
-      if (k.toLowerCase() === 'content-encoding') return; // не форсируем сжатие
-      res.setHeader(k, v);
-    });
-    const buf = await r.arrayBuffer();
-    res.send(Buffer.from(buf));
-  } catch (e) {
-    console.error('[proxy]', e);
-    res.status(500).json({ error: 'proxy_failed', message: String(e.message || e) });
-  }
-}
-
-/* ======================= Утилиты нормализации вакансий ====================== */
-const TAG_RE = /<\/?highlighttext[^>]*>/gi;
-const HTML_RE = /<[^>]+>/g;
-function stripTags(s) {
-  const t = String(s || '');
-  return t.replace(TAG_RE, '').replace(HTML_RE, '').trim();
-}
-function salaryToText(sal) {
-  if (!sal || typeof sal !== 'object') return 'по договорённости';
-  const { from, to, currency } = sal;
-  const cur = currency || '';
-  if (from && to) return `${Number(from).toLocaleString('ru-RU')} – ${Number(to).toLocaleString('ru-RU')} ${cur}`.trim();
-  if (from) return `от ${Number(from).toLocaleString('ru-RU')} ${cur}`.trim();
-  if (to) return `до ${Number(to).toLocaleString('ru-RU')} ${cur}`.trim();
-  return 'по договорённости';
-}
-function normalizeVacancy(v) {
-  const parts = [];
-  if (v?.snippet?.responsibility) parts.push(stripTags(v.snippet.responsibility));
-  if (v?.snippet?.requirement)   parts.push(stripTags(v.snippet.requirement));
-  const desc = parts.join('\n').trim();
-
-  const kw = new Set();
-  const sourceText = `${v?.name || ''} ${v?.snippet?.requirement || ''} ${v?.snippet?.responsibility || ''}`;
-  const tokens = sourceText
-    .replace(/[(){}\[\],.;:+/\\]/g, ' ')
-    .split(/\s+/)
-    .slice(0, 300)
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  const DICT = [
-    'react','vue','angular','typescript','javascript','node.js','node','express',
-    'python','django','flask','fastapi','sql','postgres','mysql','mongodb',
-    'docker','kubernetes','k8s','git','ci/cd','aws','azure','gcp','java',
-    'spring','kotlin','swift','figma','xd','photoshop','power','excel',
-    'graphql','rest','redux','tailwind','sass','css','html','next.js','nuxt'
-  ];
-  const dictLower = new Set(DICT);
-  tokens.forEach((t) => {
-    const k = t.toLowerCase();
-    if (dictLower.has(k)) kw.add(k);
-  });
-
-  const salaryText = salaryToText(v.salary);
-  return {
-    id: v.id,
-    title: stripTags(v.name),
-    area: v.area?.name || '',
-    employer: v.employer?.name || '',
-    published_at: v.published_at,
-    url: v.alternate_url,
-    salary: salaryText,
-    salary_raw: v.salary || null,
-    experience: v.experience?.name || '',
-    description: desc || '',
-    keywords: Array.from(kw),
+/**
+ * Readiness probe (для Kubernetes)
+ */
+app.get('/ready', (req, res) => {
+  // Проверка критичных зависимостей
+  const checks = {
+    cache: cacheService.isReady(),
+    // Можно добавить проверку БД, Redis, etc
   };
-}
 
-/* ============= Кэш поиска (fresh/stale) + коалесинг параллельных запросов === */
-const SEARCH_TTL = Math.max(5_000, Number(SEARCH_TTL_MS) || 90_000);
-const SEARCH_STALE_MAX = Math.max(30_000, Number(SEARCH_STALE_MAX_MS) || 900_000);
-const searchCache = new Map();      // key -> { at, value }
-const inflightSearches = new Map(); // key -> Promise
+  const isReady = Object.values(checks).every(Boolean);
 
-function makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page }) {
-  return JSON.stringify({
-    host: String(host || ''),
-    text: String(text || ''),
-    areaId: String(areaId || ''),
-    exp: String(exp || ''),
-    salary: Number(salary || 0),
-    ows: !!only_with_salary,
-    per_page: Number(per_page || 20),
-    page: Number(page || 0),
-  });
-}
-function getFreshFromCache(key) {
-  const v = searchCache.get(key);
-  if (!v) return null;
-  if (Date.now() - v.at < SEARCH_TTL) return v.value;
-  return null;
-}
-function getStaleFromCache(key) {
-  const v = searchCache.get(key);
-  if (!v) return null;
-  if (Date.now() - v.at < SEARCH_STALE_MAX) return v.value;
-  return null;
-}
-function putCache(key, value) {
-  searchCache.set(key, { at: Date.now(), value });
-}
-
-/* =============================== RateLimit API ============================== */
-app.use(
-  ['/api/hh', '/api/polish', '/api/ai', '/api/recommendations'],
-  rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-/* ============================== HH SEARCH API =============================== */
-// ИСПРАВЛЕНИЕ 3: Логирование входа в хендлер
-app.get('/api/hh/jobs/search', async (req, res) => {
-  console.log('[HH Search] Query params:', req.query);
-  console.log('[HH Search] Headers origin:', req.headers.origin);
-
-  try {
-    const q = req.query;
-    const host = (q.host && String(q.host)) || HH_HOST;
-
-    // text делаем изменяемым, чтобы можно было подставить значение по умолчанию
-    let text   = q.text ? String(q.text).trim() : '';
-    const city   = q.city ? String(q.city).trim() : '';
-    const area   = q.area ? String(q.area).trim() : '';
-    const exp    = normalizeExperience(q.experience ? String(q.experience) : '');
-    const salary = q.salary ? Number(q.salary) : undefined;
-    const only_with_salary = bool(q.only_with_salary);
-
-    const per_page = Math.min(Math.max(toInt(q.per_page, 20), 1), 100);
-    const page     = Math.max(toInt(q.page, 0), 0);
-
-    let hasAnyFilter =
-      !!(text || city || area || exp || (salary && salary > 0) || only_with_salary);
-
-    // Если фильтры не заданы, делаем запрос со словом «разработчик» вместо пустого результата
-    if (!hasAnyFilter) {
-      text = 'разработчик';
-      hasAnyFilter = true;
-      console.log('[HH Search] No filters → default text:', text);
-    }
-
-    let areaId = area;
-    if (!areaId && city) areaId = (await findAreaIdByCity(city, host)) || '';
-
-    const key = makeSearchKey({ host, text, areaId, exp, salary, only_with_salary, per_page, page });
-
-    if (inflightSearches.has(key)) {
-      console.log('[HH Search] Coalesced with inflight request for key');
-      const out = await inflightSearches.get(key).catch((e) => { throw e; });
-      return res.json(out);
-    }
-
-    const job = (async () => {
-      const params = new URLSearchParams({
-        per_page: String(per_page),
-        page: String(page),
-        currency: 'KZT',
-        host: host,
-      });
-      if (text) params.set('text', text);
-      if (areaId) params.set('area', areaId);
-      if (exp) params.set('experience', exp);
-      if (salary && salary > 0) {
-        params.set('salary', String(salary));
-        params.set('only_with_salary', 'true');
-      } else if (only_with_salary) {
-        params.set('only_with_salary', 'true');
-      }
-
-      const url = `${HH_API}/vacancies?${params.toString()}`;
-
-      const fresh = getFreshFromCache(key);
-      if (fresh) {
-        console.log('[HH Search] Served from fresh cache');
-        return { ...fresh, debug: { ...(fresh.debug || {}), cached: true, stale: false } };
-      }
-
-      const { ok, status, data, headers } = await fetchJSONWithRetry(url);
-
-      if (ok) {
-        const items = (data.items || []).map(normalizeVacancy);
-        const out = {
-          found: data.found,
-          page: data.page,
-          pages: data.pages,
-          items,
-          debug: { host, areaId, exp, cached: false, stale: false },
-        };
-        putCache(key, out);
-        return out;
-      }
-
-      const retryAfter = status === 429 ? Number(headers?.get?.('Retry-After') || 0) : 0;
-      if (status === 429) {
-        console.warn('[HH Search] 429 received, retry-after:', retryAfter);
-        const stale = getStaleFromCache(key);
-        if (stale) {
-          console.log('[HH Search] Served stale cache due to 429');
-          return {
-            ...stale,
-            debug: { ...(stale.debug || {}), host, areaId, exp, cached: true, stale: true, retry_after: retryAfter },
-          };
-        }
-      }
-
-      const details = typeof data === 'string' ? data : (data?.message || data);
-      const err = new Error('hh_bad_request');
-      err.status = status;
-      err.details = details;
-      err.retry_after = retryAfter;
-      throw err;
-    })();
-
-    inflightSearches.set(key, job);
-    try {
-      const out = await job;
-      return res.json(out);
-    } finally {
-      inflightSearches.delete(key);
-    }
-  } catch (e) {
-    if (e && e.status) {
-      console.warn('[HH Search] Error with status:', e.status, 'details:', e.details);
-      return res.status(e.status).json({
-        error: 'hh_bad_request',
-        status: e.status,
-        retry_after: e.retry_after || 0,
-        details: e.details,
-      });
-    }
-    console.error('[jobs/search]', e);
-    res.status(500).json({ error: 'proxy_failed', message: String(e.message || e) });
-  }
-});
-
-// Сырой прокси поиска
-app.get('/api/hh/vacancies', async (req, res) => {
-  const params = new URLSearchParams(req.query);
-  const url = `${HH_API}/vacancies?${params.toString()}`;
-  await passthrough(url, req, res);
-});
-
-// Справочники (кэш)
-app.get('/api/hh/areas', async (req, res) => {
-  try {
-    const host = (req.query.host && String(req.query.host)) || HH_HOST;
-    const key = `areas:${host}`;
-    const data = await cache.getOrSet(key, 24 * 3600 * 1000, async () => {
-      const { ok, data, status } = await fetchJSON(`${HH_API}/areas?host=${encodeURIComponent(host)}`);
-      if (!ok) throw new Error(`areas ${status}`);
-      return data;
-    });
-    res.json(data);
-  } catch (e) {
-    console.error('[areas]', e);
-    res.status(500).json({ error: 'areas_failed', message: String(e.message || e) });
-  }
-});
-app.get('/api/hh/industries', async (req, res) => {
-  const params = new URLSearchParams(req.query);
-  const url = `${HH_API}/industries?${params.toString()}`;
-  return passthrough(url, req, res);
-});
-app.get('/api/hh/salary/industries', async (req, res) => {
-  const params = new URLSearchParams(req.query);
-  const url = `${HH_API}/salary/industries?${params.toString()}`;
-  return passthrough(url, req, res);
-});
-app.get('/api/hh/specializations', async (req, res) => {
-  const params = new URLSearchParams(req.query);
-  const url = `${HH_API}/specializations?${params.toString()}`;
-  return passthrough(url, req, res);
-});
-app.get('/api/hh/dictionaries', async (req, res) => {
-  const params = new URLSearchParams(req.query);
-  const url = `${HH_API}/dictionaries?${params.toString()}`;
-  return passthrough(url, req, res);
-});
-
-/* ========================= HH OAuth: me/resumes/respond ===================== */
-function getHHAccessToken(req) {
-  const fromCookie = req.cookies?.hh_access_token;
-  const bearer = req.headers?.authorization;
-  if (fromCookie) return String(fromCookie);
-  if (bearer && /^Bearer\s+/i.test(bearer)) return bearer.replace(/^Bearer\s+/i, '').trim();
-  return null;
-}
-
-app.get('/api/hh/me', async (req, res) => {
-  const token = getHHAccessToken(req);
-  if (!token) return res.status(401).json({ ok: false, reason: 'no_token' });
-
-  const r = await fetchWithTimeout(`${HH_API}/me`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      'Accept-Language': 'ru',
-      'HH-User-Agent': HH_USER_AGENT,
-      'User-Agent': HH_USER_AGENT,
-    },
-  }).catch((e) => ({ _err: e }));
-
-  if (!r || r._err) return res.status(502).json({ ok: false, error: 'bad_gateway' });
-
-  let data = null;
-  try { data = await r.json(); } catch {}
-  if (!r.ok) return res.status(r.status).json({ ok: false, status: r.status, details: data || null });
-
-  res.json({ ok: true, me: { id: data?.id, email: data?.email, first_name: data?.first_name, last_name: data?.last_name } });
-});
-
-app.get('/api/hh/resumes', async (req, res) => {
-  const token = getHHAccessToken(req);
-  if (!token) return res.status(401).json({ error: 'not_authorized' });
-
-  const r = await fetchWithTimeout(`${HH_API}/resumes/mine`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      'Accept-Language': 'ru',
-      'HH-User-Agent': HH_USER_AGENT,
-      'User-Agent': HH_USER_AGENT,
-    },
-  }).catch((e) => ({ _err: e }));
-
-  if (!r || r._err) return res.status(502).json({ error: 'bad_gateway' });
-
-  const txt = await r.text();
-  let json = null;
-  try { json = txt ? JSON.parse(txt) : null; } catch {}
-  if (!r.ok) return res.status(r.status).json({ error: 'hh_error', details: json || txt || null });
-
-  res.json(json || { items: [] });
-});
-
-app.post('/api/hh/respond', async (req, res) => {
-  const token = getHHAccessToken(req);
-  if (!token) return res.status(401).json({ error: 'not_authorized' });
-
-  const { vacancy_id, resume_id, message = '' } = req.body || {};
-  const usedResumeId = resume_id || HH_RESUME_ID;
-
-  if (!vacancy_id) return res.status(400).json({ error: 'vacancy_id_required' });
-  if (!usedResumeId) return res.status(428).json({ error: 'resume_id_required' });
-
-  const r = await fetchWithTimeout(`${HH_API}/negotiations`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'Accept-Language': 'ru',
-      'HH-User-Agent': HH_USER_AGENT,
-      'User-Agent': HH_USER_AGENT,
-    },
-    body: JSON.stringify({ vacancy_id, resume_id: usedResumeId, message }),
-  }).catch((e) => ({ _err: e }));
-
-  if (!r || r._err) return res.status(502).json({ error: 'bad_gateway' });
-
-  const txt = await r.text();
-  let json = null;
-  try { json = txt ? JSON.parse(txt) : null; } catch {}
-  if (!r.ok) return res.status(r.status).json({ error: 'hh_error', details: json || txt || null });
-
-  res.json({ ok: true, data: json });
-});
-
-/* ===================== AI: эвристика и рекомендации (опционально) ========== */
-function calcYearsByExperience(profile = {}) {
-  const items = Array.isArray(profile.experience) ? profile.experience : [];
-  if (!items.length) return 0;
-
-  let ms = 0;
-  items.forEach((it) => {
-    const start = it?.start || it?.from || it?.dateStart || it?.date_from;
-    const end   = it?.end   || it?.to   || it?.dateEnd   || it?.date_to   || new Date().toISOString().slice(0, 10);
-    const s = start ? new Date(start) : null;
-    const e = end   ? new Date(end)   : null;
-    if (s && !isNaN(+s) && e && !isNaN(+e) && e > s) ms += (+e - +s);
-    else ms += 365 * 24 * 3600 * 1000; // если дат нет — считаем запись за год
-  });
-  return ms / (365 * 24 * 3600 * 1000);
-}
-function yearsToHHExp(years) {
-  if (years < 1) return 'noExperience';
-  if (years < 3) return 'between1And3';
-  if (years < 6) return 'between3And6';
-  return 'moreThan6';
-}
-function deriveRoleFromProfile(profile = {}) {
-  const items = Array.isArray(profile.experience) ? profile.experience : [];
-  const latest = items[0] || items[items.length - 1] || null;
-  const role = latest?.position || latest?.title || latest?.role || '';
-  if (role) return String(role).trim();
-  const skills = (profile.skills || []).map(String).filter(Boolean);
-  if (skills.length) return skills.slice(0, 3).join(' ');
-  const sum = String(profile?.summary || '').trim();
-  if (sum) return sum.split(/\s+/).slice(0, 3).join(' ');
-  return '';
-}
-function normalizeCityName(cityRaw = '') {
-  const s = String(cityRaw || '').trim();
-  if (!s) return '';
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-function naiveInferSearch(profile = {}, { lang = 'ru' } = {}) {
-  const role = deriveRoleFromProfile(profile);
-  const years = calcYearsByExperience(profile);
-  const exp = yearsToHHExp(years);
-  const city =
-    (profile.location && String(profile.location).trim()) ||
-    (profile.city && String(profile.city).trim()) || '';
-  const skills = (Array.isArray(profile.skills) ? profile.skills : [])
-    .map((s) => String(s).trim())
-    .filter(Boolean)
-    .slice(0, 12);
-
-  let c = 0;
-  if (role) c += 0.4;
-  if (city) c += 0.2;
-  if (skills.length >= 3) c += 0.2;
-  c += Math.min(0.2, years / 10);
-  const confidence = Math.max(0.3, Math.min(0.95, c));
-
-  return { role, city: normalizeCityName(city), experience: exp, skills, confidence };
-}
-
-// /api/polish (если services/ai.js есть — используем, иначе безопасный фолбэк)
-app.post('/api/polish', async (req, res) => {
-  const { text = '', lang = 'ru', mode = 'auto' } = req.body || {};
-  try {
-    const aiPath = path.resolve(__dirname, 'services', 'ai.js');
-    const hasAI = fs.existsSync(aiPath);
-    if (!hasAI) {
-      return res.json({ corrected: String(text || ''), bullets: [], fallback: true });
-    }
-    const { polishText } = await import(aiPath).catch(() => ({}));
-    if (typeof polishText !== 'function') {
-      return res.json({ corrected: String(text || ''), bullets: [], fallback: true });
-    }
-    const out = await polishText(text, { lang, mode });
-    return res.json(out);
-  } catch (e) {
-    console.error('[polish]', e);
-    return res.json({ corrected: String(text || ''), bullets: [], error: 'polish_failed', fallback: true });
-  }
-});
-
-app.post('/api/polish/batch', async (req, res) => {
-  const { texts = [], lang = 'ru', mode = 'auto' } = req.body || {};
-  try {
-    const aiPath = path.resolve(__dirname, 'services', 'ai.js');
-    const hasAI = fs.existsSync(aiPath);
-    if (!hasAI) {
-      const arr = Array.isArray(texts) ? texts : [];
-      return res.json({ results: arr.map((t) => ({ corrected: String(t || ''), bullets: [], fallback: true })) });
-    }
-    const { polishMany } = await import(aiPath).catch(() => ({}));
-    if (typeof polishMany !== 'function') {
-      const arr = Array.isArray(texts) ? texts : [];
-      return res.json({ results: arr.map((t) => ({ corrected: String(t || ''), bullets: [], fallback: true })) });
-    }
-    const results = await polishMany(Array.isArray(texts) ? texts : [], { lang, mode });
-    return res.json({ results });
-  } catch (e) {
-    console.error('[polish_batch]', e);
-    const arr = Array.isArray(texts) ? texts : [];
-    return res.json({ results: arr.map((t) => ({ corrected: String(t || ''), bullets: [], error: 'polish_failed', fallback: true })) });
-  }
-});
-
-// /api/ai/infer-search — LLM (если services/ai.js есть) или эвристика
-app.post('/api/ai/infer-search', async (req, res) => {
-  try {
-    const { profile = {}, lang = 'ru', overrideModel } = req.body || {};
-    let out = null;
-    try {
-      const aiPath = path.resolve(__dirname, 'services', 'ai.js');
-      if (fs.existsSync(aiPath)) {
-        const mod = await import(aiPath).catch(() => ({}));
-        if (typeof mod?.inferSearch === 'function') {
-          out = await mod.inferSearch(profile, { lang, overrideModel });
-        }
-      }
-    } catch (e) {
-      console.warn('[ai/infer-search] LLM unavailable, using heuristic:', e?.message || e);
-    }
-
-    if (!out || typeof out !== 'object') {
-      out = naiveInferSearch(profile, { lang, overrideModel });
-      out.fallback = true;
-    }
-
-    const search = {
-      host: HH_HOST || 'hh.kz',
-      text: out.role || '',
-      city: out.city || '',
-      experience: out.experience || '',
-      per_page: 20,
-      page: 0,
-    };
-
-    return res.json({ ...out, search });
-  } catch (e) {
-    console.error('[ai/infer-search] hard error, falling back:', e);
-    const out = naiveInferSearch(req.body?.profile || {}, { lang: req.body?.lang || 'ru' });
-    out.fallback = true;
-    const search = {
-      host: HH_HOST || 'hh.kz',
-      text: out.role || '',
-      city: out.city || '',
-      experience: out.experience || '',
-      per_page: 20,
-      page: 0,
-    };
-    return res.json({ ...out, search });
-  }
-});
-
-/* ============================ AI Рекомендации (опц.) ======================== */
-/** Подключаем, только если файл существует, чтобы избежать ошибки MODULE_NOT_FOUND */
-(() => {
-  const recPath = path.resolve(__dirname, 'routes', 'recommendations.js');
-  if (fs.existsSync(recPath)) {
-    app.use('/api/recommendations', require(recPath));
-    console.log('✓ /api/recommendations mounted');
+  if (isReady) {
+    res.json({ status: 'ready', checks });
   } else {
-    console.log('∙ /api/recommendations skipped (routes/recommendations.js not found)');
-  }
-})();
-
-/* ============================== Health + misc =============================== */
-app.get('/healthz', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  return res.status(200).json({ ok: true, time: new Date().toISOString() });
-});
-
-app.get('/api/version', (_req, res) => {
-  try {
-    const pkgPath = path.resolve(__dirname, '..', 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-    res.json({ name: pkg.name, version: pkg.version, env: NODE_ENV, time: new Date().toISOString() });
-  } catch {
-    res.json({ name: 'server', version: 'unknown', env: NODE_ENV });
+    res.status(503).json({ status: 'not ready', checks });
   }
 });
 
-/* ==================== COMPAT: "/" с query → /api/hh/jobs/search ============= */
-app.get('/', async (req, res, next) => {
-  const q = req.query || {};
-  const looksLikeSearch =
-    q.text != null || q.city != null || q.area != null ||
-    q.experience != null || q.salary != null || q.only_with_salary != null ||
-    q.host != null || q.page != null || q.per_page != null;
-
-  if (!looksLikeSearch) return next();
-
-  const params = new URLSearchParams();
-  if (q.text) params.set('text', String(q.text));
-  if (q.city) params.set('city', String(q.city));
-  if (q.area) params.set('area', String(q.area));
-  if (q.experience) params.set('experience', String(q.experience));
-  if (q.salary) params.set('salary', String(q.salary));
-  if (q.only_with_salary) params.set('only_with_salary', 'true');
-  if (q.page != null) params.set('page', String(q.page));
-  if (q.per_page != null) params.set('per_page', String(q.per_page));
-  params.set('host', String(q.host || HH_HOST || 'hh.kz'));
-
-  const target = `/api/hh/jobs/search?${params.toString()}`;
-  console.log('[COMPAT] Redirecting "/" search →', target);
-  res.setHeader('Cache-Control', 'no-store');
-  return res.redirect(307, target);
+/**
+ * Liveness probe
+ */
+app.get('/alive', (req, res) => {
+  res.json({ status: 'alive', timestamp: Date.now() });
 });
 
-/* ============================ Корневая «инфо» страница ====================== */
-app.get('/', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.type('text').send(
-    [
-      'HH proxy is up ✅',
-      'Useful endpoints:',
-      ' - /healthz',
-      ' - /api/version',
-      ' - /api/hh/jobs/search?host=hh.kz&text=react&city=Астана&experience=1-3&per_page=5',
-      ' - /api/hh/areas?host=hh.kz',
-      ' - /api/hh/me',
-      ' - /api/hh/resumes',
-      ' - POST /api/hh/respond { vacancy_id, resume_id?, message? }',
-      ' - /api/polish   (POST {text, lang, mode})',
-      ' - /api/polish/batch   (POST {texts[], lang?, mode?})',
-      ' - /api/ai/infer-search   (POST {profile, lang?, overrideModel?})',
-      ' - /api/recommendations/generate   (POST {profile})',
-      ' - /api/recommendations/improve    (POST {profile})',
-      '',
-      '⚠️ Hint: do not call "/" with search params — use /api/hh/jobs/search',
-    ].join('\n')
-  );
-});
-
-/* ============================== Error handler =============================== */
-app.use((err, _req, res, _next) => {
-  console.error('[unhandled]', err);
-  const status = err.status || 500;
-  res.status(status).json({ error: 'unhandled', message: err.message || 'Internal error' });
-});
-
-/* ================================== Start ================================== */
-// ИСПРАВЛЕНИЕ 4: Явный bind на 0.0.0.0 + расширенные логи
-const port = Number(PORT) || 10000;
-const server = app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ BFF running on 0.0.0.0:${port} (env: ${NODE_ENV})`);
-  console.log('📍 RENDER:', !!process.env.RENDER);
-  console.log('🌐 Allowed CORS:', ALLOWED.join(', '));
-  console.log('🔑 HH_CLIENT_ID:', HH_CLIENT_ID ? '✓ set' : '✗ missing');
-  console.log('🔑 OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ set' : '✗ missing');
-});
-
-// Грейсфул шатдаун
-['SIGINT', 'SIGTERM'].forEach((sig) => {
-  process.on(sig, () => {
-    console.log(`[${sig}] shutting down...`);
-    server.close(() => {
-      console.log('HTTP server closed');
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 5000).unref();
+/**
+ * Version info
+ */
+app.get('/api/version', (req, res) => {
+  res.json({
+    name: 'AI Resume Builder BFF',
+    version: getVersion(),
+    environment: config.nodeEnv,
+    node: process.version,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
   });
 });
+
+/**
+ * Server info (development only)
+ */
+app.get('/api/info', (req, res) => {
+  if (config.isProduction) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  res.json({
+    config: {
+      nodeEnv: config.nodeEnv,
+      port: config.port,
+      allowedOrigins,
+      hh: {
+        host: config.hh.host,
+        hasClientId: !!config.hh.clientId,
+        hasClientSecret: !!config.hh.clientSecret,
+      },
+      ai: {
+        hasGemini: !!config.ai.gemini.apiKey,
+        hasDeepSeek: !!config.ai.deepseek.apiKey,
+        hasOpenRouter: !!config.ai.openrouter.apiKey,
+      },
+      cache: {
+        searchTTL: config.cache.searchTTL,
+        searchStaleMax: config.cache.searchStaleMax,
+      },
+    },
+    runtime: {
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpuUsage: process.cpuUsage(),
+    },
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🛣️ API ROUTES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// HeadHunter API
+app.use('/api/hh', hhRoutes);
+
+// AI Translation
+app.use('/api/translate', translateRoutes);
+
+// AI Features
+app.use('/api/ai', aiRoutes);
+
+// Recommendations
+app.use('/api/recommendations', recommendationsRoutes);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🏠 ROOT ENDPOINT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+app.get('/', (req, res) => {
+  // Если есть query параметры поиска - редирект на API
+  const hasSearchParams = 
+    req.query.text || 
+    req.query.city || 
+    req.query.experience ||
+    req.query.salary;
+
+  if (hasSearchParams) {
+    const params = new URLSearchParams(req.query);
+    logger.info('[ROOT] Redirecting search to API:', params.toString());
+    return res.redirect(307, `/api/hh/jobs/search?${params.toString()}`);
+  }
+
+  // Информационная страница
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(`
+╔═══════════════════════════════════════════════════════════════╗
+║                 AI RESUME BUILDER - BFF SERVER                ║
+║                         Version ${getVersion()}                        ║
+╚═══════════════════════════════════════════════════════════════╝
+
+✅ Server is running
+
+📚 AVAILABLE ENDPOINTS:
+
+Health & Info:
+  GET  /healthz                     - Health check
+  GET  /ready                       - Readiness probe
+  GET  /alive                       - Liveness probe
+  GET  /api/version                 - Version info
+  GET  /api/info                    - Server info (dev only)
+
+HeadHunter API:
+  GET  /api/hh/jobs/search          - Поиск вакансий
+       ?text=react                   - Поисковый запрос
+       &city=Алматы                  - Город
+       &experience=1-3               - Опыт (none|0-1|1-3|3-6|6+)
+       &salary=200000                - Зарплата (KZT)
+       &host=hh.kz                   - Домен (hh.kz|hh.ru)
+       &per_page=20                  - Результатов на странице
+       &page=0                       - Номер страницы
+
+  GET  /api/hh/areas                - Справочник регионов
+  GET  /api/hh/industries           - Справочник отраслей
+  GET  /api/hh/dictionaries         - Все справочники
+  
+  GET  /api/hh/me                   - Текущий пользователь (auth)
+  GET  /api/hh/resumes              - Список резюме (auth)
+  POST /api/hh/respond              - Откликнуться на вакансию (auth)
+
+AI Translation:
+  POST /api/translate/text          - Перевод текста
+       { text, targetLang, context }
+  
+  POST /api/translate/resume        - Перевод резюме
+       { resumeData, targetLang }
+  
+  POST /api/translate/vacancies     - Перевод вакансий
+       { vacancies, targetLang }
+
+AI Features:
+  POST /api/ai/infer-search         - Анализ профиля для поиска
+       { profile, lang }
+  
+  POST /api/ai/polish               - Улучшение текста
+       { text, lang, mode }
+  
+  POST /api/ai/polish/batch         - Пакетное улучшение
+       { texts[], lang, mode }
+
+AI Recommendations:
+  POST /api/recommendations/generate - Генерация рекомендаций
+       { profile }
+  
+  POST /api/recommendations/improve  - Улучшение резюме
+       { profile }
+
+📊 STATISTICS:
+  Cache Size: ${cacheService.getSize()} items
+  Cache Hits: ${cacheService.getHits()}
+  Uptime: ${Math.floor(process.uptime())} seconds
+  Environment: ${config.nodeEnv}
+
+🌐 ALLOWED ORIGINS:
+  ${allowedOrigins.join('\n  ')}
+
+💡 TIP: Use /api/hh/jobs/search for vacancy search
+  `.trim());
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🚫 ERROR HANDLING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// 404 handler
+app.use((req, res) => {
+  logger.warn(`[404] ${req.method} ${req.path}`);
+  res.status(404).json({
+    error: 'Not Found',
+    message: `Endpoint ${req.method} ${req.path} not found`,
+    path: req.path,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Global error handler
+app.use(errorHandler);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎬 SERVER START
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const server = app.listen(config.port, '0.0.0.0', () => {
+  logger.info('═══════════════════════════════════════════════════════════');
+  logger.info(`🚀 AI Resume Builder BFF Server v${getVersion()}`);
+  logger.info('═══════════════════════════════════════════════════════════');
+  logger.info(`📍 Environment: ${config.nodeEnv}`);
+  logger.info(`🌐 Listening on: http://0.0.0.0:${config.port}`);
+  logger.info(`🔒 CORS Origins: ${allowedOrigins.length} configured`);
+  logger.info('───────────────────────────────────────────────────────────');
+  logger.info(`🔑 HH Client ID: ${config.hh.clientId ? '✓ set' : '✗ missing'}`);
+  logger.info(`🤖 Gemini API: ${config.ai.gemini.apiKey ? '✓ set' : '✗ missing'}`);
+  logger.info(`🤖 DeepSeek API: ${config.ai.deepseek.apiKey ? '✓ set' : '✗ missing'}`);
+  logger.info(`🤖 OpenRouter: ${config.ai.openrouter.apiKey ? '✓ set' : '✗ missing'}`);
+  logger.info('═══════════════════════════════════════════════════════════');
+  logger.info('✅ Server ready to accept connections');
+  logger.info('═══════════════════════════════════════════════════════════');
+});
+
+// Увеличиваем таймауты для медленных AI запросов
+server.timeout = 120000; // 2 минуты
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🛑 GRACEFUL SHUTDOWN
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+let isShuttingDown = false;
+
+function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.info(`\n[${signal}] Received shutdown signal, gracefully shutting down...`);
+
+  // Прекращаем принимать новые подключения
+  server.close(() => {
+    logger.info('✓ HTTP server closed');
+
+    // Очистка ресурсов
+    try {
+      cacheService.shutdown();
+      logger.info('✓ Cache service shut down');
+    } catch (error) {
+      logger.error('✗ Error during cache shutdown:', error);
+    }
+
+    logger.info('✅ Graceful shutdown completed');
+    process.exit(0);
+  });
+
+  // Форсированное завершение через 10 секунд
+  setTimeout(() => {
+    logger.error('⚠️ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+// Обработка сигналов завершения
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Обработка необработанных ошибок
+process.on('uncaughtException', (error) => {
+  logger.error('💥 Uncaught Exception:', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('UNHANDLED_REJECTION');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🛠️ UTILITY FUNCTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Получить версию из package.json
+ */
+function getVersion() {
+  try {
+    const pkgPath = path.join(__dirname, '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return pkg.version || '1.0.0';
+  } catch {
+    return '1.0.0';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   📤 EXPORTS (для тестов)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+module.exports = { app, server, config };
