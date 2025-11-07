@@ -661,24 +661,77 @@ function RecommendationsPage({
   profile
 }) {
   const { t } = useTranslation();
+
+  // Достаточно ли данных резюме для советов
   const profileOk = hasProfileForRecs(profile);
   const missing = profileOk ? [] : missingProfileSections(profile, t);
 
-  useEffect(() => {
-    if (!recommendations && profileOk) generateRecommendations();
+  // выбранная (целевая) профессия — одно поле, как на макете
+  const [selectedProfession, setSelectedProfession] = React.useState(() => {
+    const p = recommendations?.professions?.[0] || '';
+    return String(p || '').trim();
+  });
+
+  React.useEffect(() => {
+    setSelectedProfession(String(recommendations?.professions?.[0] || '').trim());
+  }, [recommendations?.professions]);
+
+  // авто-генерация при наличии профиля
+  React.useEffect(() => {
+    if (!recommendations && profileOk && !isGenerating) {
+      generateRecommendations();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOk]);
 
-  const applyProfession = (p) => {
-    const q = String(p || '').trim();
-    if (!q) return;
-    setSearchQuery(q);
+  // оценка соответствия
+  const score = (() => {
+    const v = Number(recommendations?.matchScore);
+    if (Number.isFinite(v)) return Math.max(0, Math.min(100, v));
+    return 33; // дефолт чтобы бар не был пустым
+  })();
+
+  const handleFindJobs = React.useCallback(() => {
+    const q = (selectedProfession || '').trim();
+    if (q) setSearchQuery(q);
     onFindVacancies?.();
-  };
+  }, [selectedProfession, setSearchQuery, onFindVacancies]);
+
+  const ScoreBar = ({ value }) => (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-gray-600">
+          {t('recommendations.matchScore') || 'Оценка соответствия рынку'}
+        </div>
+        <div className="text-sm font-semibold text-purple-700">{value}%</div>
+      </div>
+      <div className="h-2.5 w-full rounded-full bg-gray-100">
+        <div
+          className="h-2.5 rounded-full bg-gradient-to-r from-purple-500 to-blue-500"
+          style={{ width: `${value}%` }}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={value}
+        />
+      </div>
+    </div>
+  );
+
+  const CoursesSkeleton = () => (
+    <div className="space-y-2" aria-hidden>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2">
+          <div className="w-2/3 h-4 bg-gray-100 rounded" />
+          <div className="w-20 h-8 bg-gray-100 rounded" />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-2xl mx-auto px-4">
         <button
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
@@ -689,16 +742,32 @@ function RecommendationsPage({
           <span>{t('common.back')}</span>
         </button>
 
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h2 className="text-3xl font-bold mb-6">{t('recommendations.title')}</h2>
+        <div className="bg-white rounded-2xl shadow p-6 border">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+              <Sparkles size={18} className="text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold leading-tight">
+                {t('recommendations.title') || 'AI Рекомендации'}
+              </h2>
+              <div className="text-xs text-gray-500">
+                {t('recommendations.hint') || 'Собрано из вашего резюме'}
+              </div>
+            </div>
+          </div>
 
+          {/* Если данных мало */}
           {!profileOk && (
-            <div className="mb-6 p-5 rounded-xl bg-blue-50 border border-blue-200">
-              <div className="font-semibold mb-2 text-blue-900">{t('recommendations.needMoreData')}</div>
-              <div className="text-sm text-blue-900 mb-3">
+            <div className="mb-6 p-4 rounded-xl bg-blue-50 border border-blue-200">
+              <div className="font-semibold mb-2 text-blue-900">
+                {t('recommendations.needMoreData')}
+              </div>
+              <div className="text-sm text-blue-900 mb-2">
                 {t('recommendations.missingSections')}:
               </div>
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2">
                 {missing.map((m, i) => (
                   <span
                     key={i}
@@ -710,104 +779,140 @@ function RecommendationsPage({
               </div>
               <button
                 onClick={onImproveResume}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 {t('recommendations.improveResume')}
               </button>
             </div>
           )}
 
-          {profileOk && (
-            <>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                  <Sparkles className="text-purple-600" size={20} />
-                </div>
-                <div className="text-gray-700">
-                  {t('recommendations.hint')}
-                </div>
-              </div>
+          {/* Оценка соответствия */}
+          <div className="mb-6">
+            <ScoreBar value={score} />
+          </div>
 
-              <div className="mb-6">
+          {/* Целевая профессия (одно поле) и быстрый выбор */}
+          <div className="mb-5">
+            <div className="text-sm font-semibold text-gray-800 mb-2">
+              {t('recommendations.professions')}
+            </div>
+
+            <input
+              type="text"
+              value={selectedProfession}
+              onChange={(e) => setSelectedProfession(e.target.value)}
+              placeholder={t('recommendations.suitableRole') || 'Целевая профессия'}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(recommendations?.professions || []).map((p, i) => (
                 <button
-                  onClick={generateRecommendations}
-                  disabled={isGenerating}
-                  className={`px-4 py-2 rounded-lg text-white font-medium ${isGenerating ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+                  key={`${p}-${i}`}
+                  onClick={() => setSelectedProfession(p)}
+                  className={`px-3 py-1 rounded-full text-sm border transition ${
+                    p === selectedProfession
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-50'
+                  }`}
+                  title={t('recommendations.searchVacancies')}
                 >
-                  {isGenerating ? t('recommendations.generating') : t('recommendations.generate')}
+                  {p}
                 </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Навыки для развития */}
+          <div className="mb-6">
+            <div className="text-sm font-semibold text-gray-800 mb-2">
+              {t('recommendations.skillsToLearn')}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(recommendations?.skillsToLearn || []).map((s, i) => (
+                <span
+                  key={`${s}-${i}`}
+                  className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs border border-indigo-200"
+                >
+                  {s}
+                </span>
+              ))}
+              {(!recommendations || (recommendations?.skillsToLearn || []).length === 0) && (
+                <span className="text-sm text-gray-500">
+                  {t('recommendations.aiEmpty') || 'Подсказок пока нет'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Рекомендуемые курсы */}
+          <div className="mb-6">
+            <div className="text-sm font-semibold text-gray-800 mb-3">
+              {t('recommendations.courses')}
+            </div>
+
+            {isGenerating ? (
+              <CoursesSkeleton />
+            ) : (
+              <div className="space-y-2">
+                {(recommendations?.courses || []).map((c, i) => (
+                  <div key={`${c.name}-${i}`} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">{c.name}</div>
+                      {(c.duration || c.url) && (
+                        <div className="text-xs text-gray-500">
+                          {c.duration || ''}{c.duration && c.url ? ' • ' : ''}{c.url ? t('recommendations.openCourse') : ''}
+                        </div>
+                      )}
+                    </div>
+                    {c.url ? (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 inline-flex items-center gap-1"
+                      >
+                        <ExternalLink size={14} />
+                        {t('recommendations.openCourse')}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">
+                        {t('common.notAvailable') || 'Недоступно'}
+                      </span>
+                    )}
+                  </div>
+                ))}
+
+                {(!recommendations || (recommendations?.courses || []).length === 0) && !isGenerating && (
+                  <div className="rounded-lg border px-3 py-6 text-center text-gray-500 text-sm">
+                    {t('recommendations.aiEmpty') || 'Пока нет рекомендаций по курсам'}
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              {isGenerating && (
-                <div className="flex items-center gap-2 text-sm text-gray-600 mb-6" aria-live="polite">
-                  <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
-                  {t('common.loading')}
-                </div>
-              )}
-
-              {recommendations && !isGenerating && (
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div className="p-5 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-3">
-                      <TrendingUp size={18} className="text-green-600" />
-                      <div className="font-semibold">{t('recommendations.professions')}</div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {(recommendations.professions || []).map((p, i) => (
-                        <button
-                          key={i}
-                          onClick={() => applyProfession(p)}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-gray-50 border"
-                          title={t('recommendations.searchVacancies')}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-3">
-                      <BookOpen size={18} className="text-blue-600" />
-                      <div className="font-semibold">{t('recommendations.skillsToLearn')}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(recommendations.skillsToLearn || []).map((s, i) => (
-                        <span key={i} className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-3">
-                      <ExternalLink size={18} className="text-purple-600" />
-                      <div className="font-semibold">{t('recommendations.courses')}</div>
-                    </div>
-                    <ul className="space-y-2 text-sm">
-                      {(recommendations.courses || []).map((c, i) => (
-                        <li key={i} className="flex flex-col">
-                          <span className="font-medium">{c.name}</span>
-                          <span className="text-gray-500">{c.duration}</span>
-                          {c.url ? (
-                            <a href={c.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                              {t('recommendations.openCourse')}
-                            </a>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          {/* Нижние кнопки как на макете */}
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={handleFindJobs}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+            >
+              {t('home.findJobsButton') || 'Найти вакансии'}
+            </button>
+            <button
+              onClick={onImproveResume}
+              className="flex-1 px-4 py-2.5 rounded-lg border font-medium hover:bg-gray-50"
+            >
+              {t('recommendations.improveResume') || 'Улучшить резюме'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 function VacanciesPage({
   onBack,
