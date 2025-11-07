@@ -1,9 +1,10 @@
+// src/components/BuilderPage.jsx
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Mail, Phone, MapPin, Plus, X, Check, Sparkles, Download,
   Briefcase, BookOpen, Upload, Globe, RefreshCw
 } from 'lucide-react';
-import { useTranslation } from '../hooks/useTranslation'; // ← путь под ваш проект
+import { useTranslation } from '../hooks/useTranslation';
 
 /* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
@@ -18,6 +19,7 @@ const DEFAULT_PROFILE = {
   age: '',
   maritalStatus: '',
   children: '',
+  // используем driversLicense, но ниже добавлена совместимость с driverLicense
   driversLicense: '',
 
   experience: [],
@@ -38,13 +40,6 @@ const COLOR_BG = {
 };
 
 /* ---------- helpers ---------- */
-const fmtMonth = (m) => {
-  if (!m) return '';
-  const m2 = /^(\d{4})-(\d{2})$/.exec(m);
-  if (!m2) return m;
-  const [, y, mo] = m2;
-  return `${mo}.${y}`;
-};
 const isBlank = (v) => !v || !String(v).trim();
 
 const norm = (s) => String(s || '').toLowerCase().trim();
@@ -58,6 +53,25 @@ const uniqCaseInsensitive = (arr) => {
     out.push(x);
   }
   return out;
+};
+
+const firstNonEmpty = (...vals) => {
+  for (const v of vals) {
+    const s = String(v ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+};
+
+const fmtDate = (v) => {
+  if (!v) return '';
+  // ISO month "YYYY-MM"
+  const m = /^(\d{4})-(\d{2})$/.exec(String(v).trim());
+  if (m) return `${m[2]}.${m[1]}`;
+  // "YYYY"
+  if (/^\d{4}$/.test(String(v))) return String(v);
+  // Уже человекочитаемая строка
+  return String(v);
 };
 
 /* ---------- мини-ИИ навыков ---------- */
@@ -78,11 +92,10 @@ function detectTracks(profile) {
     profile?.position,
     profile?.summary,
     ...(profile?.skills || []),
-    ...(profile?.experience || []).map((e) => e?.position),
-    ...(profile?.experience || []).map((e) => e?.responsibilities),
-    ...(profile?.education || []).map((e) => e?.specialization || e?.level),
+    ...(profile?.experience || []).map((e) => e?.position || e?.title),
+    ...(profile?.experience || []).map((e) => e?.responsibilities || e?.description),
+    ...(profile?.education || []).map((e) => e?.specialization || e?.level || e?.degree),
   ].map(norm).join(' \n ');
-
   const has = (...keys) => keys.some((k) => bag.includes(k));
 
   const tracks = new Set();
@@ -213,75 +226,168 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect, 
   );
 });
 
+/* ---------- ПОЛНЫЙ предпросмотр ---------- */
 const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
-  const topSkills = useMemo(() => (profile.skills || []).slice(0, 8), [profile.skills]);
-  const expCount = (profile.experience || []).length;
-  const eduCount = (profile.education || []).length;
-  const langCount = (profile.languages || []).length;
+  // Полная поддержка разных схем полей
+  const email   = profile.email;
+  const phone   = profile.phone;
+  const loc     = profile.location;
+  const title   = firstNonEmpty(profile.position, profile.desiredRole, profile.targetRole);
+  const photo   = profile.photo;
+
+  const age     = profile.age;
+  const family  = profile.maritalStatus;
+  const kids    = profile.children;
+  const rights  = firstNonEmpty(profile.driversLicense, profile.driverLicense); // совместимость
+
+  const skills  = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
+
+  const experience = Array.isArray(profile.experience) ? profile.experience : [];
+  const education  = Array.isArray(profile.education) ? profile.education : [];
+  const languages  = Array.isArray(profile.languages) ? profile.languages : [];
 
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-6">
       <h4 className="font-semibold mb-3 text-green-900">{t('builder.preview.title')}</h4>
+
       <div className="bg-white rounded-lg p-6 border shadow-sm">
+        {/* Шапка */}
         <div className="mb-4 flex gap-4">
-          {profile.photo && (
-            <img src={profile.photo} alt={t('builder.preview.photoAlt')} className="w-16 h-16 rounded-full object-cover border" />
+          {photo ? (
+            <img src={photo} alt={t('builder.preview.photoAlt')} className="w-16 h-16 rounded-full object-cover border" />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gray-200" />
           )}
 
           <div>
             <h2 className="text-2xl font-bold">{profile.fullName || t('builder.preview.yourName')}</h2>
-            {profile.position && <p className="text-gray-800 font-medium mt-1">{profile.position}</p>}
+            {title && <p className="text-gray-800 font-medium mt-1">{title}</p>}
 
             <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
-              {profile.email && (<span className="flex items-center gap-1"><Mail size={14} />{profile.email}</span>)}
-              {profile.phone && (<span className="flex items-center gap-1"><Phone size={14} />{profile.phone}</span>)}
-              {profile.location && (<span className="flex items-center gap-1"><MapPin size={14} />{profile.location}</span>)}
+              {email && (<span className="flex items-center gap-1"><Mail size={14} />{email}</span>)}
+              {phone && (<span className="flex items-center gap-1"><Phone size={14} />{phone}</span>)}
+              {loc && (<span className="flex items-center gap-1"><MapPin size={14} />{loc}</span>)}
             </div>
 
-            <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
-              {profile.age && <span>{t('builder.personal.age')}: {profile.age}</span>}
-              {profile.maritalStatus && <span>{t('builder.personal.maritalStatus')}: {profile.maritalStatus}</span>}
-              {profile.children && <span>{t('builder.personal.children')}: {profile.children}</span>}
-              {profile.driversLicense && <span>{t('builder.personal.driversLicense')}: {profile.driversLicense}</span>}
-            </div>
+            {(age || family || kids || rights) && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500 mt-2">
+                {age && <span>{t('builder.personal.age')}: {age}</span>}
+                {family && <span>{t('builder.personal.maritalStatus')}: {family}</span>}
+                {kids && <span>{t('builder.personal.children')}: {kids}</span>}
+                {rights && <span>{t('builder.personal.driversLicense')}: {rights}</span>}
+              </div>
+            )}
           </div>
         </div>
 
+        {/* О себе */}
         {profile.summary && (
-          <div className="mb-4">
+          <div className="mb-5">
             <h3 className="font-semibold mb-2">{t('builder.personal.summary')}</h3>
-            <p className="text-sm text-gray-700">{profile.summary}</p>
+            <p className="text-sm text-gray-700 whitespace-pre-line">{profile.summary}</p>
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
-          <div className="text-center p-3 bg-blue-50 rounded-lg">
-            <Briefcase size={20} className="mx-auto mb-1 text-blue-600" />
-            <div className="font-semibold text-gray-900">{expCount}</div>
-            <div className="text-gray-600">{t('builder.preview.jobsCount')}</div>
-          </div>
-          <div className="text-center p-3 bg-purple-50 rounded-lg">
-            <BookOpen size={20} className="mx-auto mb-1 text-purple-600" />
-            <div className="font-semibold text-gray-900">{eduCount}</div>
-            <div className="text-gray-600">{t('builder.preview.educationCount')}</div>
-          </div>
-          <div className="text-center p-3 bg-indigo-50 rounded-lg">
-            <Globe size={20} className="mx-auto mb-1 text-indigo-600" />
-            <div className="font-semibold text-gray-900">{langCount}</div>
-            <div className="text-gray-600">{t('builder.preview.languagesCount')}</div>
-          </div>
-        </div>
-
-        {topSkills.length > 0 && (
-          <div className="mb-0">
+        {/* Навыки — все */}
+        {skills.length > 0 && (
+          <div className="mb-5">
             <h3 className="font-semibold mb-2">{t('builder.skills.title')}</h3>
             <div className="flex flex-wrap gap-2">
-              {topSkills.map((skill, idx) => (
-                <span key={`${skill}-${idx}`} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                  {skill}
+              {skills.map((s, i) => (
+                <span key={`${s}-${i}`} className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                  {s}
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Опыт — весь список */}
+        {experience.length > 0 && (
+          <div className="mb-5">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <Briefcase size={18} /> {t('builder.experience.label')}
+            </h3>
+            <ul className="space-y-3">
+              {experience.map((e, idx) => {
+                const pos   = firstNonEmpty(e.position, e.title, e.role);
+                const comp  = firstNonEmpty(e.company, e.employer, e.org);
+                const start = fmtDate(firstNonEmpty(e.startDate, e.start, e.from, e.dateStart, e.date_from));
+                const end   = e.currentlyWorking ? t('builder.experience.current') : fmtDate(firstNonEmpty(e.endDate, e.end, e.to, e.dateEnd, e.date_to));
+                const text  = firstNonEmpty(e.responsibilities, e.description, e.achievements);
+                const place = e.location || e.city || '';
+
+                const bullets = String(text || '')
+                  .split(/\n|•|;-?/g)
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+                  .slice(0, 12);
+
+                return (
+                  <li key={e.id || idx} className="border rounded-lg p-4 bg-white">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-gray-900">{pos || '—'}</div>
+                        <div className="text-gray-700">{comp || '—'}</div>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {start || '—'} — {end || '—'}{place ? ` • ${place}` : ''}
+                      </div>
+                    </div>
+
+                    {bullets.length > 0 && (
+                      <ul className="list-disc pl-5 mt-2 text-sm text-gray-700">
+                        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Образование — весь список */}
+        {education.length > 0 && (
+          <div className="mb-5">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <BookOpen size={18} /> {t('builder.education.title') ?? t('builder.education.addEducation')}
+            </h3>
+            <ul className="space-y-3">
+              {education.map((e, idx) => {
+                const inst  = firstNonEmpty(e.institution, e.university, e.school, e.org);
+                const level = firstNonEmpty(e.level, e.degree);
+                const spec  = firstNonEmpty(e.specialization, e.major, e.faculty, e.program);
+                const year  = firstNonEmpty(e.year, e.graduationYear, e.end, e.dateEnd, e.date_to);
+                return (
+                  <li key={e.id || idx} className="border rounded-lg p-4 bg-white">
+                    <div className="font-semibold text-gray-900">{inst || '—'}</div>
+                    <div className="text-gray-700">{[level, spec].filter(Boolean).join(' • ') || '—'}</div>
+                    <div className="text-sm text-gray-600 mt-1">{fmtDate(year)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Языки — весь список */}
+        {languages.length > 0 && (
+          <div className="mb-1">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <Globe size={18} /> {t('builder.languages.title')}
+            </h3>
+            <ul className="flex flex-wrap gap-2">
+              {languages.map((l, idx) => {
+                const name = typeof l === 'string' ? l : firstNonEmpty(l.language, l.name, l.lang);
+                const lvl  = typeof l === 'string' ? '' : firstNonEmpty(l.level, l.proficiency);
+                return (
+                  <li key={l.id || idx} className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-700">
+                    {name}{lvl ? ` — ${lvl}` : ''}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>
@@ -311,22 +417,35 @@ function BuilderPage({
   const [currentStep, setCurrentStep] = useState(0);
   const headingRef = useRef(null);
 
-  const [form, setForm] = useState(() => ({ ...DEFAULT_PROFILE, ...(profile || {}) }));
+  // Инициализация формы + совместимость driverLicense → driversLicense
+  const [form, setForm] = useState(() => ({
+    ...DEFAULT_PROFILE,
+    ...(profile || {}),
+    driversLicense: firstNonEmpty(profile?.driversLicense, profile?.driverLicense),
+  }));
 
+  // Синхронизация при изменении внешнего профиля
   useEffect(() => {
     if (!profile) return;
-    setForm((prev) => ({ ...prev, ...profile }));
+    setForm((prev) => ({
+      ...prev,
+      ...profile,
+      driversLicense: firstNonEmpty(profile?.driversLicense, profile?.driverLicense, prev.driversLicense),
+    }));
   }, [
     profile?.fullName, profile?.email, profile?.phone, profile?.location, profile?.summary,
     profile?.position, profile?.photo, profile?.languages, profile?.age, profile?.maritalStatus,
-    profile?.children, profile?.driversLicense, profile?.experience, profile?.education, profile?.skills,
+    profile?.children, profile?.driversLicense, profile?.driverLicense,
+    profile?.experience, profile?.education, profile?.skills,
   ]);
 
+  // Дебаунс-сохранение наверх
   useEffect(() => {
     const tmr = setTimeout(() => setProfile?.(form), 250);
     return () => clearTimeout(tmr);
   }, [form, setProfile]);
 
+  // Фокус на заголовке
   useEffect(() => {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const behavior = reduceMotion ? 'auto' : 'smooth';
@@ -527,6 +646,8 @@ function BuilderPage({
       maritalStatus: form.maritalStatus || '',
       children: form.children || '',
       driversLicense: form.driversLicense || '',
+      // совместимость вниз по цепочке
+      driverLicense: form.driversLicense || form.driverLicense || '',
     };
   }, [
     form, newExperience, isExperienceDraftFilled, canCommitExperience,
@@ -582,7 +703,6 @@ function BuilderPage({
   ]);
 
   /* --- RENDER --- */
-  // уровни языка из словаря
   const LANG_LEVELS = useMemo(() => ([
     t('builder.languages.levels.a1'),
     t('builder.languages.levels.a2'),
@@ -650,7 +770,7 @@ function BuilderPage({
 
                 <Input
                   label={t('builder.personal.title')}
-                  type="text"
+                  type="text'
                   value={form.position}
                   onChange={onChangeField('position')}
                   placeholder={t('builder.personal.titlePlaceholder')}
@@ -818,9 +938,9 @@ function BuilderPage({
                       <div key={exp.id || idx} className="border rounded-lg p-4 bg-white">
                         <div className="flex justify-between items-start mb-1">
                           <div>
-                            <h4 className="font-semibold">{exp.position}</h4>
+                            <h4 className="font-semibold">{exp.position || exp.title}</h4>
                             <p className="text-sm text-gray-600">
-                              {exp.company} • {fmtMonth(exp.startDate)} — {exp.currentlyWorking ? t('builder.experience.current') : fmtMonth(exp.endDate)}
+                              {exp.company} • {fmtDate(exp.startDate || exp.start || exp.dateStart)} — {exp.currentlyWorking ? t('builder.experience.current') : fmtDate(exp.endDate || exp.end || exp.dateEnd)}
                             </p>
                           </div>
                           <button
@@ -1058,8 +1178,8 @@ function BuilderPage({
                     {form.languages.map((l, idx) => (
                       <div key={l.id || idx} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white">
                         <div>
-                          <span className="font-medium text-gray-900">{l.language}</span>
-                          <span className="text-gray-500 text-sm ml-2">— {l.level}</span>
+                          <span className="font-medium text-gray-900">{l.language || l.name}</span>
+                          <span className="text-gray-500 text-sm ml-2">— {l.level || l.proficiency}</span>
                         </div>
                         <button
                           onClick={() => removeLanguage(l.id ?? idx)}
@@ -1082,6 +1202,7 @@ function BuilderPage({
                   <TemplateSelect selected={selectedTemplate} onSelect={handleSelectTemplate} t={t} />
                 </div>
 
+                {/* Полный предпросмотр */}
                 <ResumePreview profile={form} t={t} />
               </div>
             )}
