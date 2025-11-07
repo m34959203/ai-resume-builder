@@ -770,7 +770,7 @@ function BuilderPage({
 
                 <Input
                   label={t('builder.personal.title')}
-                  type="text'
+                  type="text"
                   value={form.position}
                   onChange={onChangeField('position')}
                   placeholder={t('builder.personal.titlePlaceholder')}
