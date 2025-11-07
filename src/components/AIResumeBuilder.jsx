@@ -17,8 +17,12 @@ import {
   fetchRecommendations,
 } from '../services/bff';
 
+// ⬇️ ЛОГОТИП БРЕНДА (положите файл в src/assets/zhezu-logo.png)
+import zhezuLogo from '../assets/zhezu-logo.png';
+
 const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies']);
 const HOST = getDefaultHost();
+const BRAND_NAME = 'ZhezU AI Resume';
 
 /* ========================== Вспомогательные хелперы ========================== */
 
@@ -297,6 +301,10 @@ function AIResumeBuilder() {
   const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState('home');
 
+  useEffect(() => {
+    document.title = `${BRAND_NAME} — умный помощник для создания резюме`;
+  }, []);
+
   const [profile, setProfile] = useState({
     fullName: '',
     email: '',
@@ -427,14 +435,21 @@ function AIResumeBuilder() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <button
+              type="button"
               onClick={() => setCurrentPage('home')}
-              className="flex items-center gap-2 cursor-pointer"
-              aria-label={t('nav.home')}
+              className="flex items-center gap-3 cursor-pointer"
+              aria-label={BRAND_NAME}
             >
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <FileText className="text-white" size={24} />
-              </div>
-              <span className="text-xl font-bold">AI Resume</span>
+              {/* Лого + бренд */}
+              <img
+                src={zhezuLogo}
+                alt={BRAND_NAME}
+                className="w-10 h-10 rounded-md object-contain"
+                loading="eager"
+              />
+              <span className="text-xl font-extrabold tracking-tight">
+                {BRAND_NAME}
+              </span>
             </button>
 
             <div className="flex gap-6 items-center">
@@ -512,10 +527,13 @@ function AIResumeBuilder() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                  <FileText className="text-white" size={16} />
-                </div>
-                <span className="font-bold">AI Resume</span>
+                <img
+                  src={zhezuLogo}
+                  alt={BRAND_NAME}
+                  className="w-8 h-8 rounded-md object-contain"
+                  loading="lazy"
+                />
+                <span className="font-bold">{BRAND_NAME}</span>
               </div>
               <p className="text-gray-400 text-sm">
                 {t('footer.description')}
@@ -565,7 +583,7 @@ function AIResumeBuilder() {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
-            <p>{t('footer.copyright')}</p>
+            <p>{t('footer.copyrigh­t')}</p>
             <p className="mt-2">{t('footer.integration')}</p>
           </div>
         </div>
