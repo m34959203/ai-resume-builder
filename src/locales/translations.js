@@ -1,682 +1,383 @@
 export const translations = {
   ru: {
-    // Навигация
-    nav: {
-      home: 'Главная',
-      builder: 'Резюме',
-      vacancies: 'Вакансии',
-      recommendations: 'Рекомендации'
-    },
-    
-    // Главная страница
-    home: {
-      badge: 'AI-powered Resume Builder',
-      title: 'Создайте идеальное резюме за минуты',
-      subtitle: 'ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии',
-      createButton: 'Создать резюме',
-      findJobsButton: 'Найти вакансии',
-      features: {
-        ai: {
-          title: 'Умное резюме',
-          description: 'Подсказки по улучшению каждого раздела'
-        },
-        vacancies: {
-          title: 'Поиск вакансий',
-          description: 'Интеграция с HeadHunter для релевантных предложений'
-        },
-        recommendations: {
-          title: 'Рекомендации',
-          description: 'Навыки, роли и курсы для роста'
-        }
-      }
-    },
-    
-    // Рекомендации
-    recommendations: {
-      title: 'AI Рекомендации',
-      subtitle: 'Советы на основе вашего резюме',
-      fillPrompt: 'Рекомендации появятся после анализа резюме',
-      fillDescription: 'Заполните основные разделы — и мы подберём профессии, навыки и курсы. Начните с:',
-      fillButton: 'Заполнить резюме',
-      viewVacancies: 'Посмотреть вакансии',
-      analyzing: 'Анализируем ваш профиль…',
-      marketScore: 'Оценка соответствия рынку',
-      professions: 'Рекомендуемые профессии',
-      findVacancies: 'Найти вакансии',
-      skillsToLearn: 'Навыки для развития',
-      courses: 'Рекомендуемые курсы',
-      duration: 'Длительность',
-      details: 'Подробнее',
-      findVacanciesButton: 'Найти вакансии',
-      improveResume: 'Улучшить резюме'
-    },
-    
-    // Вакансии
-    vacancies: {
-      title: 'Поиск вакансий',
-      searchPlaceholder: 'Поиск по должности или компании...',
-      useProfileData: 'Использовать данные резюме',
-      filters: 'Фильтры',
-      cityLabel: 'Город (только Казахстан)',
-      cityPlaceholder: 'Начните вводить город…',
-      noCitiesFound: 'Ничего не найдено',
-      experienceLabel: 'Опыт',
-      salaryLabel: 'Зарплата от',
-      salaryPlaceholder: '150 000 ₸',
-      found: 'Найдено в HH',
-      page: 'Страница',
-      of: 'из',
-      loading: 'Загружаем вакансии…',
-      previous: 'Назад',
-      next: 'Вперёд',
-      noVacancies: 'Вакансии не найдены',
-      changeParams: 'Измените параметры поиска',
-      applyOnHH: 'Откликнуться на HH',
-      aiSuggestion: 'Подсказка ИИ из вашего резюме',
-      aiAnalyzing: 'Анализируем профиль…',
-      aiSuggestSearch: 'Предлагаем искать:',
-      aiConfidence: 'уверенность',
-      aiApply: 'Применить',
-      aiHide: 'Скрыть',
-      aiRefresh: 'Обновить подсказку',
-      rateLimited: 'HeadHunter временно ограничил частоту запросов. Подождите',
-      sec: 'сек.',
-      experience: {
-        any: 'Любой',
-        noExperience: 'Без опыта',
-        between1And3: '1–3 года',
-        between3And6: '3–6 лет',
-        moreThan6: '6+ лет'
-      },
-      cities: {
-        almaty: 'Алматы',
-        astana: 'Астана',
-        shymkent: 'Шымкент'
-      },
-      mockDescription1: 'Разработка современных веб-приложений на React',
-      mockDescription2: 'Создание интуитивных интерфейсов',
-      mockDescription3: 'Анализ данных и отчётность',
-      salaryNegotiable: 'по договорённости',
-      vacancyTitle: 'Вакансия',
-      suitableRole: 'подходящую роль',
-      in: 'в',
-      addToSearch: 'Добавить в запрос',
-      aiError: 'Не удалось получить подсказку ИИ.',
-      searchError: 'Поиск недоступен',
-      loadError: 'Ошибка загрузки вакансий.'
-    },
-    
-    // Страница конструктора
+    nav: { resume: 'Резюме', jobs: 'Вакансии', recs: 'Рекомендации' },
+
     builder: {
-      title: 'Конструктор резюме',
       steps: {
-        personal: 'Личные данные',
+        personal: 'Личная информация',
         experience: 'Опыт работы',
         education: 'Образование',
         skills: 'Навыки',
-        preview: 'Предварительный просмотр'
+        languages: 'Языки',
+        template: 'Шаблон',
       },
-      
-      // Личные данные
-      personal: {
-        fullName: 'Полное имя',
-        fullNamePlaceholder: 'Иванов Иван Иванович',
-        email: 'Email',
-        emailPlaceholder: 'example@email.com',
-        phone: 'Телефон',
-        phonePlaceholder: '+7 (777) 123-45-67',
-        location: 'Город',
-        locationPlaceholder: 'Алматы, Казахстан',
-        title: 'Должность',
-        titlePlaceholder: 'Frontend разработчик',
-        summary: 'О себе',
-        summaryPlaceholder: 'Опишите ваш опыт и цели...'
-      },
-      
-      // Опыт работы
-      experience: {
-        addExperience: 'Добавить опыт',
-        company: 'Компания',
-        companyPlaceholder: 'ТОО "Компания"',
-        position: 'Должность',
-        positionPlaceholder: 'Senior Developer',
-        startDate: 'Начало',
-        endDate: 'Окончание',
-        current: 'По настоящее время',
-        description: 'Описание обязанностей',
-        descriptionPlaceholder: 'Опишите ваши достижения и обязанности...',
-        remove: 'Удалить'
-      },
-      
-      // Образование
-      education: {
-        addEducation: 'Добавить образование',
-        institution: 'Учебное заведение',
-        institutionPlaceholder: 'КазНУ им. аль-Фараби',
-        degree: 'Степень',
-        degreePlaceholder: 'Бакалавр',
-        fieldOfStudy: 'Специальность',
-        fieldOfStudyPlaceholder: 'Информационные системы',
-        startDate: 'Начало',
-        endDate: 'Окончание',
-        remove: 'Удалить'
-      },
-      
-      // Навыки
-      skills: {
-        title: 'Навыки',
-        addSkill: 'Добавить навык',
-        skillPlaceholder: 'JavaScript, React, Node.js...',
-        remove: 'Удалить'
-      },
-      
-      // Кнопки
-      buttons: {
-        previous: 'Назад',
+
+      common: {
+        back: 'Назад',
         next: 'Далее',
-        generateWithAI: 'Генерировать с ИИ',
-        downloadPDF: 'Скачать PDF',
-        save: 'Сохранить',
-        cancel: 'Отмена'
+        selected: 'Выбрано',
+        requiredFill: 'Заполните обязательные поля',
+        need: 'Необходимо: {fields}',
+        download: 'Скачать PDF',
+        preparing: 'Готовим PDF…',
+        update: 'Обновить',
       },
-      
-      // Сообщения
-      messages: {
-        saving: 'Сохранение...',
-        saved: 'Сохранено',
-        generating: 'Генерация с помощью ИИ...',
-        error: 'Произошла ошибка',
-        fillRequired: 'Заполните обязательные поля'
-      }
-    },
-    
-    // Футер
-    footer: {
-      description: 'Создавайте профессиональные резюме с помощью ИИ',
-      product: 'Продукт',
-      createResume: 'Создать резюме',
-      templates: 'Шаблоны',
-      vacancies: 'Вакансии',
-      recommendations: 'Рекомендации',
-      company: 'Компания',
-      about: 'О нас',
-      blog: 'Блог',
-      careers: 'Карьера',
-      contact: 'Контакты',
-      support: 'Поддержка',
-      help: 'Помощь',
-      terms: 'Условия использования',
-      privacy: 'Политика конфиденциальности',
-      copyright: '© 2025 AI Resume Builder. Все права защищены.',
-      integration: 'Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика'
-    },
-    
-    // Общие
-    common: {
-      loading: 'Загрузка...',
-      error: 'Ошибка',
-      success: 'Успешно',
-      confirm: 'Подтвердить',
-      cancel: 'Отмена',
-      close: 'Закрыть',
-      delete: 'Удалить',
-      edit: 'Редактировать',
-      save: 'Сохранить',
-      back: 'Назад'
-    }
-  },
-  
-  kk: {
-    // Навигация
-    nav: {
-      home: 'Басты бет',
-      builder: 'Түйіндеме',
-      vacancies: 'Вакансиялар',
-      recommendations: 'Ұсыныстар'
-    },
-    
-    // Главная страница
-    home: {
-      badge: 'AI-қолдаумен Түйіндеме Құрастырушы',
-      title: 'Бірнеше минутта керемет түйіндеме жасаңыз',
-      subtitle: 'AI қуатты түйіндеме дайындауға және қолайлы вакансияларды табуға көмектеседі',
-      createButton: 'Түйіндеме жасау',
-      findJobsButton: 'Вакансия іздеу',
-      features: {
-        ai: {
-          title: 'Ақылды түйіндеме',
-          description: 'Әр бөлімді жақсарту бойынша кеңестер'
-        },
-        vacancies: {
-          title: 'Вакансия іздеу',
-          description: 'HeadHunter-мен интеграция арқылы қолайлы ұсыныстар'
-        },
-        recommendations: {
-          title: 'Ұсыныстар',
-          description: 'Өсу үшін дағдылар, рөлдер және курстар'
-        }
-      }
-    },
-    
-    // Рекомендации
-    recommendations: {
-      title: 'AI Ұсыныстары',
-      subtitle: 'Түйіндемеңізге негізделген кеңестер',
-      fillPrompt: 'Ұсыныстар түйіндемені талдағаннан кейін пайда болады',
-      fillDescription: 'Негізгі бөлімдерді толтырыңыз — біз мамандықтарды, дағдыларды және курстарды таңдаймыз. Бастаңыз:',
-      fillButton: 'Түйіндемені толтыру',
-      viewVacancies: 'Вакансияларды қарау',
-      analyzing: 'Профиліңізді талдап жатырмыз…',
-      marketScore: 'Нарыққа сәйкестік бағасы',
-      professions: 'Ұсынылатын мамандықтар',
-      findVacancies: 'Вакансия табу',
-      skillsToLearn: 'Үйренуге арналған дағдылар',
-      courses: 'Ұсынылатын курстар',
-      duration: 'Ұзақтығы',
-      details: 'Толығырақ',
-      findVacanciesButton: 'Вакансия табу',
-      improveResume: 'Түйіндемені жақсарту'
-    },
-    
-    // Вакансии
-    vacancies: {
-      title: 'Вакансия іздеу',
-      searchPlaceholder: 'Лауазым немесе компания бойынша іздеу...',
-      useProfileData: 'Түйіндеме деректерін пайдалану',
-      filters: 'Сүзгілер',
-      cityLabel: 'Қала (тек Қазақстан)',
-      cityPlaceholder: 'Қаланы енгізуді бастаңыз…',
-      noCitiesFound: 'Ештеңе табылмады',
-      experienceLabel: 'Тәжірибе',
-      salaryLabel: 'Жалақы бастап',
-      salaryPlaceholder: '150 000 ₸',
-      found: 'HH-де табылды',
-      page: 'Бет',
-      of: 'дан',
-      loading: 'Вакансияларды жүктеп жатырмыз…',
-      previous: 'Артқа',
-      next: 'Алға',
-      noVacancies: 'Вакансиялар табылмады',
-      changeParams: 'Іздеу параметрлерін өзгертіңіз',
-      applyOnHH: 'HH-де жауап беру',
-      aiSuggestion: 'Түйіндемеңізден AI кеңесі',
-      aiAnalyzing: 'Профильді талдап жатырмыз…',
-      aiSuggestSearch: 'Іздеуді ұсынамыз:',
-      aiConfidence: 'сенімділік',
-      aiApply: 'Қолдану',
-      aiHide: 'Жасыру',
-      aiRefresh: 'Кеңесті жаңарту',
-      rateLimited: 'HeadHunter сұраныстар жиілігін уақытша шектеді. Күтіңіз',
-      sec: 'сек.',
-      experience: {
-        any: 'Кез келген',
-        noExperience: 'Тәжірибесіз',
-        between1And3: '1–3 жыл',
-        between3And6: '3–6 жыл',
-        moreThan6: '6+ жыл'
-      },
-      cities: {
-        almaty: 'Алматы',
-        astana: 'Астана',
-        shymkent: 'Шымкент'
-      },
-      mockDescription1: 'React-те заманауи веб-қосымшаларды әзірлеу',
-      mockDescription2: 'Интуитивті интерфейстерді жасау',
-      mockDescription3: 'Деректерді талдау және есеп беру',
-      salaryNegotiable: 'келісім бойынша',
-      vacancyTitle: 'Вакансия',
-      suitableRole: 'қолайлы рөл',
-      in: 'қаласында',
-      addToSearch: 'Іздеуге қосу',
-      aiError: 'AI кеңесін алу мүмкін болмады.',
-      searchError: 'Іздеу қолжетімсіз',
-      loadError: 'Вакансияларды жүктеу қатесі.'
-    },
-    
-    // Страница конструктора
-    builder: {
-      title: 'Түйіндеме құрастырушысы',
-      steps: {
-        personal: 'Жеке деректер',
-        experience: 'Жұмыс тәжірибесі',
-        education: 'Білім',
-        skills: 'Дағдылар',
-        preview: 'Алдын ала қарау'
-      },
-      
-      // Личные данные
+
       personal: {
-        fullName: 'Толық аты-жөні',
-        fullNamePlaceholder: 'Иванов Иван Иванович',
-        email: 'Email',
-        emailPlaceholder: 'example@email.com',
-        phone: 'Телефон',
-        phonePlaceholder: '+7 (777) 123-45-67',
-        location: 'Қала',
-        locationPlaceholder: 'Алматы, Қазақстан',
-        title: 'Лауазымы',
-        titlePlaceholder: 'Frontend әзірлеуші',
-        summary: 'Өзім туралы',
-        summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...'
+        photoHint: 'Рекомендуется загрузить фото',
+        fullName: 'Полное имя *',
+        fullNamePh: 'Иван Иванов',
+        position: 'Желаемая должность',
+        positionPh: 'Frontend Developer',
+        email: 'Email *',
+        emailPh: 'ivan@example.com',
+        phone: 'Телефон *',
+        phonePh: '+7 (777) 123-45-67',
+        city: 'Город',
+        cityPh: 'Алматы',
+        age: 'Возраст',
+        marital: 'Семейное положение',
+        maritalPh: 'Женат / Замужем / Не женат',
+        children: 'Дети',
+        childrenPh: '2 детей / нет',
+        license: 'Водительские права',
+        licensePh: 'Категория B',
+        about: 'О себе',
+        aboutPh: 'Расскажите о себе: 2–3 предложения о ключевых компетенциях и целях…',
+        aboutTip: 'Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.',
       },
-      
-      // Опыт работы
-      experience: {
-        addExperience: 'Тәжірибе қосу',
-        company: 'Компания',
-        companyPlaceholder: 'ЖШС "Компания"',
-        position: 'Лауазымы',
-        positionPlaceholder: 'Senior Developer',
-        startDate: 'Басталуы',
-        endDate: 'Аяқталуы',
-        current: 'Қазіргі уақытта',
-        description: 'Міндеттер сипаттамасы',
-        descriptionPlaceholder: 'Жетістіктеріңіз бен міндеттеріңізді сипаттаңыз...',
-        remove: 'Жою'
+
+      exp: {
+        addTitle: 'Добавить опыт',
+        role: 'Должность *',
+        rolePh: 'Frontend Developer',
+        company: 'Компания *',
+        companyPh: 'ТОО «Tech Corp»',
+        start: 'Начало работы *',
+        end: 'Окончание работы',
+        current: 'Работаю в настоящее время',
+        duties: 'Обязанности и достижения',
+        dutiesPh: '• Разработка и поддержка приложений\n• Оптимизация производительности\n• Наставничество джуниоров',
+        addBtn: 'Добавить опыт',
+        listTitle: 'Добавленный опыт:',
+        tillNow: 'настоящее время',
       },
-      
-      // Образование
-      education: {
-        addEducation: 'Білім қосу',
-        institution: 'Оқу орны',
-        institutionPlaceholder: 'Әл-Фараби атындағы ҚазҰУ',
-        degree: 'Дәреже',
-        degreePlaceholder: 'Бакалавр',
-        fieldOfStudy: 'Мамандық',
-        fieldOfStudyPlaceholder: 'Ақпараттық жүйелер',
-        startDate: 'Басталуы',
-        endDate: 'Аяқталуы',
-        remove: 'Жою'
+
+      edu: {
+        addTitle: 'Добавить образование',
+        level: 'Уровень *',
+        pick: 'Выберите',
+        levels: [
+          'Среднее',
+          'Среднее специальное',
+          'Неоконченное высшее',
+          'Высшее',
+          'Бакалавр',
+          'Магистр',
+          'MBA',
+          'Кандидат наук',
+          'Доктор наук',
+        ],
+        uni: 'Учебное заведение *',
+        uniPh: 'Жезказганский университет имени О.А. Байконурова',
+        year: 'Год окончания',
+        spec: 'Специальность',
+        specPh: 'Программная инженерия',
+        addBtn: 'Добавить образование',
+        listTitle: 'Добавленное образование:',
       },
-      
-      // Навыки
+
       skills: {
-        title: 'Дағдылар',
-        addSkill: 'Дағды қосу',
-        skillPlaceholder: 'JavaScript, React, Node.js...',
-        remove: 'Жою'
+        add: 'Добавить навык',
+        addPh: 'Например: React, JavaScript, Python',
+        yours: 'Ваши навыки:',
+        aiTitle: 'AI рекомендует добавить:',
+        aiEmpty: 'Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.',
+        refreshTitle: 'Обновить рекомендации',
+        hintBtn: '+ {skill}',
       },
-      
-      // Кнопки
-      buttons: {
-        previous: 'Артқа',
-        next: 'Алға',
-        generateWithAI: 'AI көмегімен жасау',
-        downloadPDF: 'PDF жүктеу',
-        save: 'Сақтау',
-        cancel: 'Болдырмау'
+
+      langs: {
+        title: 'Знание языков',
+        lang: 'Язык *',
+        level: 'Уровень *',
+        levels: [
+          'A1 — Начальный',
+          'A2 — Элементарный',
+          'B1 — Средний',
+          'B2 — Средне-продвинутый',
+          'C1 — Продвинутый',
+          'C2 — В совершенстве',
+        ],
+        addBtn: 'Добавить язык',
       },
-      
-      // Сообщения
-      messages: {
-        saving: 'Сақталуда...',
-        saved: 'Сақталды',
-        generating: 'AI көмегімен жасалуда...',
-        error: 'Қате орын алды',
-        fillRequired: 'Міндетті өрістерді толтырыңыз'
-      }
+
+      template: {
+        choose: 'Выберите шаблон резюме:',
+        modern: 'Современный',
+        minimal: 'Минималистичный',
+        styleLine: 'Стильный и профессиональный дизайн',
+        pickAria: 'Выбрать шаблон {name}',
+      },
+
+      preview: {
+        title: 'Предпросмотр резюме',
+        places: 'мест работы',
+        edu: 'образование',
+        langs: 'языков',
+        about: 'О себе',
+        skills: 'Навыки',
+      },
+
+      required: {
+        fio: 'ФИО',
+        email: 'Email',
+        phone: 'Телефон',
+      },
     },
-    
-    // Футер
-    footer: {
-      description: 'AI көмегімен кәсіби түйіндемелер жасаңыз',
-      product: 'Өнім',
-      createResume: 'Түйіндеме жасау',
-      templates: 'Үлгілер',
-      vacancies: 'Вакансиялар',
-      recommendations: 'Ұсыныстар',
-      company: 'Компания',
-      about: 'Біз туралы',
-      blog: 'Блог',
-      careers: 'Мансап',
-      contact: 'Байланыс',
-      support: 'Қолдау',
-      help: 'Көмек',
-      terms: 'Пайдалану шарттары',
-      privacy: 'Құпиялылық саясаты',
-      copyright: '© 2025 AI Resume Builder. Барлық құқықтар қорғалған.',
-      integration: 'HeadHunter-мен интеграция: вакансияларды іздеу және жауап беру үшін HH-ге өту'
-    },
-    
-    // Общие
-    common: {
-      loading: 'Жүктелуде...',
-      error: 'Қате',
-      success: 'Сәтті',
-      confirm: 'Растау',
-      cancel: 'Болдырмау',
-      close: 'Жабу',
-      delete: 'Жою',
-      edit: 'Өңдеу',
-      save: 'Сақтау',
-      back: 'Артқа'
-    }
   },
-  
+
   en: {
-    // Navigation
-    nav: {
-      home: 'Home',
-      builder: 'Resume',
-      vacancies: 'Jobs',
-      recommendations: 'Recommendations'
-    },
-    
-    // Home page
-    home: {
-      badge: 'AI-powered Resume Builder',
-      title: 'Create the perfect resume in minutes',
-      subtitle: 'AI helps you quickly prepare a strong resume and find suitable vacancies',
-      createButton: 'Create Resume',
-      findJobsButton: 'Find Jobs',
-      features: {
-        ai: {
-          title: 'Smart Resume',
-          description: 'Tips to improve each section'
-        },
-        vacancies: {
-          title: 'Job Search',
-          description: 'Integration with HeadHunter for relevant offers'
-        },
-        recommendations: {
-          title: 'Recommendations',
-          description: 'Skills, roles and courses for growth'
-        }
-      }
-    },
-    
-    // Recommendations
-    recommendations: {
-      title: 'AI Recommendations',
-      subtitle: 'Tips based on your resume',
-      fillPrompt: 'Recommendations will appear after resume analysis',
-      fillDescription: 'Fill in the main sections — and we will select professions, skills and courses. Start with:',
-      fillButton: 'Fill Resume',
-      viewVacancies: 'View Jobs',
-      analyzing: 'Analyzing your profile…',
-      marketScore: 'Market Fit Score',
-      professions: 'Recommended Professions',
-      findVacancies: 'Find Jobs',
-      skillsToLearn: 'Skills to Learn',
-      courses: 'Recommended Courses',
-      duration: 'Duration',
-      details: 'Details',
-      findVacanciesButton: 'Find Jobs',
-      improveResume: 'Improve Resume'
-    },
-    
-    // Vacancies
-    vacancies: {
-      title: 'Job Search',
-      searchPlaceholder: 'Search by position or company...',
-      useProfileData: 'Use resume data',
-      filters: 'Filters',
-      cityLabel: 'City (Kazakhstan only)',
-      cityPlaceholder: 'Start typing city name…',
-      noCitiesFound: 'Nothing found',
-      experienceLabel: 'Experience',
-      salaryLabel: 'Salary from',
-      salaryPlaceholder: '150,000 ₸',
-      found: 'Found on HH',
-      page: 'Page',
-      of: 'of',
-      loading: 'Loading vacancies…',
-      previous: 'Previous',
-      next: 'Next',
-      noVacancies: 'No vacancies found',
-      changeParams: 'Change search parameters',
-      applyOnHH: 'Apply on HH',
-      aiSuggestion: 'AI suggestion from your resume',
-      aiAnalyzing: 'Analyzing profile…',
-      aiSuggestSearch: 'We suggest searching:',
-      aiConfidence: 'confidence',
-      aiApply: 'Apply',
-      aiHide: 'Hide',
-      aiRefresh: 'Refresh suggestion',
-      rateLimited: 'HeadHunter temporarily limited request rate. Please wait',
-      sec: 'sec.',
-      experience: {
-        any: 'Any',
-        noExperience: 'No experience',
-        between1And3: '1–3 years',
-        between3And6: '3–6 years',
-        moreThan6: '6+ years'
-      },
-      cities: {
-        almaty: 'Almaty',
-        astana: 'Astana',
-        shymkent: 'Shymkent'
-      },
-      mockDescription1: 'Development of modern web applications with React',
-      mockDescription2: 'Creating intuitive interfaces',
-      mockDescription3: 'Data analysis and reporting',
-      salaryNegotiable: 'negotiable',
-      vacancyTitle: 'Vacancy',
-      suitableRole: 'suitable role',
-      in: 'in',
-      addToSearch: 'Add to search',
-      aiError: 'Could not get AI suggestion.',
-      searchError: 'Search unavailable',
-      loadError: 'Error loading vacancies.'
-    },
-    
-    // Builder page
+    nav: { resume: 'Resume', jobs: 'Jobs', recs: 'Recommendations' },
+
     builder: {
-      title: 'Resume Builder',
       steps: {
-        personal: 'Personal Info',
-        experience: 'Work Experience',
+        personal: 'Personal',
+        experience: 'Experience',
         education: 'Education',
         skills: 'Skills',
-        preview: 'Preview'
+        languages: 'Languages',
+        template: 'Template',
       },
-      
-      // Personal info
-      personal: {
-        fullName: 'Full Name',
-        fullNamePlaceholder: 'John Smith',
-        email: 'Email',
-        emailPlaceholder: 'example@email.com',
-        phone: 'Phone',
-        phonePlaceholder: '+1 (555) 123-4567',
-        location: 'Location',
-        locationPlaceholder: 'New York, USA',
-        title: 'Job Title',
-        titlePlaceholder: 'Frontend Developer',
-        summary: 'About',
-        summaryPlaceholder: 'Describe your experience and goals...'
-      },
-      
-      // Work experience
-      experience: {
-        addExperience: 'Add Experience',
-        company: 'Company',
-        companyPlaceholder: 'Company LLC',
-        position: 'Position',
-        positionPlaceholder: 'Senior Developer',
-        startDate: 'Start Date',
-        endDate: 'End Date',
-        current: 'Present',
-        description: 'Job Description',
-        descriptionPlaceholder: 'Describe your achievements and responsibilities...',
-        remove: 'Remove'
-      },
-      
-      // Education
-      education: {
-        addEducation: 'Add Education',
-        institution: 'Institution',
-        institutionPlaceholder: 'University Name',
-        degree: 'Degree',
-        degreePlaceholder: 'Bachelor',
-        fieldOfStudy: 'Field of Study',
-        fieldOfStudyPlaceholder: 'Computer Science',
-        startDate: 'Start Date',
-        endDate: 'End Date',
-        remove: 'Remove'
-      },
-      
-      // Skills
-      skills: {
-        title: 'Skills',
-        addSkill: 'Add Skill',
-        skillPlaceholder: 'JavaScript, React, Node.js...',
-        remove: 'Remove'
-      },
-      
-      // Buttons
-      buttons: {
-        previous: 'Previous',
+      common: {
+        back: 'Back',
         next: 'Next',
-        generateWithAI: 'Generate with AI',
-        downloadPDF: 'Download PDF',
-        save: 'Save',
-        cancel: 'Cancel'
+        selected: 'Selected',
+        requiredFill: 'Fill in the required fields',
+        need: 'Required: {fields}',
+        download: 'Download PDF',
+        preparing: 'Preparing PDF…',
+        update: 'Refresh',
       },
-      
-      // Messages
-      messages: {
-        saving: 'Saving...',
-        saved: 'Saved',
-        generating: 'Generating with AI...',
-        error: 'An error occurred',
-        fillRequired: 'Fill in required fields'
-      }
+      personal: {
+        photoHint: 'Uploading a photo is recommended',
+        fullName: 'Full name *',
+        fullNamePh: 'John Doe',
+        position: 'Desired position',
+        positionPh: 'Frontend Developer',
+        email: 'Email *',
+        emailPh: 'john@example.com',
+        phone: 'Phone *',
+        phonePh: '+1 (555) 123-4567',
+        city: 'City',
+        cityPh: 'Almaty',
+        age: 'Age',
+        marital: 'Marital status',
+        maritalPh: 'Married / Single',
+        children: 'Children',
+        childrenPh: '2 kids / none',
+        license: 'Driver’s license',
+        licensePh: 'Category B',
+        about: 'About',
+        aboutPh: 'Write 2–3 sentences about your key strengths and goals…',
+        aboutTip: 'Mention years of experience, 1–2 achievements and your stack/domain.',
+      },
+      exp: {
+        addTitle: 'Add experience',
+        role: 'Position *',
+        rolePh: 'Frontend Developer',
+        company: 'Company *',
+        companyPh: 'Tech Corp LLP',
+        start: 'Start date *',
+        end: 'End date',
+        current: 'Currently working here',
+        duties: 'Responsibilities & achievements',
+        dutiesPh: '• Built and maintained apps\n• Performance optimization\n• Mentored juniors',
+        addBtn: 'Add experience',
+        listTitle: 'Added experience:',
+        tillNow: 'present',
+      },
+      edu: {
+        addTitle: 'Add education',
+        level: 'Level *',
+        pick: 'Choose',
+        levels: [
+          'Secondary',
+          'Vocational',
+          'Incomplete Higher',
+          'Higher',
+          'Bachelor',
+          'Master',
+          'MBA',
+          'Candidate of Sciences',
+          'Doctor of Sciences',
+        ],
+        uni: 'Institution *',
+        uniPh: 'Zhezkazgan University named after O.A. Baikonurov',
+        year: 'Graduation year',
+        spec: 'Major / specialization',
+        specPh: 'Software Engineering',
+        addBtn: 'Add education',
+        listTitle: 'Added education:',
+      },
+      skills: {
+        add: 'Add skill',
+        addPh: 'e.g. React, JavaScript, Python',
+        yours: 'Your skills:',
+        aiTitle: 'AI suggests to add:',
+        aiEmpty: 'No suggestions yet — add a couple of core skills or specify your position.',
+        refreshTitle: 'Refresh suggestions',
+        hintBtn: '+ {skill}',
+      },
+      langs: {
+        title: 'Language proficiency',
+        lang: 'Language *',
+        level: 'Level *',
+        levels: ['A1 — Beginner', 'A2 — Elementary', 'B1 — Intermediate', 'B2 — Upper-Intermediate', 'C1 — Advanced', 'C2 — Proficient'],
+        addBtn: 'Add language',
+      },
+      template: {
+        choose: 'Choose a resume template:',
+        modern: 'Modern',
+        minimal: 'Minimal',
+        styleLine: 'Stylish and professional design',
+        pickAria: 'Pick template {name}',
+      },
+      preview: {
+        title: 'Resume preview',
+        places: 'workplaces',
+        edu: 'education',
+        langs: 'languages',
+        about: 'About',
+        skills: 'Skills',
+      },
+      required: {
+        fio: 'Full name',
+        email: 'Email',
+        phone: 'Phone',
+      },
     },
-    
-    // Footer
-    footer: {
-      description: 'Create professional resumes with AI',
-      product: 'Product',
-      createResume: 'Create Resume',
-      templates: 'Templates',
-      vacancies: 'Jobs',
-      recommendations: 'Recommendations',
-      company: 'Company',
-      about: 'About',
-      blog: 'Blog',
-      careers: 'Careers',
-      contact: 'Contact',
-      support: 'Support',
-      help: 'Help',
-      terms: 'Terms of Service',
-      privacy: 'Privacy Policy',
-      copyright: '© 2025 AI Resume Builder. All rights reserved.',
-      integration: 'HeadHunter integration: job search and transition to HH for application'
+  },
+
+  kk: {
+    nav: { resume: 'Резюме', jobs: 'Вакансиялар', recs: 'Ұсынымдар' },
+
+    builder: {
+      steps: {
+        personal: 'Жеке деректер',
+        experience: 'Еңбек тәжірибесі',
+        education: 'Білім',
+        skills: 'Құзыреттер',
+        languages: 'Тілдер',
+        template: 'Үлгі',
+      },
+      common: {
+        back: 'Артқа',
+        next: 'Келесі',
+        selected: 'Таңдалды',
+        requiredFill: 'Міндетті өрістерді толтырыңыз',
+        need: 'Қажет: {fields}',
+        download: 'PDF жүктеу',
+        preparing: 'PDF дайындалуда…',
+        update: 'Жаңарту',
+      },
+      personal: {
+        photoHint: 'Фото жүктеу ұсынылады',
+        fullName: 'Толық аты-жөні *',
+        fullNamePh: 'Иван Иванов',
+        position: 'Қалаған лауазым',
+        positionPh: 'Frontend Developer',
+        email: 'Email *',
+        emailPh: 'ivan@example.com',
+        phone: 'Телефон *',
+        phonePh: '+7 (777) 123-45-67',
+        city: 'Қала',
+        cityPh: 'Алматы',
+        age: 'Жасы',
+        marital: 'Отбасы жағдайы',
+        maritalPh: 'Үйленген / Тұрмыста / Бойдақ',
+        children: 'Балалар',
+        childrenPh: '2 бала / жоқ',
+        license: 'Жүргізуші куәлігі',
+        licensePh: 'B санаты',
+        about: 'Өзі туралы',
+        aboutPh: 'Негізгі құзыреттер мен мақсаттарыңыз туралы 2–3 сөйлем жазыңыз…',
+        aboutTip: 'Тәжірибені, 1–2 жетістікті және стекинізді/сфераны көрсетіңіз.',
+      },
+      exp: {
+        addTitle: 'Тәжірибе қосу',
+        role: 'Лауазым *',
+        rolePh: 'Frontend Developer',
+        company: 'Компания *',
+        companyPh: '«Tech Corp» ЖШС',
+        start: 'Жұмыстың басталуы *',
+        end: 'Аяқталуы',
+        current: 'Қазіргі уақытта осы жерде жұмыс істеймін',
+        duties: 'Міндеттер мен жетістіктер',
+        dutiesPh: '• Қолданбаларды әзірлеу және қолдау\n• Өнімділікті арттыру\n• Джуниорларға менторлық',
+        addBtn: 'Тәжірибе қосу',
+        listTitle: 'Қосылған тәжірибе:',
+        tillNow: 'қазіргі уақытқа дейін',
+      },
+      edu: {
+        addTitle: 'Білім қосу',
+        level: 'Деңгей *',
+        pick: 'Таңдау',
+        levels: [
+          'Орта',
+          'Орта арнаулы',
+          'Аяқталмаған жоғары',
+          'Жоғары',
+          'Бакалавр',
+          'Магистр',
+          'MBA',
+          'Ғылым кандидаты',
+          'Ғылым докторы',
+        ],
+        uni: 'Оқу орны *',
+        uniPh: 'О.А. Байқоңыров атындағы Жезқазған университеті',
+        year: 'Бітіру жылы',
+        spec: 'Мамандығы',
+        specPh: 'Бағдарламалық инженерия',
+        addBtn: 'Білім қосу',
+        listTitle: 'Қосылған білім:',
+      },
+      skills: {
+        add: 'Құзырет қосу',
+        addPh: 'Мысалы: React, JavaScript, Python',
+        yours: 'Құзыреттеріңіз:',
+        aiTitle: 'AI ұсынатын құзыреттер:',
+        aiEmpty: 'Әзірге ұсыныстар жоқ — бірнеше негізгі құзыретті қосыңыз немесе лауазымды көрсетіңіз.',
+        refreshTitle: 'Ұсыныстарды жаңарту',
+        hintBtn: '+ {skill}',
+      },
+      langs: {
+        title: 'Тіл меңгеруі',
+        lang: 'Тіл *',
+        level: 'Деңгей *',
+        levels: ['A1 — Бастапқы', 'A2 — Базалық', 'B1 — Орта', 'B2 — Ортадан жоғары', 'C1 — Жоғары', 'C2 — Еркін'],
+        addBtn: 'Тіл қосу',
+      },
+      template: {
+        choose: 'Резюме үлгісін таңдаңыз:',
+        modern: 'Қазіргі',
+        minimal: 'Минимал',
+        styleLine: 'Заманауи әрі кәсіби дизайн',
+        pickAria: '{name} үлгісін таңдау',
+      },
+      preview: {
+        title: 'Резюме алдын ала қарау',
+        places: 'жұмыс орны',
+        edu: 'білім',
+        langs: 'тіл',
+        about: 'Өзі туралы',
+        skills: 'Құзыреттер',
+      },
+      required: {
+        fio: 'Толық аты-жөні',
+        email: 'Email',
+        phone: 'Телефон',
+      },
     },
-    
-    // Common
-    common: {
-      loading: 'Loading...',
-      error: 'Error',
-      success: 'Success',
-      confirm: 'Confirm',
-      cancel: 'Cancel',
-      close: 'Close',
-      delete: 'Delete',
-      edit: 'Edit',
-      save: 'Save',
-      back: 'Back'
-    }
-  }
+  },
 };
