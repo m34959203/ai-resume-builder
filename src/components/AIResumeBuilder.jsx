@@ -683,14 +683,17 @@ function RecommendationsPage({
           <h2 className="text-3xl font-bold mb-6">{t('recommendations.title')}</h2>
 
           {!profileOk && (
-            <div className="mb-6 p-5 rounded-lg bg-amber-50 border border-amber-200">
-              <div className="font-semibold mb-2">{t('recommendations.needMoreData')}</div>
-              <div className="text-sm text-amber-900 mb-3">
+            <div className="mb-6 p-5 rounded-xl bg-blue-50 border border-blue-200">
+              <div className="font-semibold mb-2 text-blue-900">{t('recommendations.needMoreData')}</div>
+              <div className="text-sm text-blue-900 mb-3">
                 {t('recommendations.missingSections')}:
               </div>
               <div className="flex flex-wrap gap-2 mb-4">
                 {missing.map((m, i) => (
-                  <span key={i} className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-xs">
+                  <span
+                    key={i}
+                    className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs ring-1 ring-blue-200"
+                  >
                     {m}
                   </span>
                 ))}
@@ -726,7 +729,7 @@ function RecommendationsPage({
               </div>
 
               {isGenerating && (
-                <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600 mb-6" aria-live="polite">
                   <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
                   {t('common.loading')}
                 </div>
@@ -863,7 +866,7 @@ function VacanciesPage({
       setPage(0);
       appliedRef.current = true;
     }
-  }, [useProfile, profile]);
+  }, [useProfile, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const hasProfileData =
@@ -911,7 +914,7 @@ function VacanciesPage({
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
-  }, [aiSuggestion, aiLoading, useProfile, searchQuery]);
+  }, [aiSuggestion, aiLoading, useProfile, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyAISuggestion = () => {
     if (!aiSuggestion) return;
@@ -1111,7 +1114,7 @@ function VacanciesPage({
     return () => {
       try { ac.abort(); } catch {}
     };
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // eslint-disable-line
 
   useEffect(() => {
     if (bootstrapped) return;
