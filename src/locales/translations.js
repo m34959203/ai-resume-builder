@@ -7,10 +7,14 @@ export const translations = {
       vacancies: 'Вакансии',
       recommendations: 'Рекомендации'
     },
-    
+
     // Главная страница
     home: {
       badge: 'AI-powered Resume Builder',
+      // для синего акцента
+      titlePrefix: 'Создайте идеальное резюме',
+      titleAccent: 'за минуты',
+      // оставляем старый ключ на случай, если где-то ещё используется
       title: 'Создайте идеальное резюме за минуты',
       subtitle: 'ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии',
       createButton: 'Создать резюме',
@@ -30,7 +34,7 @@ export const translations = {
         }
       }
     },
-    
+
     // Рекомендации
     recommendations: {
       title: 'AI Рекомендации',
@@ -48,9 +52,18 @@ export const translations = {
       duration: 'Длительность',
       details: 'Подробнее',
       findVacanciesButton: 'Найти вакансии',
-      improveResume: 'Улучшить резюме'
+      improveResume: 'Улучшить резюме',
+
+      // 🔹 новые ключи, которые использует интерфейс
+      needMoreData: 'Нужно немного больше данных',
+      missingSections: 'Отсутствуют разделы',
+      hint: 'Ниже — подборка направлений, навыков и курсов. Нажмите на профессию, чтобы сразу искать вакансии.',
+      generate: 'Сгенерировать рекомендации',
+      generating: 'Генерируем рекомендации…',
+      openCourse: 'Открыть курс',
+      searchVacancies: 'Искать вакансии по этой профессии'
     },
-    
+
     // Вакансии
     vacancies: {
       title: 'Поиск вакансий',
@@ -105,7 +118,7 @@ export const translations = {
       searchError: 'Поиск недоступен',
       loadError: 'Ошибка загрузки вакансий.'
     },
-    
+
     // Страница конструктора
     builder: {
       title: 'Конструктор резюме',
@@ -116,7 +129,7 @@ export const translations = {
         skills: 'Навыки',
         preview: 'Предварительный просмотр'
       },
-      
+
       // Личные данные
       personal: {
         fullName: 'Полное имя',
@@ -132,9 +145,10 @@ export const translations = {
         summary: 'О себе',
         summaryPlaceholder: 'Опишите ваш опыт и цели...'
       },
-      
+
       // Опыт работы
       experience: {
+        label: 'Опыт', // 🔹 добавлено
         addExperience: 'Добавить опыт',
         company: 'Компания',
         companyPlaceholder: 'ТОО "Компания"',
@@ -147,7 +161,7 @@ export const translations = {
         descriptionPlaceholder: 'Опишите ваши достижения и обязанности...',
         remove: 'Удалить'
       },
-      
+
       // Образование
       education: {
         addEducation: 'Добавить образование',
@@ -161,7 +175,7 @@ export const translations = {
         endDate: 'Окончание',
         remove: 'Удалить'
       },
-      
+
       // Навыки
       skills: {
         title: 'Навыки',
@@ -169,7 +183,7 @@ export const translations = {
         skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Удалить'
       },
-      
+
       // Кнопки
       buttons: {
         previous: 'Назад',
@@ -179,7 +193,7 @@ export const translations = {
         save: 'Сохранить',
         cancel: 'Отмена'
       },
-      
+
       // Сообщения
       messages: {
         saving: 'Сохранение...',
@@ -189,7 +203,7 @@ export const translations = {
         fillRequired: 'Заполните обязательные поля'
       }
     },
-    
+
     // Футер
     footer: {
       description: 'Создавайте профессиональные резюме с помощью ИИ',
@@ -210,7 +224,7 @@ export const translations = {
       copyright: '© 2025 AI Resume Builder. Все права защищены.',
       integration: 'Интеграция с HeadHunter: поиск вакансий и переход на HH для отклика'
     },
-    
+
     // Общие
     common: {
       loading: 'Загрузка...',
@@ -225,7 +239,7 @@ export const translations = {
       back: 'Назад'
     }
   },
-  
+
   kk: {
     // Навигация
     nav: {
@@ -234,10 +248,14 @@ export const translations = {
       vacancies: 'Вакансиялар',
       recommendations: 'Ұсыныстар'
     },
-    
+
     // Главная страница
     home: {
       badge: 'AI-қолдаумен Түйіндеме Құрастырушы',
+      // для синего акцента
+      titlePrefix: 'Керемет түйіндеме жасаңыз',
+      titleAccent: 'бірнеше минутта',
+      // совместимость
       title: 'Бірнеше минутта керемет түйіндеме жасаңыз',
       subtitle: 'AI қуатты түйіндеме дайындауға және қолайлы вакансияларды табуға көмектеседі',
       createButton: 'Түйіндеме жасау',
@@ -257,7 +275,7 @@ export const translations = {
         }
       }
     },
-    
+
     // Рекомендации
     recommendations: {
       title: 'AI Ұсыныстары',
@@ -275,9 +293,18 @@ export const translations = {
       duration: 'Ұзақтығы',
       details: 'Толығырақ',
       findVacanciesButton: 'Вакансия табу',
-      improveResume: 'Түйіндемені жақсарту'
+      improveResume: 'Түйіндемені жақсарту',
+
+      // 🔹 новые ключи
+      needMoreData: 'Қосымша бірнеше дерек қажет',
+      missingSections: 'Жетіспейтін бөлімдер',
+      hint: 'Төменде бағыттар, дағдылар және курстар іріктелді. Вакансияларды бірден іздеу үшін мамандықты басыңыз.',
+      generate: 'Ұсыныстарды генерациялау',
+      generating: 'Ұсыныстар жасалуда…',
+      openCourse: 'Курсты ашу',
+      searchVacancies: 'Осы мамандық бойынша іздеу'
     },
-    
+
     // Вакансии
     vacancies: {
       title: 'Вакансия іздеу',
@@ -332,7 +359,7 @@ export const translations = {
       searchError: 'Іздеу қолжетімсіз',
       loadError: 'Вакансияларды жүктеу қатесі.'
     },
-    
+
     // Страница конструктора
     builder: {
       title: 'Түйіндеме құрастырушысы',
@@ -343,7 +370,7 @@ export const translations = {
         skills: 'Дағдылар',
         preview: 'Алдын ала қарау'
       },
-      
+
       // Личные данные
       personal: {
         fullName: 'Толық аты-жөні',
@@ -359,9 +386,10 @@ export const translations = {
         summary: 'Өзім туралы',
         summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...'
       },
-      
+
       // Опыт работы
       experience: {
+        label: 'Тәжірибе', // 🔹 қосылды
         addExperience: 'Тәжірибе қосу',
         company: 'Компания',
         companyPlaceholder: 'ЖШС "Компания"',
@@ -374,7 +402,7 @@ export const translations = {
         descriptionPlaceholder: 'Жетістіктеріңіз бен міндеттеріңізді сипаттаңыз...',
         remove: 'Жою'
       },
-      
+
       // Образование
       education: {
         addEducation: 'Білім қосу',
@@ -388,7 +416,7 @@ export const translations = {
         endDate: 'Аяқталуы',
         remove: 'Жою'
       },
-      
+
       // Навыки
       skills: {
         title: 'Дағдылар',
@@ -396,7 +424,7 @@ export const translations = {
         skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Жою'
       },
-      
+
       // Кнопки
       buttons: {
         previous: 'Артқа',
@@ -406,7 +434,7 @@ export const translations = {
         save: 'Сақтау',
         cancel: 'Болдырмау'
       },
-      
+
       // Сообщения
       messages: {
         saving: 'Сақталуда...',
@@ -416,7 +444,7 @@ export const translations = {
         fillRequired: 'Міндетті өрістерді толтырыңыз'
       }
     },
-    
+
     // Футер
     footer: {
       description: 'AI көмегімен кәсіби түйіндемелер жасаңыз',
@@ -437,7 +465,7 @@ export const translations = {
       copyright: '© 2025 AI Resume Builder. Барлық құқықтар қорғалған.',
       integration: 'HeadHunter-мен интеграция: вакансияларды іздеу және жауап беру үшін HH-ге өту'
     },
-    
+
     // Общие
     common: {
       loading: 'Жүктелуде...',
@@ -452,7 +480,7 @@ export const translations = {
       back: 'Артқа'
     }
   },
-  
+
   en: {
     // Navigation
     nav: {
@@ -461,10 +489,14 @@ export const translations = {
       vacancies: 'Jobs',
       recommendations: 'Recommendations'
     },
-    
+
     // Home page
     home: {
       badge: 'AI-powered Resume Builder',
+      // for blue accent
+      titlePrefix: 'Create the perfect resume',
+      titleAccent: 'in minutes',
+      // compatibility
       title: 'Create the perfect resume in minutes',
       subtitle: 'AI helps you quickly prepare a strong resume and find suitable vacancies',
       createButton: 'Create Resume',
@@ -484,7 +516,7 @@ export const translations = {
         }
       }
     },
-    
+
     // Recommendations
     recommendations: {
       title: 'AI Recommendations',
@@ -502,9 +534,18 @@ export const translations = {
       duration: 'Duration',
       details: 'Details',
       findVacanciesButton: 'Find Jobs',
-      improveResume: 'Improve Resume'
+      improveResume: 'Improve Resume',
+
+      // 🔹 new keys
+      needMoreData: 'We need a bit more data',
+      missingSections: 'Missing sections',
+      hint: 'Below are suggested roles, skills and courses. Click a profession to search jobs instantly.',
+      generate: 'Generate recommendations',
+      generating: 'Generating recommendations…',
+      openCourse: 'Open course',
+      searchVacancies: 'Search jobs for this profession'
     },
-    
+
     // Vacancies
     vacancies: {
       title: 'Job Search',
@@ -559,7 +600,7 @@ export const translations = {
       searchError: 'Search unavailable',
       loadError: 'Error loading vacancies.'
     },
-    
+
     // Builder page
     builder: {
       title: 'Resume Builder',
@@ -570,7 +611,7 @@ export const translations = {
         skills: 'Skills',
         preview: 'Preview'
       },
-      
+
       // Personal info
       personal: {
         fullName: 'Full Name',
@@ -586,9 +627,10 @@ export const translations = {
         summary: 'About',
         summaryPlaceholder: 'Describe your experience and goals...'
       },
-      
+
       // Work experience
       experience: {
+        label: 'Experience', // 🔹 added
         addExperience: 'Add Experience',
         company: 'Company',
         companyPlaceholder: 'Company LLC',
@@ -601,7 +643,7 @@ export const translations = {
         descriptionPlaceholder: 'Describe your achievements and responsibilities...',
         remove: 'Remove'
       },
-      
+
       // Education
       education: {
         addEducation: 'Add Education',
@@ -615,7 +657,7 @@ export const translations = {
         endDate: 'End Date',
         remove: 'Remove'
       },
-      
+
       // Skills
       skills: {
         title: 'Skills',
@@ -623,7 +665,7 @@ export const translations = {
         skillPlaceholder: 'JavaScript, React, Node.js...',
         remove: 'Remove'
       },
-      
+
       // Buttons
       buttons: {
         previous: 'Previous',
@@ -633,7 +675,7 @@ export const translations = {
         save: 'Save',
         cancel: 'Cancel'
       },
-      
+
       // Messages
       messages: {
         saving: 'Saving...',
@@ -643,7 +685,7 @@ export const translations = {
         fillRequired: 'Fill in required fields'
       }
     },
-    
+
     // Footer
     footer: {
       description: 'Create professional resumes with AI',
@@ -664,7 +706,7 @@ export const translations = {
       copyright: '© 2025 AI Resume Builder. All rights reserved.',
       integration: 'HeadHunter integration: job search and transition to HH for application'
     },
-    
+
     // Common
     common: {
       loading: 'Loading...',

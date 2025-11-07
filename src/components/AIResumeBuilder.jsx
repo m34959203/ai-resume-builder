@@ -588,8 +588,10 @@ function HomePage({ onCreate, onFindJobs }) {
             <span className="text-sm font-medium">{t('home.badge')}</span>
           </div>
           <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            {t('home.title')}
+            {t('home.titlePrefix')}{' '}
+            <span className="text-blue-600">{t('home.titleAccent')}</span>
           </h1>
+
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
             {t('home.subtitle')}
           </p>
