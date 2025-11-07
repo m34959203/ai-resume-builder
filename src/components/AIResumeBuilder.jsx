@@ -180,7 +180,7 @@ function missingProfileSections(p = {}, t) {
   if (!(Array.isArray(p.experience) && p.experience.length)) miss.push(t('builder.steps.experience'));
   if (!(Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3)) miss.push(t('builder.steps.skills'));
   if (!(Array.isArray(p.education) && p.education.length)) miss.push(t('builder.steps.education'));
-  if (!(normalizeText(p.summary).length >= 20)) miss.push(t('builder.personal.about'));
+  if (!(normalizeText(p.summary).length >= 20)) miss.push(t('builder.personal.summary'));
   return miss;
 }
 
@@ -262,7 +262,7 @@ function CitySelect({ value, onChange }) {
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         className="w-full px-4 py-2 border rounded-lg"
-        aria-label={t('builder.personal.city')}
+        aria-label={t('builder.personal.location')}
       />
       {open && (
         <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow-lg">
@@ -305,7 +305,7 @@ function AIResumeBuilder() {
     age: '',
     maritalStatus: '',
     children: '',
-    driversLicense: '',
+    driverLicense: '',
     summary: '',
     experience: [],
     education: [],
@@ -429,7 +429,7 @@ function AIResumeBuilder() {
             <button
               onClick={() => setCurrentPage('home')}
               className="flex items-center gap-2 cursor-pointer"
-              aria-label="AI Resume"
+              aria-label={t('nav.home')}
             >
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <FileText className="text-white" size={24} />
@@ -442,19 +442,19 @@ function AIResumeBuilder() {
                 onClick={() => setCurrentPage('builder')}
                 className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <FileText size={18} /> {t('nav.resume')}
+                <FileText size={18} /> {t('nav.builder')}
               </button>
               <button
                 onClick={() => setCurrentPage('vacancies')}
                 className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <Briefcase size={18} /> {t('nav.jobs')}
+                <Briefcase size={18} /> {t('nav.vacancies')}
               </button>
               <button
                 onClick={() => setCurrentPage('recommendations')}
                 className="text-gray-700 hover:text-blue-600 font-medium flex items-center gap-2"
               >
-                <TrendingUp size={18} /> {t('nav.recs')}
+                <TrendingUp size={18} /> {t('nav.recommendations')}
               </button>
 
               <LanguageSwitcher />
@@ -861,7 +861,7 @@ function VacanciesPage({
       setPage(0);
       appliedRef.current = true;
     }
-  }, [useProfile, profile]); // eslint-disable-line
+  }, [useProfile, profile]);
 
   useEffect(() => {
     const hasProfileData =
@@ -909,7 +909,7 @@ function VacanciesPage({
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
-  }, [aiSuggestion, aiLoading, useProfile, searchQuery]); // eslint-disable-line
+  }, [aiSuggestion, aiLoading, useProfile, searchQuery]);
 
   const applyAISuggestion = () => {
     if (!aiSuggestion) return;
@@ -1109,7 +1109,7 @@ function VacanciesPage({
     return () => {
       try { ac.abort(); } catch {}
     };
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // eslint-disable-line
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]);
 
   useEffect(() => {
     if (bootstrapped) return;
@@ -1179,7 +1179,7 @@ function VacanciesPage({
                         {aiSuggestion.experience ? (
                           <>
                             {' '}
-                            • {t('vacancies.experienceLabel')}: <b>{prettyExp(aiSuggestion.experience, t)}</b>
+                            • {t('builder.experience.label')}: <b>{prettyExp(aiSuggestion.experience, t)}</b>
                           </>
                         ) : null}
                         {typeof aiSuggestion.confidence === 'number' ? (
