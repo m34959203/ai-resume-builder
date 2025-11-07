@@ -844,8 +844,12 @@ function VacanciesPage({
   const appliedRef = useRef(false);
   const reqIdRef = useRef(0);
 
+  // ⬇️ флаг для авто-расширения (чтобы не зациклиться)
+  const [autoRelaxInfo, setAutoRelaxInfo] = useState(null);
+
   useEffect(() => { setPage(0); }, [searchQuery, filters.location, filters.experience, filters.salary]);
 
+  // подтягиваем город/опыт/роль из профиля
   useEffect(() => {
     if (!useProfile) return;
     if (appliedRef.current && !profile) return;
@@ -876,8 +880,9 @@ function VacanciesPage({
       setPage(0);
       appliedRef.current = true;
     }
-  }, [useProfile, profile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [useProfile, profile]); // eslint-disable-line
 
+  // подсказка ИИ
   useEffect(() => {
     const hasProfileData =
       !!(profile?.summary && profile.summary.trim()) ||
@@ -906,6 +911,7 @@ function VacanciesPage({
     })();
   }, [useProfile, profile, t]);
 
+  // авто-применение подсказки
   useEffect(() => {
     if (!useProfile || aiAutoAppliedRef.current || !aiSuggestion || aiLoading) return;
 
@@ -924,7 +930,7 @@ function VacanciesPage({
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
-  }, [aiSuggestion, aiLoading, useProfile, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aiSuggestion, aiLoading, useProfile, searchQuery]); // eslint-disable-line
 
   const applyAISuggestion = () => {
     if (!aiSuggestion) return;
@@ -937,183 +943,203 @@ function VacanciesPage({
     setPage(0);
   };
 
+  // добавление навыка в строку поиска
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(
-      `(^|\\s)${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`,
-      'i'
-    ).test(searchQuery);
+    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
     if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
-  const debouncedSearch = useDebouncedValue(searchQuery, 800);
+  // дебаунсы
+  function useDebouncedValue(value, delay = 650) {
+    const [v, setV] = useState(value);
+    useEffect(() => {
+      const t = setTimeout(() => setV(value), delay);
+      return () => clearTimeout(t);
+    }, [value, delay]);
+    return v;
+  }
+  const debouncedSearch = useDebouncedValue(searchQuery, 650);
   const filtersKey = useMemo(
-    () =>
-      JSON.stringify({
-        location: filters.location,
-        experience: filters.experience,
-        salary: filters.salary,
-      }),
+    () => JSON.stringify({ location: filters.location, experience: filters.experience, salary: filters.salary }),
     [filters.location, filters.experience, filters.salary]
   );
-  const debouncedFiltersKey = useDebouncedValue(filtersKey, 800);
+  const debouncedFiltersKey = useDebouncedValue(filtersKey, 650);
 
-  const runSearch = async ({
-    typedText,
-    chosenCity,
-    chosenExp,
-    salaryVal,
-    pageArg,
-    perPageArg,
-    abortSignal,
-    myId,
-  }) => {
-    setLoading(true);
-    setError('');
+  // единая функция маппинга
+  const mapResponse = useCallback((data) => {
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const stripHtml = (t) =>
+      String(t || '').replace(/<\/?highlighttext[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
 
-    const inferredRole = aiSuggestion?.role || deriveQueryFromProfile(profile) || '';
-    const inferredCity = aiSuggestion?.city || (profile?.location || '');
-    const inferredExp  = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
+    const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
+    const goodSkills = (arr) =>
+      (Array.isArray(arr) ? arr : [])
+        .map((s) => String(s || '').trim())
+        .filter((t) => t && !ban.has(t.toLowerCase()) && (t.length > 2 || /[A-Za-z]/.test(t)))
+        .slice(0, 12);
 
-    const effectiveText = (typedText || '').trim() || inferredRole || 'разработчик';
-    const effectiveCity = chosenCity || inferredCity || undefined;
-    const effectiveExp  = (chosenExp === 'none')
-      ? 'noExperience'
-      : (chosenExp || inferredExp || '');
+    const mapped = items.map((v) => {
+      let salaryText = t('vacancies.salaryNegotiable');
+      const raw = v.salary_raw || v.salary || {};
+      if (typeof v.salary === 'string' && v.salary.trim()) {
+        salaryText = v.salary.trim();
+      } else if (raw && (raw.from || raw.to)) {
+        const from = raw.from ? String(raw.from) : '';
+        const to   = raw.to   ? String(raw.to)   : '';
+        const cur  = raw.currency || raw.cur || '';
+        const range = [from, to].filter(Boolean).join(' – ');
+        salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
+      }
+      return {
+        id: v.id,
+        title: v.title || v.name || t('vacancies.vacancyTitle'),
+        company: typeof v.employer === 'string' ? v.employer : (v.employer?.name || ''),
+        salary: salaryText,
+        location: v.area?.name || v.area || '',
+        experience: v.experience?.name || v.experience || '',
+        description: stripHtml(v.description || v.snippet?.responsibility || v.snippet?.requirement || ''),
+        skills: goodSkills(v.keywords),
+        alternate_url: v.url || v.alternate_url || '',
+      };
+    });
 
-    const salaryNum = salaryVal
-      ? String(salaryVal).replace(/\D/g, '')
-      : undefined;
-
-    const params = {
-      text: effectiveText,
-      experience: effectiveExp || undefined,
-      salary: salaryNum,
-      city: effectiveCity,
-      host: HOST,
-      page: pageArg,
-      per_page: perPageArg,
-      signal: abortSignal,
-      timeoutMs: 12000,
+    return {
+      items: mapped,
+      found: Number(data?.found || mapped.length || 0),
+      pages: Number(data?.pages || (mapped.length ? 1 : 0)),
     };
+  }, [t]);
 
-    try {
-      const data = await searchJobsSmart(params);
-      if (reqIdRef.current !== myId) return;
-
-      const items = Array.isArray(data?.items) ? data.items : [];
-
-      const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
-      const mapSkill = (s) => String(s || '').trim();
-      const goodSkills = (arr) =>
-        (Array.isArray(arr) ? arr : [])
-          .map(mapSkill)
-          .filter(
-            (t) =>
-              t &&
-              !ban.has(t.toLowerCase()) &&
-              (t.length > 2 || /[A-Za-z]/.test(t))
-          )
-          .slice(0, 12);
-
-      const stripHtml = (t) =>
-        String(t || '')
-          .replace(/<\/?highlighttext[^>]*>/gi, '')
-          .replace(/<[^>]+>/g, '')
-          .trim();
-
-      const mapped = items.map((v) => {
-        let salaryText = t('vacancies.salaryNegotiable');
-        const raw = v.salary_raw || v.salary || {};
-        if (typeof v.salary === 'string' && v.salary.trim()) {
-          salaryText = v.salary.trim();
-        } else if (raw && (raw.from || raw.to)) {
-          const from = raw.from ? String(raw.from) : '';
-          const to   = raw.to   ? String(raw.to)   : '';
-          const cur  = raw.currency || raw.cur || '';
-          const range = [from, to].filter(Boolean).join(' – ');
-          salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
-        }
-
-        return {
-          id: v.id,
-          title: v.title || v.name || t('vacancies.vacancyTitle'),
-          company:
-            typeof v.employer === 'string'
-              ? v.employer
-              : (v.employer?.name || ''),
-          salary: salaryText,
-          location: v.area?.name || v.area || '',
-          experience: v.experience?.name || v.experience || '',
-          description: stripHtml(
-            v.description ||
-              v.snippet?.responsibility ||
-              v.snippet?.requirement ||
-              ''
-          ),
-          skills: goodSkills(v.keywords),
-          alternate_url: v.url || v.alternate_url || '',
-        };
-      });
-
-      setVacancies(mapped);
-      setFound(Number(data?.found || items.length || 0));
-      setPages(Number(data?.pages || (items.length ? 1 : 0)));
+  // главный раннер с авто-расширением
+  const runSearch = useCallback(
+    async ({
+      typedText,
+      chosenCity,
+      chosenExp,
+      salaryVal,
+      pageArg,
+      perPageArg,
+      abortSignal,
+      myId,
+    }) => {
+      setLoading(true);
       setError('');
-      setRetryAfter(null);
-    } catch (e) {
-      if (reqIdRef.current !== myId) return;
-      if (e?.name === 'AbortError') return;
 
-      if (isHttpError(e)) {
-        const status = e.status || 0;
-        if (status === 429) {
-          const serverRetry = Number(e?.body?.retry_after || 0);
-          const retryMs = serverRetry ? serverRetry * 1000 : 3000;
-          setRetryAfter(Date.now() + retryMs);
-          setError(
-            `${t('vacancies.rateLimited')} ~${Math.ceil(
-              retryMs / 1000
-            )} ${t('vacancies.sec')}`
-          );
-        } else {
-          const details =
-            typeof e.body === 'string'
-              ? e.body
-              : (e.body?.details || e.body?.message || '');
-          setError(
-            `${t('vacancies.searchError')} (HTTP ${status})${
-              details ? ` — ${details}` : ''
-            }`
-          );
+      const inferredRole = aiSuggestion?.role || deriveDesiredRole(profile) || '';
+      const inferredCity = aiSuggestion?.city || (profile?.location || '');
+      const inferredExp  = hhExpFromAi(aiSuggestion?.experience) || calcExperienceCategory(profile) || '';
+
+      const baseText = (typedText || '').trim() || inferredRole || 'разработчик';
+      const baseCity = chosenCity || inferredCity || undefined;
+      const baseExp  = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
+
+      const salaryNum = salaryVal ? String(salaryVal).replace(/\D/g, '') : undefined;
+
+      // локальный хелпер для одного запроса
+      const doQuery = async (text, city, exp) => {
+        const params = {
+          text,
+          experience: exp || undefined,
+          salary: salaryNum,
+          city,
+          host: HOST,
+          page: pageArg,
+          per_page: perPageArg,
+          signal: abortSignal,
+          timeoutMs: 12000,
+        };
+        const data = await searchJobsSmart(params);
+        return mapResponse(data);
+      };
+
+      try {
+        // 1) основной запрос
+        let res = await doQuery(baseText, baseCity, baseExp);
+        if (reqIdRef.current !== myId) return;
+
+        // 2) авто-расширение: если пусто — убираем город
+        if (!res.items.length && baseCity) {
+          const widened = await doQuery(baseText, undefined, baseExp);
+          if (reqIdRef.current !== myId) return;
+          if (widened.items.length) {
+            res = widened;
+            setAutoRelaxInfo({ dropped: 'city' });
+          }
         }
-      } else {
-        setError(t('vacancies.loadError'));
-      }
 
-      setVacancies(mockVacancies);
-      setFound(mockVacancies.length);
-      setPages(1);
-      setPage(0);
-    } finally {
-      if (reqIdRef.current === myId) {
-        setLoading(false);
-      }
-    }
-  };
+        // 3) всё ещё пусто — убираем опыт
+        if (!res.items.length && baseExp) {
+          const noExp = await doQuery(baseText, undefined, '');
+          if (reqIdRef.current !== myId) return;
+          if (noExp.items.length) {
+            res = noExp;
+            setAutoRelaxInfo({ dropped: 'experience' });
+          }
+        }
 
+        // 4) всё ещё пусто — подставляем общий текст
+        if (!res.items.length && baseText) {
+          const generic = await doQuery('разработчик', undefined, '');
+          if (reqIdRef.current !== myId) return;
+          if (generic.items.length) {
+            res = generic;
+            setAutoRelaxInfo({ dropped: 'all' });
+          }
+        }
+
+        setVacancies(res.items);
+        setFound(res.found);
+        setPages(res.pages);
+        setError('');
+        setRetryAfter(null);
+      } catch (e) {
+        if (reqIdRef.current !== myId) return;
+        if (e?.name === 'AbortError') return;
+
+        if (isHttpError(e)) {
+          const status = e.status || 0;
+          if (status === 429) {
+            const serverRetry = Number(e?.body?.retry_after || 0);
+            const retryMs = serverRetry ? serverRetry * 1000 : 3000;
+            setRetryAfter(Date.now() + retryMs);
+            setError(`${t('vacancies.rateLimited')} ~${Math.ceil(retryMs / 1000)} ${t('vacancies.sec')}`);
+          } else {
+            const details = typeof e.body === 'string' ? e.body : (e.body?.details || e.body?.message || '');
+            setError(`${t('vacancies.searchError')} (HTTP ${status})${details ? ` — ${details}` : ''}`);
+          }
+        } else {
+          setError(t('vacancies.loadError'));
+        }
+
+        // безопасный мок, чтобы не оставлять пусто
+        setVacancies(mockVacancies);
+        setFound(mockVacancies.length);
+        setPages(1);
+        setPage(0);
+      } finally {
+        if (reqIdRef.current === myId) setLoading(false);
+      }
+    },
+    [aiSuggestion, profile, mapResponse, setVacancies, mockVacancies, t]
+  );
+
+  // сброс авто-расширения при явном изменении пользователем
+  useEffect(() => { setAutoRelaxInfo(null); }, [debouncedSearch, debouncedFiltersKey]);
+
+  // основной эффект запуска поиска
   useEffect(() => {
     if (blocked) return;
-
     const ac = new AbortController();
     const myId = ++reqIdRef.current;
 
+    const chosenExp = filters.experience?.trim();
     runSearch({
       typedText: debouncedSearch,
       chosenCity: filters.location?.trim(),
-      chosenExp: filters.experience?.trim(),
+      chosenExp,
       salaryVal: filters.salary,
       pageArg: page,
       perPageArg: perPage,
@@ -1121,21 +1147,15 @@ function VacanciesPage({
       myId,
     });
 
-    return () => {
-      try { ac.abort(); } catch {}
-    };
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked, aiSuggestion]); // eslint-disable-line
+    return () => { try { ac.abort(); } catch {} };
+  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked]); // eslint-disable-line
 
+  // мягкий бутстрап (для "резюме → вакансии") — просто фиксируем, что старт состоялся
   useEffect(() => {
     if (bootstrapped) return;
-
-    const derivedRole = deriveQueryFromProfile(profile) || '';
-    const haveMeaningfulQuery =
-      (searchQuery && searchQuery.trim()) ||
-      (derivedRole && derivedRole.trim());
-
+    const derivedRole = deriveDesiredRole(profile) || '';
+    const haveMeaningfulQuery = (searchQuery && searchQuery.trim()) || (derivedRole && derivedRole.trim());
     if (!haveMeaningfulQuery) return;
-
     setBootstrapped(true);
   }, [bootstrapped, searchQuery, profile]);
 
@@ -1158,6 +1178,7 @@ function VacanciesPage({
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <h2 className="text-3xl font-bold mb-6">{t('vacancies.title')}</h2>
 
+          {/* ИИ-подсказка (оставляем как было) */}
           {(aiLoading || aiSuggestion || aiError) && (
             <div className="mb-6 rounded-xl p-5 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
               <div className="flex items-start justify-between gap-4">
@@ -1166,71 +1187,42 @@ function VacanciesPage({
                     <Sparkles className="text-purple-600" size={20} />
                   </div>
                   <div>
-                    <div className="font-semibold mb-1">
-                      {t('vacancies.aiSuggestion')}
-                    </div>
-
+                    <div className="font-semibold mb-1">{t('vacancies.aiSuggestion')}</div>
                     {aiLoading && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <span className="inline-block w-4 h-4 rounded-full border-2 border-purple-600 border-t-transparent animate-spin" />
                         {t('vacancies.aiAnalyzing')}
                       </div>
                     )}
-
-                    {aiError && !aiLoading && (
-                      <div className="text-sm text-red-600">{aiError}</div>
-                    )}
-
+                    {aiError && !aiLoading && <div className="text-sm text-red-600">{aiError}</div>}
                     {aiSuggestion && !aiLoading && (
                       <div className="text-sm text-gray-700">
                         {t('vacancies.aiSuggestSearch')}{' '}
                         <b>{aiSuggestion.role || t('vacancies.suitableRole')}</b>
-                        {aiSuggestion.city ? (
-                          <>
-                            {' '}
-                            {t('vacancies.in')} <b>{aiSuggestion.city}</b>
-                          </>
-                        ) : null}
-                        {aiSuggestion.experience ? (
-                          <>
-                            {' '}
-                            • {t('builder.experience.label')}: <b>{prettyExp(aiSuggestion.experience, t)}</b>
-                          </>
-                        ) : null}
-                        {typeof aiSuggestion.confidence === 'number' ? (
-                          <>
-                            {' '}
-                            • {t('vacancies.aiConfidence')}: <b>{Math.round(aiSuggestion.confidence * 100)}%</b>
-                          </>
-                        ) : null}
-
+                        {aiSuggestion.city ? <> {t('vacancies.in')} <b>{aiSuggestion.city}</b></> : null}
+                        {aiSuggestion.experience ? <> • {t('builder.experience.label')}: <b>{prettyExp(aiSuggestion.experience, t)}</b></> : null}
+                        {typeof aiSuggestion.confidence === 'number' ? <> • {t('vacancies.aiConfidence')}: <b>{Math.round(aiSuggestion.confidence * 100)}%</b></> : null}
                         {(aiSuggestion.skills || []).length ? (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            {(aiSuggestion.skills || [])
-                              .slice(0, 8)
-                              .map((s, i) => (
-                                <button
-                                  key={`${s}-${i}`}
-                                  onClick={() => addSkillToQuery(s)}
-                                  className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
-                                  title={t('vacancies.addToSearch')}
-                                >
-                                  + {s}
-                                </button>
-                              ))}
+                            {(aiSuggestion.skills || []).slice(0, 8).map((s, i) => (
+                              <button
+                                key={`${s}-${i}`}
+                                onClick={() => addSkillToQuery(s)}
+                                className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs hover:bg-blue-200"
+                                title={t('vacancies.addToSearch')}
+                              >
+                                + {s}
+                              </button>
+                            ))}
                           </div>
                         ) : null}
                       </div>
                     )}
                   </div>
                 </div>
-
                 <div className="flex gap-2 shrink-0">
                   {aiSuggestion && !aiLoading && (
-                    <button
-                      onClick={applyAISuggestion}
-                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-                    >
+                    <button onClick={applyAISuggestion} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
                       {t('vacancies.aiApply')}
                     </button>
                   )}
@@ -1271,20 +1263,22 @@ function VacanciesPage({
           {blocked && (
             <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
               {t('vacancies.rateLimited')}{' '}
-              <b>
-                {Math.max(1, Math.ceil((retryAfter - Date.now()) / 1000))}{' '}
-                {t('vacancies.sec')}
-              </b>
+              <b>{Math.max(1, Math.ceil((retryAfter - Date.now()) / 1000))} {t('vacancies.sec')}</b>
+            </div>
+          )}
+
+          {/* Бейджик про авто-расширение (не обязателен, но полезно) */}
+          {autoRelaxInfo && (
+            <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
+              {autoRelaxInfo.dropped === 'city' && t('vacancies.autoRelax.city')}
+              {autoRelaxInfo.dropped === 'experience' && t('vacancies.autoRelax.experience')}
+              {autoRelaxInfo.dropped === 'all' && t('vacancies.autoRelax.all')}
             </div>
           )}
 
           <div className="flex flex-col gap-4 mb-4 md:flex-row md:items-center">
             <div className="flex-1 relative">
-              <Search
-                className="absolute left-3 top-3 text-gray-400"
-                size={20}
-                aria-hidden
-              />
+              <Search className="absolute left-3 top-3 text-gray-400" size={20} aria-hidden />
               <input
                 type="text"
                 value={searchQuery}
@@ -1319,31 +1313,20 @@ function VacanciesPage({
           </div>
 
           {showFilters && (
-            <div
-              id="filters-panel"
-              className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"
-            >
+            <div id="filters-panel" className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t('vacancies.cityLabel')}
-                </label>
+                <label className="block text-sm font-medium mb-2">{t('vacancies.cityLabel')}</label>
                 <CitySelect
                   value={filters.location}
-                  onChange={(name) =>
-                    setFilters((f) => ({ ...f, location: name }))
-                  }
+                  onChange={(name) => setFilters((f) => ({ ...f, location: name }))}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t('vacancies.experienceLabel')}
-                </label>
+                <label className="block text-sm font-medium mb-2">{t('vacancies.experienceLabel')}</label>
                 <select
                   value={filters.experience}
-                  onChange={(e) =>
-                    setFilters({ ...filters, experience: e.target.value })
-                  }
+                  onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
                   className="w-full px-4 py-2 border rounded-lg"
                 >
                   <option value="">{t('vacancies.experience.any')}</option>
@@ -1355,15 +1338,11 @@ function VacanciesPage({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t('vacancies.salaryLabel')}
-                </label>
+                <label className="block text-sm font-medium mb-2">{t('vacancies.salaryLabel')}</label>
                 <input
                   type="text"
                   value={filters.salary}
-                  onChange={(e) =>
-                    setFilters({ ...filters, salary: e.target.value })
-                  }
+                  onChange={(e) => setFilters({ ...filters, salary: e.target.value })}
                   placeholder={t('vacancies.salaryPlaceholder')}
                   className="w-full px-4 py-2 border rounded-lg"
                   inputMode="numeric"
@@ -1376,21 +1355,17 @@ function VacanciesPage({
             <div>
               {loading
                 ? t('vacancies.loading')
-                : (
-                  <>
+                : (<>
                     {t('vacancies.found')}: <span className="font-semibold">{found}</span>
                     {pages ? ` • ${t('vacancies.page')} ${page + 1} ${t('vacancies.of')} ${pages}` : ''}
-                  </>
-                )}
+                  </>)}
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 disabled={!canPrev || loading}
                 onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
-                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
-                  !canPrev || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                }`}
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${!canPrev || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                 title={t('vacancies.previous')}
                 aria-label={t('vacancies.previous')}
               >
@@ -1399,9 +1374,7 @@ function VacanciesPage({
               <button
                 disabled={!canNext || loading}
                 onClick={() => canNext && setPage((p) => p + 1)}
-                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${
-                  !canNext || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                }`}
+                className={`px-3 py-2 border rounded-lg flex items-center gap-1 ${!canNext || loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                 title={t('vacancies.next')}
                 aria-label={t('vacancies.next')}
               >
@@ -1414,15 +1387,10 @@ function VacanciesPage({
 
           <div className="space-y-4">
             {vacancies.map((vacancy) => (
-              <div
-                key={vacancy.id}
-                className="border rounded-lg p-6 hover:shadow-md transition"
-              >
+              <div key={vacancy.id} className="border rounded-lg p-6 hover:shadow-md transition">
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="text-xl font-bold mb-1">
-                      {vacancy.title}
-                    </h3>
+                    <h3 className="text-xl font-bold mb-1">{vacancy.title}</h3>
                     <p className="text-gray-600">{vacancy.company}</p>
                   </div>
                   <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
@@ -1431,27 +1399,16 @@ function VacanciesPage({
                 </div>
 
                 <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
-                  <span className="flex items-center gap-1">
-                    <MapPin size={14} /> {vacancy.location || '—'}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Award size={14} /> {vacancy.experience || '—'}
-                  </span>
+                  <span className="flex items-center gap-1"><MapPin size={14} /> {vacancy.location || '—'}</span>
+                  <span className="flex items-center gap-1"><Award size={14} /> {vacancy.experience || '—'}</span>
                 </div>
 
-                {vacancy.description && (
-                  <p className="text-gray-700 mb-4">
-                    {vacancy.description}
-                  </p>
-                )}
+                {vacancy.description && <p className="text-gray-700 mb-4">{vacancy.description}</p>}
 
                 {!!(vacancy.skills || []).length && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {(vacancy.skills || []).map((skill, idx) => (
-                      <span
-                        key={`${vacancy.id}-skill-${idx}`}
-                        className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm"
-                      >
+                      <span key={`${vacancy.id}-skill-${idx}`} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm">
                         {skill}
                       </span>
                     ))}
@@ -1460,10 +1417,7 @@ function VacanciesPage({
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() =>
-                      vacancy.alternate_url &&
-                      window.open(vacancy.alternate_url, '_blank')
-                    }
+                    onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank')}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                   >
                     {t('vacancies.applyOnHH')}
@@ -1475,14 +1429,9 @@ function VacanciesPage({
 
           {!loading && vacancies.length === 0 && (
             <div className="text-center py-12">
-              <Briefcase
-                className="mx-auto text-gray-400 mb-4"
-                size={48}
-              />
+              <Briefcase className="mx-auto text-gray-400 mb-4" size={48} />
               <p className="text-gray-600">{t('vacancies.noVacancies')}</p>
-              <p className="text-sm text-gray-500 mt-2">
-                {t('vacancies.changeParams')}
-              </p>
+              <p className="text-sm text-gray-500 mt-2">{t('vacancies.changeParams')}</p>
             </div>
           )}
         </div>
@@ -1490,5 +1439,6 @@ function VacanciesPage({
     </div>
   );
 }
+
 
 export default AIResumeBuilder;
