@@ -1,43 +1,33 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-
-const STORAGE_KEY = 'app.language';
-const SUPPORTED = ['ru', 'en', 'kk'];
-
-const detect = () => {
-  const fromLS = localStorage.getItem(STORAGE_KEY);
-  if (fromLS && SUPPORTED.includes(fromLS)) return fromLS;
-  const nav = (navigator.language || 'ru').slice(0, 2).toLowerCase();
-  if (SUPPORTED.includes(nav)) return nav;
-  return 'ru';
-};
+import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 
 export const LanguageContext = createContext({
   language: 'ru',
   changeLanguage: () => {},
-  supportedLanguages: SUPPORTED,
+  supportedLanguages: ['ru', 'kk', 'en'],
 });
 
-export const LanguageProvider = ({ children }) => {
-  const [language, setLanguage] = useState(detect);
-
-  const changeLanguage = (lang) => {
-    if (!SUPPORTED.includes(lang)) return;
-    setLanguage(lang);
-    try { localStorage.setItem(STORAGE_KEY, lang); } catch {}
-  };
+export function LanguageProvider({ children, defaultLanguage = 'ru' }) {
+  const [language, setLanguage] = useState(() => {
+    try {
+      return localStorage.getItem('app_lang') || defaultLanguage;
+    } catch {
+      return defaultLanguage;
+    }
+  });
 
   useEffect(() => {
-    document.documentElement.lang = language;
-    document.documentElement.dir = 'ltr';
+    try { localStorage.setItem('app_lang', language); } catch {}
   }, [language]);
 
-  const value = useMemo(
-    () => ({ language, changeLanguage, supportedLanguages: SUPPORTED }),
-    [language]
-  );
+  const changeLanguage = useCallback((lang) => {
+    if (['ru', 'kk', 'en'].includes(lang)) setLanguage(lang);
+  }, []);
+
+  const value = useMemo(() => ({
+    language,
+    changeLanguage,
+    supportedLanguages: ['ru', 'kk', 'en'],
+  }), [language, changeLanguage]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
-};
-
-export const useLanguage = () => useContext(LanguageContext);
-export default LanguageProvider;
+}
