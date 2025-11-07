@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   FileText, Briefcase, TrendingUp, Search, MapPin,
   Award, BookOpen, Sparkles, ExternalLink, Filter,
-  ChevronLeft, ChevronRight, RefreshCw, X
+  ChevronLeft, ChevronRight, RefreshCw, X,
+  Phone, Mail
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -525,6 +526,7 @@ function AIResumeBuilder() {
       <footer className="bg-gray-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
+            {/* Левый бренд-блок */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <img
@@ -539,51 +541,41 @@ function AIResumeBuilder() {
                 {t('footer.description')}
               </p>
             </div>
-            <div>
-              <h4 className="font-semibold mb-4">{t('footer.product')}</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>
-                  <button className="hover:text-white" onClick={() => setCurrentPage('builder')}>
-                    {t('footer.createResume')}
-                  </button>
+
+            {/* Контакты — вместо ссылок/колонок */}
+            <div className="md:col-span-3">
+              <h4 className="font-semibold mb-4">Контакты</h4>
+              <ul className="space-y-2 text-sm text-gray-300">
+                <li className="flex items-start gap-2">
+                  <MapPin className="mt-0.5" size={16} />
+                  <div>
+                    100600 Улытауская область, г. Жезказган, пр. Алашахана, 1б — главный корпус
+                    <br />
+                    Главный корпус, кабинет №108 — приёмная комиссия
+                  </div>
                 </li>
-                <li>
-                  <button className="hover:text-white" onClick={() => setCurrentPage('builder')}>
-                    {t('footer.templates')}
-                  </button>
+                <li className="flex items-center gap-2">
+                  <Phone size={16} />
+                  <span>8&nbsp;(7102)&nbsp;736015 — канцелярия</span>
                 </li>
-                <li>
-                  <button className="hover:text-white" onClick={() => setCurrentPage('vacancies')}>
-                    {t('footer.vacancies')}
-                  </button>
+                <li className="flex items-center gap-2">
+                  <Phone size={16} />
+                  <span>8&nbsp;(7102)&nbsp;410461 — приёмная комиссия</span>
                 </li>
-                <li>
-                  <button className="hover:text-white" onClick={() => setCurrentPage('recommendations')}>
-                    {t('footer.recommendations')}
-                  </button>
+                <li className="flex items-start gap-2">
+                  <Mail className="mt-0.5" size={16} />
+                  <div>
+                    univer@zhezu.kz; univer_zhez@mail.ru — канцелярия
+                    <br />
+                    zhezu_priem@mail.ru — приёмная комиссия
+                  </div>
                 </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white">{t('footer.about')}</a></li>
-                <li><a href="#" className="hover:text-white">{t('footer.blog')}</a></li>
-                <li><a href="#" className="hover:text-white">{t('footer.careers')}</a></li>
-                <li><a href="#" className="hover:text-white">{t('footer.contact')}</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">{t('footer.support')}</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white">{t('footer.help')}</a></li>
-                <li><a href="#" className="hover:text-white">{t('footer.terms')}</a></li>
-                <li><a href="#" className="hover:text-white">{t('footer.privacy')}</a></li>
               </ul>
             </div>
           </div>
+
           <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
-            <p>{t('footer.copyrigh­t')}</p>
+            <p>{t('footer.copyright')}</p>
             <p className="mt-2">{t('footer.integration')}</p>
           </div>
         </div>
