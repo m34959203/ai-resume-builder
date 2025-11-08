@@ -81,6 +81,84 @@ function calcExperienceCategory(profile) {
   return 'moreThan6';
 }
 
+// --- Market Fit score (0..100) ---
+function yearsOfExperience(profile = {}) {
+  const items = Array.isArray(profile.experience) ? profile.experience : [];
+  let ms = 0;
+  for (const it of items) {
+    const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
+    const end   = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']) || new Date();
+    if (start && end && end > start) ms += (+end - +start);
+  }
+  return ms / (365 * 24 * 3600 * 1000);
+}
+
+function englishLevelScore(langs = []) {
+  const arr = Array.isArray(langs) ? langs : [];
+  const isEn = (s) => /англ|english/i.test(String(s || ''));
+  const lvlOk = (s) => /B1|B2|C1|C2|upper|advanced|intermediate/i.test(String(s || ''));
+  for (const l of arr) {
+    if (isEn(l?.language || l?.name || l)) {
+      if (lvlOk(l?.level || l)) return 5;
+      return 2;
+    }
+  }
+  return 0;
+}
+
+function computeMarketFit(profile = {}) {
+  const hasAnything =
+    (profile.summary && profile.summary.trim().length > 0) ||
+    (Array.isArray(profile.skills) && profile.skills.length > 0) ||
+    (Array.isArray(profile.experience) && profile.experience.length > 0) ||
+    (Array.isArray(profile.education) && profile.education.length > 0);
+
+  if (!hasAnything) return 0;
+
+  let score = 0;
+
+  // Конкретика роли/позиции
+  const roleText = String(profile.position || profile.title || '').trim();
+  if (roleText.length >= 3) score += Math.min(10, Math.floor(roleText.split(/\s+/).length * 2)); // до 10
+
+  // Навыки
+  const uniqSkills = Array.from(new Set((profile.skills || []).map((s) => String(s).trim()).filter(Boolean)));
+  score += Math.min(30, uniqSkills.length * 3);
+
+  // Опыт
+  const y = yearsOfExperience(profile);
+  if (y >= 6) score += 35;
+  else if (y >= 3) score += 25;
+  else if (y >= 1) score += 15;
+  else if (y > 0) score += 5;
+
+  // О себе
+  const sumLen = String(profile.summary || '').trim().length;
+  if (sumLen >= 200) score += 10;
+  else if (sumLen >= 120) score += 7;
+  else if (sumLen >= 60) score += 5;
+  else if (sumLen >= 20) score += 2;
+
+  // Образование
+  if (Array.isArray(profile.education) && profile.education.length) {
+    score += 8;
+    const e = profile.education[0];
+    const txt = [e?.degree, e?.fieldOfStudy, e?.speciality, e?.major].map(String).join(' ').toLowerCase();
+    if (txt && roleText) {
+      const hit = roleText.toLowerCase().split(/\W+/).some((w) => w && txt.includes(w));
+      if (hit) score += 4;
+    }
+  }
+
+  // Языки
+  score += englishLevelScore(profile.languages);
+
+  // Локация
+  if (String(profile.location || '').trim()) score += 3;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 // --- целевая роль ---
 function roleFromEducation(eduItem) {
   if (!eduItem) return '';
@@ -422,7 +500,7 @@ function AIResumeBuilder() {
           { name: 'Udemy — Complete Web Development', duration: '2 месяца', url: '' },
           { name: 'Stepik — Python для начинающих', duration: '1 месяц', url: '' }
         ],
-        matchScore: 62
+        matchScore: computeMarketFit(profile)
       });
     } finally {
       setIsGenerating(false);
@@ -660,7 +738,7 @@ function RecommendationsPage({
   setSearchQuery,
   profile
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   // Достаточно ли данных резюме для советов
   const profileOk = hasProfileForRecs(profile);
@@ -684,12 +762,12 @@ function RecommendationsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOk]);
 
-  // оценка соответствия
-  const score = (() => {
+  // Реальная оценка соответствия
+  const score = React.useMemo(() => {
     const v = Number(recommendations?.matchScore);
     if (Number.isFinite(v)) return Math.max(0, Math.min(100, v));
-    return 33; // дефолт чтобы бар не был пустым
-  })();
+    return computeMarketFit(profile);
+  }, [recommendations?.matchScore, profile]);
 
   const handleFindJobs = React.useCallback(() => {
     const q = (selectedProfession || '').trim();
@@ -701,7 +779,7 @@ function RecommendationsPage({
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm text-gray-600">
-          {t('recommendations.matchScore') || 'Оценка соответствия рынку'}
+          {t('recommendations.marketScore')}
         </div>
         <div className="text-sm font-semibold text-purple-700">{value}%</div>
       </div>
@@ -729,9 +807,13 @@ function RecommendationsPage({
     </div>
   );
 
+  const notAvailable =
+    lang === 'kk' ? 'Қолжетімсіз' :
+    lang === 'en' ? 'Unavailable' : 'Недоступно';
+
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-7xl mx-auto px-4">{/* шире контейнер */}
         <button
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
@@ -750,10 +832,10 @@ function RecommendationsPage({
             </div>
             <div>
               <h2 className="text-xl font-bold leading-tight">
-                {t('recommendations.title') || 'AI Рекомендации'}
+                {t('recommendations.title')}
               </h2>
               <div className="text-xs text-gray-500">
-                {t('recommendations.hint') || 'Собрано из вашего резюме'}
+                {t('recommendations.hint')}
               </div>
             </div>
           </div>
@@ -801,7 +883,7 @@ function RecommendationsPage({
               type="text"
               value={selectedProfession}
               onChange={(e) => setSelectedProfession(e.target.value)}
-              placeholder={t('recommendations.suitableRole') || 'Целевая профессия'}
+              placeholder={t('vacancies.suitableRole')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
 
@@ -839,7 +921,7 @@ function RecommendationsPage({
               ))}
               {(!recommendations || (recommendations?.skillsToLearn || []).length === 0) && (
                 <span className="text-sm text-gray-500">
-                  {t('recommendations.aiEmpty') || 'Подсказок пока нет'}
+                  {t('builder.skills.aiEmpty')}
                 </span>
               )}
             </div>
@@ -876,16 +958,14 @@ function RecommendationsPage({
                         {t('recommendations.openCourse')}
                       </a>
                     ) : (
-                      <span className="text-xs text-gray-400">
-                        {t('common.notAvailable') || 'Недоступно'}
-                      </span>
+                      <span className="text-xs text-gray-400">{notAvailable}</span>
                     )}
                   </div>
                 ))}
 
                 {(!recommendations || (recommendations?.courses || []).length === 0) && !isGenerating && (
                   <div className="rounded-lg border px-3 py-6 text-center text-gray-500 text-sm">
-                    {t('recommendations.aiEmpty') || 'Пока нет рекомендаций по курсам'}
+                    {t('builder.skills.aiEmpty')}
                   </div>
                 )}
               </div>
@@ -898,13 +978,13 @@ function RecommendationsPage({
               onClick={handleFindJobs}
               className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
             >
-              {t('home.findJobsButton') || 'Найти вакансии'}
+              {t('home.findJobsButton')}
             </button>
             <button
               onClick={onImproveResume}
               className="flex-1 px-4 py-2.5 rounded-lg border font-medium hover:bg-gray-50"
             >
-              {t('recommendations.improveResume') || 'Улучшить резюме'}
+              {t('recommendations.improveResume')}
             </button>
           </div>
         </div>
@@ -923,7 +1003,7 @@ function VacanciesPage({
   mockVacancies,
   profile,
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -1052,7 +1132,8 @@ function VacanciesPage({
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);    if (has) return;
+    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
+    if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
@@ -1266,6 +1347,24 @@ function VacanciesPage({
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
 
+  // локализованные сообщения для авто-расширения, чтобы не зависеть от отсутствующих ключей
+  const autoRelaxMsg = (kind) => {
+    if (lang === 'kk') {
+      if (kind === 'city') return 'Іздеуді кеңейттік: қала сүзгісі алынды.';
+      if (kind === 'experience') return 'Іздеуді кеңейттік: тәжірибе сүзгісі алынды.';
+      return 'Іздеуді кеңейттік: жалпы сұраныс қолданылды.';
+    }
+    if (lang === 'en') {
+      if (kind === 'city') return 'Search widened: city filter removed.';
+      if (kind === 'experience') return 'Search widened: experience filter removed.';
+      return 'Search widened: using a more generic query.';
+    }
+    // ru
+    if (kind === 'city') return 'Расширили поиск: убрали фильтр по городу.';
+    if (kind === 'experience') return 'Расширили поиск: убрали фильтр по опыту.';
+    return 'Расширили поиск: использован более общий запрос.';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-6xl mx-auto px-4">
@@ -1371,12 +1470,10 @@ function VacanciesPage({
             </div>
           )}
 
-          {/* Бейджик про авто-расширение */}
+          {/* Бейджик про авто-расширение (локализовано без новых ключей) */}
           {autoRelaxInfo && (
             <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
-              {autoRelaxInfo.dropped === 'city' && t('vacancies.autoRelax.city')}
-              {autoRelaxInfo.dropped === 'experience' && t('vacancies.autoRelax.experience')}
-              {autoRelaxInfo.dropped === 'all' && t('vacancies.autoRelax.all')}
+              {autoRelaxMsg(autoRelaxInfo.dropped)}
             </div>
           )}
 
