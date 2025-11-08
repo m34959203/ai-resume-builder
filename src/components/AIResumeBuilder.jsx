@@ -1052,8 +1052,7 @@ function VacanciesPage({
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
-    if (has) return;
+    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);    if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
@@ -1093,7 +1092,7 @@ function VacanciesPage({
         salaryText = v.salary.trim();
       } else if (raw && (raw.from || raw.to)) {
         const from = raw.from ? String(raw.from) : '';
-        the to   = raw.to   ? String(raw.to)   : '';
+        const to   = raw.to   ? String(raw.to)   : '';
         const cur  = raw.currency || raw.cur || '';
         const range = [from, to].filter(Boolean).join(' – ');
         salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
