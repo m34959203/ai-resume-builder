@@ -1,7 +1,14 @@
 // src/services/bff.js
 /* eslint-disable no-console */
 
-// Клиентский слой для общения с BFF (OAuth HH + вакансии + справочники + AI-инференс + AI-рекомендации).
+/**
+ * Клиентский слой для общения с BFF:
+ * - OAuth HH, поиск вакансий, справочники
+ * - AI-инференс (подсказка поиска)
+ * - AI-рекомендации (роли, skills gap, курсы)
+ *
+ * ВАЖНО: публичные функции/имена экспортов сохранены для совместимости.
+ */
 
 import { mockJobs, mockResumes } from './mocks';
 
@@ -13,21 +20,20 @@ function env(key, def = '') {
 }
 
 /**
- * Строим абсолютный BASE:
- *  - если задан VITE_API_URL / window.__API_URL__ — используем его
- *  - если фронт локально (localhost/127.0.0.1) — dev-фолбэк http://localhost:8000
- *  - если Render-фронт на onrender.com — используем хардкод BFF-домена
- *  - иначе — текущий origin (прокси/ингресс на одном домене)
+ * Абсолютный BASE:
+ * 1) VITE_API_URL или window.__API_URL__
+ * 2) Render фронт → фиксированный BFF (или VITE_RENDER_BFF_URL)
+ * 3) Локалка → http://localhost:8000
+ * 4) Фолбэк → текущий origin
  */
 function computeApiBase() {
   const prefixRaw = env('VITE_API_PREFIX', '/api').trim();
   const prefix = prefixRaw.startsWith('/') ? prefixRaw : `/${prefixRaw}`;
 
-  // 1) Явный URL (приоритет)
+  // 1) Явный URL
   const fromEnv = env('VITE_API_URL', '').trim();
   const fromWindow =
     typeof window !== 'undefined' && window.__API_URL__ ? String(window.__API_URL__).trim() : '';
-
   const chosen = fromEnv || fromWindow;
   if (chosen) {
     const url = `${chosen.replace(/\/+$/, '')}${prefix}`;
@@ -35,11 +41,8 @@ function computeApiBase() {
     return url;
   }
 
-  // 2) Определяем окружение
+  // 2) Render: фронт на onrender.com
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
-
-  // 3) Render: фронт и бэкенд на разных доменах
   const isRenderFrontend = typeof host === 'string'
     && host.includes('onrender.com')
     && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
@@ -52,14 +55,15 @@ function computeApiBase() {
     return bffUrl;
   }
 
-  // 4) Локалка
+  // 3) Локалка
+  const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host || '');
   if (isLocal) {
     const url = `http://localhost:8000${prefix}`;
     console.log('[BFF] Local dev, using:', url);
     return url;
   }
 
-  // 5) Фолбэк: текущий origin
+  // 4) Фолбэк: текущий origin
   const origin =
     (typeof window !== 'undefined' && window.location && window.location.origin) || '';
   const url = `${String(origin).replace(/\/+$/, '')}${prefix}`;
@@ -74,11 +78,12 @@ export const API_BASE = computeApiBase();
 const USE_MOCKS      = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
 const API_TIMEOUT_MS = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
 const HOST_DEFAULT   = (env('VITE_HH_HOST', 'hh.kz').trim() || 'hh.kz').toLowerCase();
-console.log('[BFF] API_BASE =', API_BASE);
-console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
 
 const AREAS_TTL_MS   = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
 const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
+
+console.log('[BFF] API_BASE =', API_BASE);
+console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
 
 /* -------------------- Склейка URL -------------------- */
 
@@ -144,10 +149,11 @@ async function parsePayload(res) {
 }
 
 /**
- * Безопасная обёртка над fetch, возвращает JSON/текст или бросает BFFHttpError.
+ * Безопасная обёртка над fetch.
  * options:
  *  - method?: string
  *  - headers?: Record<string,string>
+ *  - body?: any (автосериализация для JSON)
  *  - signal?: AbortSignal
  *  - timeoutMs?: number
  *  - noDedupe?: boolean (по умолчанию false; dedupe только для GET)
@@ -184,11 +190,11 @@ export async function safeFetchJSON(url, options = {}) {
       try { console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()])); } catch {}
     }
 
+    // Прозрачные редиректы 3xx мы не следуем на клиенте — бросаем BFFHttpError (видно в логе)
     if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('Location');
-      if (loc && typeof window !== 'undefined') window.location.href = loc;
+      const payload = await parsePayload(res);
       throw new BFFHttpError(`Redirected ${res.status}`, {
-        status: res.status, url: normalizedUrl, method, body: null,
+        status: res.status, url: normalizedUrl, method, body: payload,
       });
     }
 
@@ -206,7 +212,7 @@ export async function safeFetchJSON(url, options = {}) {
   if (key) {
     const existing = IN_FLIGHT.get(key);
     if (existing) {
-      console.log('[BFF Client] Using cached request:', key);
+      // console.log('[BFF Client] Using cached request:', key);
       return existing;
     }
     const p = doFetch().finally(() => IN_FLIGHT.delete(key));
@@ -525,6 +531,7 @@ export async function searchJobsSmart(params = {}) {
   return searchJobs({ ...params, area, host });
 }
 
+// Сырые вакансии (оставлено на случай отладок)
 export async function searchVacanciesRaw(params = {}) {
   const host = normalizeHost(params.host);
   const q = new URLSearchParams();
@@ -542,22 +549,62 @@ export async function searchVacanciesRaw(params = {}) {
 
 /* -------------------- AI: инференс и полировка -------------------- */
 
+// Локальная эвристика (fallback), если бэкенд-ИИ недоступен
+function localInferSearch(profile) {
+  const norm = (s) => String(s || '').trim();
+  const role =
+    norm(profile?.position) ||
+    norm(profile?.desiredRole) ||
+    norm(profile?.desiredPosition) ||
+    norm(profile?.targetRole) ||
+    norm(profile?.objective) ||
+    norm(profile?.experience?.[0]?.title || profile?.experience?.[0]?.position || '');
+
+  const skills = Array.isArray(profile?.skills)
+    ? [...new Set(profile.skills.map((x) => norm(typeof x === 'string' ? x : (x?.name || x?.title || ''))))].filter(Boolean).slice(0, 12)
+    : [];
+
+  const city = norm(profile?.location);
+  // грубая уверенность — чем больше данных, тем выше
+  const confidence = Math.min(0.9, 0.2 + (Number(Boolean(role)) + skills.length / 12 + Number(Boolean(city))) / 3);
+  return { role: role || '', city: city || '', skills, experience: undefined, confidence };
+}
+
 export async function inferSearchFromProfile(profile, { lang = 'ru', overrideModel } = {}) {
   const url = '/ai/infer-search';
   const payload = { profile, lang, overrideModel };
   if (!overrideModel) delete payload.overrideModel;
 
-  const out = await safeFetchJSON(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: { ...payload },
-    noDedupe: true,
-  });
+  try {
+    const out = await safeFetchJSON(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { ...payload },
+      noDedupe: true,
+    });
 
-  if (out && out.search) {
-    out.search.host = normalizeHost(out.search.host);
+    if (out && out.search) {
+      out.search.host = normalizeHost(out.search.host);
+    }
+    // Структура старых реализаций: { role, city, skills, experience, confidence }
+    if (!out?.search && (out?.role || out?.skills)) {
+      return out;
+    }
+    return out?.search || out || localInferSearch(profile);
+  } catch (e) {
+    // пробуем альтернативный путь (на случай другого роутинга на BFF)
+    try {
+      const alt = await safeFetchJSON('/recommendations/infer-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { profile, lang, overrideModel },
+        noDedupe: true,
+      });
+      return alt?.search || alt || localInferSearch(profile);
+    } catch {
+      return localInferSearch(profile);
+    }
   }
-  return out;
 }
 
 export async function polishText(text, { lang = 'ru', mode = 'auto' } = {}) {
@@ -582,52 +629,151 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
 
 /* -------------------- AI: рекомендации -------------------- */
 /**
- * В эти вызовы добавлен пробой кэша: sig (подпись профиля) и ts (timestamp).
- * BFF может использовать их в ключе кэша, чтобы «всегда свежо».
+ * Важно: на сервере точно есть /api/recommendations/generate.
+ * Здесь мы вызываем /recommendations/generate как основной путь.
+ * Если на старом сервере был только /recommendations/analyze — пробуем fallback.
+ * В крайних случаях отдаём безопасный локальный “seed”: роль из профиля и текущие скиллы (без домыслов).
  */
+function extractSkills(profile = {}) {
+  const raw = (Array.isArray(profile.skills) ? profile.skills : [])
+    .map((s) => (typeof s === 'string' ? s : (s?.name || s?.title || s?.skill || '')))
+    .map((x) => String(x || '').trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const v of raw) {
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
+}
+function seedRole(profile = {}) {
+  const fields = [
+    profile?.position, profile?.desiredRole, profile?.desiredPosition, profile?.targetRole, profile?.objective,
+    profile?.experience?.[0]?.title, profile?.experience?.[0]?.position
+  ];
+  for (const f of fields) {
+    const val = String(f || '').trim();
+    if (val) return val;
+  }
+  return '';
+}
+function marketFit(profile = {}) {
+  const hasAnything =
+    (profile.summary && profile.summary.trim().length > 0) ||
+    (Array.isArray(profile.skills) && profile.skills.length > 0) ||
+    (Array.isArray(profile.experience) && profile.experience.length > 0) ||
+    (Array.isArray(profile.education) && profile.education.length > 0);
+  if (!hasAnything) return 0;
+
+  let score = 0;
+  const roleText = String(profile.position || profile.title || '').trim();
+  if (roleText.length >= 3) score += Math.min(10, Math.floor(roleText.split(/\s+/).length * 2));
+
+  const uniqSkills = Array.from(new Set((profile.skills || []).map((s) => String(s).trim()).filter(Boolean)));
+  score += Math.min(30, uniqSkills.length * 3);
+
+  // грубо по длительности опыта (если есть даты в experience)
+  const items = Array.isArray(profile.experience) ? profile.experience : [];
+  let ms = 0;
+  for (const it of items) {
+    const start = it?.start || it?.from || it?.dateStart || it?.date_from;
+    const end   = it?.end || it?.to || it?.dateEnd || it?.date_to || new Date().toISOString();
+    const s = start ? new Date(start) : null;
+    const e = end ? new Date(end) : null;
+    if (s && e && e > s) ms += (+e - +s);
+  }
+  const years = ms / (365 * 24 * 3600 * 1000);
+  if (years >= 6) score += 35;
+  else if (years >= 3) score += 25;
+  else if (years >= 1) score += 15;
+  else if (years > 0) score += 5;
+
+  const sumLen = String(profile.summary || '').trim().length;
+  if (sumLen >= 200) score += 10;
+  else if (sumLen >= 120) score += 7;
+  else if (sumLen >= 60) score += 5;
+  else if (sumLen >= 20) score += 2;
+
+  if (Array.isArray(profile.education) && profile.education.length) score += 8;
+  if (String(profile.location || '').trim()) score += 3;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 export async function fetchRecommendations(profile, opts = {}) {
+  // попытка резолва areaId по городу
   let areaId = opts.areaId ?? null;
   if (!areaId && opts.city) {
     const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
     if (resolved?.id) areaId = resolved.id;
   }
+
   const body = {
     profile,
     areaId: areaId ?? null,
     sig: opts.sig || undefined,
     ts: typeof opts.ts === 'number' ? opts.ts : Date.now(),
+    lang: opts.lang || undefined,
+    expand: opts.expand || undefined,
+    meta: opts.meta || undefined,
+    focusRole: opts.focusRole || undefined,
+    seedSkills: opts.seedSkills || undefined,
   };
-  return safeFetchJSON('/recommendations/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
-    body,
-    noDedupe: true,
-  });
+
+  // 1) Основной актуальный путь
+  try {
+    return await safeFetchJSON('/recommendations/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+      body,
+      noDedupe: true,
+    });
+  } catch (e1) {
+    // 2) Старый путь “analyze”
+    try {
+      return await safeFetchJSON('/recommendations/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+        body,
+        noDedupe: true,
+      });
+    } catch (e2) {
+      // 3) Полный фейл — отдаём только «семена» из профиля (без выдумок)
+      const role = seedRole(profile);
+      const skills = extractSkills(profile).slice(0, 10);
+      return {
+        roles: role ? [role] : [],
+        professions: role ? [role] : [],
+        skillsToLearn: skills,
+        courses: [],
+        marketFitScore: marketFit(profile),
+        debug: { fallback: 'profile-seed', ai: false, e1: e1?.message, e2: e2?.message },
+      };
+    }
+  }
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  const body = {
-    profile,
-    areaId: opts.areaId ?? null,
-    sig: opts.sig || undefined,
-    ts: typeof opts.ts === 'number' ? opts.ts : Date.now(),
-  };
-  return safeFetchJSON('/recommendations/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
-    body,
-    noDedupe: true,
-  });
+  // оставлено для совместимости; теперь вызывает тот же /recommendations/generate
+  return fetchRecommendations(profile, opts);
 }
 
 export async function improveProfileAI(profile, opts = {}) {
   const body = { profile, sig: opts.sig || undefined, ts: typeof opts.ts === 'number' ? opts.ts : Date.now() };
-  return safeFetchJSON('/recommendations/improve', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
-    body,
-    noDedupe: true,
-  });
+  try {
+    return await safeFetchJSON('/recommendations/improve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+      body,
+      noDedupe: true,
+    });
+  } catch {
+    // нет эндпоинта — отдаём то, что есть
+    return { profile, debug: { fallback: 'no-endpoint' } };
+  }
 }
 
 /* -------------------- РЕЗЮМЕ ПОЛЬЗОВАТЕЛЯ -------------------- */
@@ -649,9 +795,13 @@ export async function importResume(hhResumeId, options = {}) {
 /* -------------------- HEALTH / VERSION -------------------- */
 
 export async function ping(options = {}) {
-  return safeFetchJSON('/healthz', options).catch(() => null);
+  // реальный health на сервере — /health
+  return safeFetchJSON('/health', options).catch(() =>
+    safeFetchJSON('/alive', options).catch(() => null)
+  );
 }
 
 export async function getServerVersion(options = {}) {
-  return safeFetchJSON('/version', options).catch(() => null);
+  // отдаём /api/debug как “версию/состояние” сервера
+  return safeFetchJSON('/debug', options).catch(() => null);
 }
