@@ -40,12 +40,9 @@ function computeApiBase() {
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
 
   // 3) Render: фронт и бэкенд на разных доменах
-  //    Пример: фронт → ai-resume-frontend-*.onrender.com
-  //            BFF  → ai-resume-bff.onrender.com
-  const isRenderFrontend =
-    typeof host === 'string' &&
-    host.includes('onrender.com') &&
-    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+  const isRenderFrontend = typeof host === 'string'
+    && host.includes('onrender.com')
+    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -83,7 +80,7 @@ console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
 const AREAS_TTL_MS   = Number(env('VITE_AREAS_TTL_MS', String(6 * 60 * 60 * 1000))) || 21600000;
 const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', '1').toLowerCase());
 
-/* -------------------- Склейка URL и построение путей -------------------- */
+/* -------------------- Склейка URL -------------------- */
 
 const join = (...parts) =>
   parts
@@ -97,16 +94,11 @@ const join = (...parts) =>
 function makeApiUrl(u) {
   if (!u) return API_BASE;
   const s = String(u);
-
-  // Уже абсолютный?
   if (/^https?:\/\/+/i.test(s)) return s;
-
-  // Срежем дублирующий префикс /api — он уже есть в API_BASE
   let path = s;
   if (path === '/api') path = '';
   else if (path.startsWith('/api/')) path = path.slice(5);
   else if (path.startsWith('api/')) path = path.slice(4);
-
   const base = API_BASE.replace(/\/$/, '');
   const tail = String(path).replace(/^\//, '');
   return tail ? `${base}/${tail}` : base;
@@ -131,15 +123,11 @@ const IN_FLIGHT = new Map(); // key: normalizedUrl -> Promise<any>
 
 function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const normalizedUrl = makeApiUrl(url);
-
-  // Если наружный signal уже передан — не навешиваем наш таймер
   if (options.signal) {
     return fetch(normalizedUrl, { credentials: 'include', ...options });
   }
-
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), timeoutMs);
-
   return fetch(normalizedUrl, { credentials: 'include', signal: controller.signal, ...options })
     .finally(() => clearTimeout(id));
 }
@@ -181,7 +169,7 @@ export async function safeFetchJSON(url, options = {}) {
 
   const normalizedUrl = makeApiUrl(url);
 
-  // ---------------- Диагностика HH-поиска (запрос) ----------------
+  // Диагностика HH-поиска
   if (normalizedUrl.includes('/hh/jobs/search')) {
     console.log('[BFF Client] Fetching jobs:', normalizedUrl);
     console.log('[BFF Client] Method:', method);
@@ -191,20 +179,11 @@ export async function safeFetchJSON(url, options = {}) {
   const doFetch = async () => {
     const res = await fetchWithTimeout(normalizedUrl, { ...options, method, headers, body }, timeoutMs);
 
-    // ---------------- Диагностика HH-поиска (ответ) ----------------
     if (normalizedUrl.includes('/hh/jobs/search')) {
       console.log('[BFF Client] Response status:', res.status);
-      try {
-        console.log(
-          '[BFF Client] Response headers:',
-          Object.fromEntries([...res.headers.entries()])
-        );
-      } catch {
-        // ignore
-      }
+      try { console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()])); } catch {}
     }
 
-    // Перехват 3xx (например, OAuth redirect)
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('Location');
       if (loc && typeof window !== 'undefined') window.location.href = loc;
@@ -258,98 +237,11 @@ export async function safeFetchJSON(url, options = {}) {
   }
 }
 
-/* -------------------- Нормализация профиля/навыков + сигнатура -------------------- */
-
-const normalizeText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-
-export function normalizeSkills(skills) {
-  const arr = Array.isArray(skills) ? skills : [];
-  const out = [];
-  for (const it of arr) {
-    if (typeof it === 'string') {
-      const v = normalizeText(it);
-      if (v) out.push(v);
-    } else if (it && typeof it === 'object') {
-      const v = normalizeText(it.name || it.title || it.skill || it.label || '');
-      if (v) out.push(v);
-    }
-  }
-  // уникальные (регистронезависимо), но в оригинальном регистре первой встречи
-  const seen = new Set();
-  const uniq = [];
-  for (const s of out) {
-    const k = s.toLowerCase();
-    if (!seen.has(k)) {
-      seen.add(k);
-      uniq.push(s);
-    }
-  }
-  return uniq;
-}
-
-export function normalizeProfileForRecs(profile = {}) {
-  const p = profile || {};
-  const skills = normalizeSkills(p.skills);
-  const languages = Array.isArray(p.languages) ? p.languages : [];
-  const experience = Array.isArray(p.experience) ? p.experience : [];
-  const education = Array.isArray(p.education) ? p.education : [];
-  return {
-    ...p,
-    position: p.position || p.desiredRole || p.desiredPosition || p.targetRole || p.objective || '',
-    summary: normalizeText(p.summary),
-    location: normalizeText(p.location),
-    skills,
-    languages,
-    experience,
-    education,
-  };
-}
-
-// Каноничная сигнатура профиля — стабильный JSON по ключевым полям.
-// Совпадает по духу с логикой на фронте, но автономна (без импорта из компонентов).
-export function profileSignature(raw = {}) {
-  const p = normalizeProfileForRecs(raw);
-  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-
-  const role = norm(p.position || '');
-  const summary = norm(p.summary);
-  const location = norm(p.location);
-  const skills = Array.from(new Set((p.skills || []).map(norm).filter(Boolean))).sort();
-
-  const exp = Array.isArray(p.experience)
-    ? p.experience.slice(0, 6).map((e) => ({
-        t: norm(e?.title || e?.position),
-        c: norm(e?.company),
-        s: norm(e?.start || e?.from || e?.dateStart || e?.date_from),
-        e: norm(e?.end || e?.to || e?.dateEnd || e?.date_to),
-        d: norm(e?.description),
-      }))
-    : [];
-
-  const edu = Array.isArray(p.education)
-    ? p.education.slice(0, 6).map((e) => ({
-        i: norm(e?.institution || e?.school || e?.university),
-        d: norm(e?.degree),
-        m: norm(e?.major || e?.speciality || e?.specialization),
-        y: String(e?.year || e?.graduationYear || '').trim(),
-      }))
-    : [];
-
-  return JSON.stringify({ role, summary, location, skills, exp, edu });
-}
-
 /* -------------------- Нормализация опыта -------------------- */
 
 const EXP_MAP = {
-  none: 'none',
-  '0-1': '0-1',
-  '1-3': '1-3',
-  '3-6': '3-6',
-  '6+': '6+',
-  noExperience: 'none',
-  between1And3: '1-3',
-  between3And6: '3-6',
-  moreThan6: '6+',
+  none: 'none', '0-1': '0-1', '1-3': '1-3', '3-6': '3-6', '6+': '6+',
+  noExperience: 'none', between1And3: '1-3', between3And6: '3-6', moreThan6: '6+',
 };
 export function normalizeExperience(v) {
   if (!v) return undefined;
@@ -357,8 +249,7 @@ export function normalizeExperience(v) {
   return EXP_MAP[key] || undefined;
 }
 
-const stripCurrency = (v) =>
-  (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
+const stripCurrency = (v) => (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
 
 /* -------------------- HOST/COUNTRY helpers -------------------- */
 
@@ -496,7 +387,7 @@ export async function resolveAreaId(cityName, host = normalizeHost()) {
     const kz = await getCountryRoot(h, /казахстан/i);
     if (!kz) return null;
 
-    // ищем actual узел Казахстана в дереве
+    // ищем actual узел Казахстана
     const stackFind = [...tree];
     let kzNode = null;
     while (stackFind.length && !kzNode) {
@@ -586,7 +477,6 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
 
-  // Если не задано ни city, ни area — для hh.kz ограничим деревом Казахстана
   let area = params.area;
   if (!params.city && !area && host === 'hh.kz') {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
@@ -691,80 +581,51 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
 }
 
 /* -------------------- AI: рекомендации -------------------- */
-
+/**
+ * В эти вызовы добавлен пробой кэша: sig (подпись профиля) и ts (timestamp).
+ * BFF может использовать их в ключе кэша, чтобы «всегда свежо».
+ */
 export async function fetchRecommendations(profile, opts = {}) {
-  // нормализуем профиль заранее (навыки → строки, summary/location → trim)
-  const normProfile = normalizeProfileForRecs(profile);
-
-  // areaId по городу (если не пришёл)
   let areaId = opts.areaId ?? null;
   if (!areaId && opts.city) {
     const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
     if (resolved?.id) areaId = resolved.id;
   }
-
-  // сигнатура профиля и таймстамп — для пробития любого кэша
-  const sig = profileSignature(normProfile);
-  const ts = Date.now();
-
-  // query-string с метаданными (дополнительно к телу)
-  const qs = new URLSearchParams();
-  qs.set('ts', String(ts));
-  qs.set('sig', sig);
-  if (opts.city) qs.set('city', String(opts.city));
-  if (opts.host) qs.set('host', normalizeHost(opts.host));
-
-  // отправляем no-store, плюс дублируем служебные заголовки
-  return safeFetchJSON(`/recommendations/analyze?${qs.toString()}`, {
+  const body = {
+    profile,
+    areaId: areaId ?? null,
+    sig: opts.sig || undefined,
+    ts: typeof opts.ts === 'number' ? opts.ts : Date.now(),
+  };
+  return safeFetchJSON('/recommendations/analyze', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-      Pragma: 'no-cache',
-      'X-Recs-Signature': sig,
-      'X-Recs-Ts': String(ts),
-    },
-    body: { profile: normProfile, areaId: areaId ?? null },
+    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+    body,
     noDedupe: true,
   });
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  const normProfile = normalizeProfileForRecs(profile);
-  let areaId = opts.areaId ?? null;
-  if (!areaId && opts.city) {
-    const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
-    if (resolved?.id) areaId = resolved.id;
-  }
-  const sig = profileSignature(normProfile);
-  const ts = Date.now();
-
-  const qs = new URLSearchParams();
-  qs.set('ts', String(ts));
-  qs.set('sig', sig);
-  if (opts.city) qs.set('city', String(opts.city));
-  if (opts.host) qs.set('host', normalizeHost(opts.host));
-
-  return safeFetchJSON(`/recommendations/generate?${qs.toString()}`, {
+  const body = {
+    profile,
+    areaId: opts.areaId ?? null,
+    sig: opts.sig || undefined,
+    ts: typeof opts.ts === 'number' ? opts.ts : Date.now(),
+  };
+  return safeFetchJSON('/recommendations/generate', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-      Pragma: 'no-cache',
-      'X-Recs-Signature': sig,
-      'X-Recs-Ts': String(ts),
-    },
-    body: { profile: normProfile, areaId: areaId ?? null },
+    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+    body,
     noDedupe: true,
   });
 }
 
-export async function improveProfileAI(profile) {
-  const normProfile = normalizeProfileForRecs(profile);
+export async function improveProfileAI(profile, opts = {}) {
+  const body = { profile, sig: opts.sig || undefined, ts: typeof opts.ts === 'number' ? opts.ts : Date.now() };
   return safeFetchJSON('/recommendations/improve', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: { profile: normProfile },
+    headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+    body,
     noDedupe: true,
   });
 }
@@ -777,8 +638,7 @@ export async function getUserResumes(options = {}) {
   return data;
 }
 
-// Этот маршрут может отсутствовать на вашем BFF — оставлен для совместимости, если появится.
-// Сейчас импорт из HH выполняется сервером напрямую после выбора резюме пользователем.
+// Может отсутствовать на BFF — оставлен для совместимости
 export async function importResume(hhResumeId, options = {}) {
   return safeFetchJSON(`/profile/import/hh/${encodeURIComponent(hhResumeId)}`, {
     method: 'POST',
