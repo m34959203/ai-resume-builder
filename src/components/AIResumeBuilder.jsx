@@ -1052,13 +1052,13 @@ function VacanciesPage({
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
+    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
     if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
-  // дебаунсы
-  function useDebouncedValue(value, delay = 650) {
+  // локальный дебаунс (название иное, чтобы не конфликтовать с глобальным)
+  function useDebouncedLocal(value, delay = 650) {
     const [v, setV] = useState(value);
     useEffect(() => {
       const t = setTimeout(() => setV(value), delay);
@@ -1066,12 +1066,12 @@ function VacanciesPage({
     }, [value, delay]);
     return v;
   }
-  const debouncedSearch = useDebouncedValue(searchQuery, 650);
+  const debouncedSearch = useDebouncedLocal(searchQuery, 650);
   const filtersKey = useMemo(
     () => JSON.stringify({ location: filters.location, experience: filters.experience, salary: filters.salary }),
     [filters.location, filters.experience, filters.salary]
   );
-  const debouncedFiltersKey = useDebouncedValue(filtersKey, 650);
+  const debouncedFiltersKey = useDebouncedLocal(filtersKey, 650);
 
   // единая функция маппинга
   const mapResponse = useCallback((data) => {
@@ -1093,7 +1093,7 @@ function VacanciesPage({
         salaryText = v.salary.trim();
       } else if (raw && (raw.from || raw.to)) {
         const from = raw.from ? String(raw.from) : '';
-        const to   = raw.to   ? String(raw.to)   : '';
+        the to   = raw.to   ? String(raw.to)   : '';
         const cur  = raw.currency || raw.cur || '';
         const range = [from, to].filter(Boolean).join(' – ');
         salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
@@ -1255,7 +1255,7 @@ function VacanciesPage({
     return () => { try { ac.abort(); } catch {} };
   }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked]); // eslint-disable-line
 
-  // мягкий бутстрап (для "резюме → вакансии") — просто фиксируем, что старт состоялся
+  // мягкий бутстрап (для "резюме → вакансии")
   useEffect(() => {
     if (bootstrapped) return;
     const derivedRole = deriveDesiredRole(profile) || '';
@@ -1283,7 +1283,7 @@ function VacanciesPage({
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <h2 className="text-3xl font-bold mb-6">{t('vacancies.title')}</h2>
 
-          {/* ИИ-подсказка (оставляем как было) */}
+          {/* ИИ-подсказка */}
           {(aiLoading || aiSuggestion || aiError) && (
             <div className="mb-6 rounded-xl p-5 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
               <div className="flex items-start justify-between gap-4">
@@ -1372,7 +1372,7 @@ function VacanciesPage({
             </div>
           )}
 
-          {/* Бейджик про авто-расширение (не обязателен, но полезно) */}
+          {/* Бейджик про авто-расширение */}
           {autoRelaxInfo && (
             <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
               {autoRelaxInfo.dropped === 'city' && t('vacancies.autoRelax.city')}
