@@ -159,6 +159,40 @@ function computeMarketFit(profile = {}) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+// --- подпись профиля для авто-обновления рекомендаций ---
+function profileSignature(p = {}) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const role = norm(p.position || p.desiredRole || p.desiredPosition || p.targetRole || '');
+  const summary = norm(p.summary);
+  const location = norm(p.location);
+
+  const skills = Array.isArray(p.skills)
+    ? Array.from(new Set(p.skills.map(norm).filter(Boolean))).sort()
+    : [];
+
+  const exp = Array.isArray(p.experience)
+    ? p.experience.slice(0, 6).map(e => ({
+        t: norm(e.title || e.position),
+        c: norm(e.company),
+        s: norm(e.start || e.from || e.dateStart || e.date_from),
+        e: norm(e.end || e.to || e.dateEnd || e.date_to),
+        d: norm(e.description),
+      }))
+    : [];
+
+  const edu = Array.isArray(p.education)
+    ? p.education.slice(0, 6).map(e => ({
+        i: norm(e.institution || e.school || e.university),
+        d: norm(e.degree),
+        m: norm(e.major || e.speciality || e.specialization),
+        y: String(e.year || e.graduationYear || '').trim(),
+      }))
+    : [];
+
+  return JSON.stringify({ role, summary, location, skills, exp, edu });
+}
+
 // --- целевая роль ---
 function roleFromEducation(eduItem) {
   if (!eduItem) return '';
@@ -744,6 +778,10 @@ function RecommendationsPage({
   const profileOk = hasProfileForRecs(profile);
   const missing = profileOk ? [] : missingProfileSections(profile, t);
 
+  // подпись профиля + дебаунс
+  const sig = React.useMemo(() => profileSignature(profile), [profile]);
+  const debouncedSig = useDebouncedValue(sig, 900);
+
   // выбранная (целевая) профессия — одно поле, как на макете
   const [selectedProfession, setSelectedProfession] = React.useState(() => {
     const p = recommendations?.professions?.[0] || '';
@@ -754,13 +792,13 @@ function RecommendationsPage({
     setSelectedProfession(String(recommendations?.professions?.[0] || '').trim());
   }, [recommendations?.professions]);
 
-  // авто-генерация при наличии профиля
+  // авто-обновление рекомендаций при изменении профиля (дебаунс)
   React.useEffect(() => {
-    if (!recommendations && profileOk && !isGenerating) {
+    if (!isGenerating) {
       generateRecommendations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileOk]);
+  }, [debouncedSig, profileOk]);
 
   // Реальная оценка соответствия
   const score = React.useMemo(() => {
@@ -779,7 +817,7 @@ function RecommendationsPage({
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm text-gray-600">
-          {t('recommendations.marketScore')}
+          {t('recommendations.marketScore') || 'Оценка соответствия рынку'}
         </div>
         <div className="text-sm font-semibold text-purple-700">{value}%</div>
       </div>
@@ -813,7 +851,7 @@ function RecommendationsPage({
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4">{/* шире контейнер */}
+      <div className="max-w-7xl mx-auto px-4">
         <button
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
@@ -826,18 +864,31 @@ function RecommendationsPage({
 
         <div className="bg-white rounded-2xl shadow p-6 border">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
-              <Sparkles size={18} className="text-purple-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold leading-tight">
-                {t('recommendations.title')}
-              </h2>
-              <div className="text-xs text-gray-500">
-                {t('recommendations.hint')}
+          <div className="flex items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+                <Sparkles size={18} className="text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold leading-tight">
+                  {t('recommendations.title')}
+                </h2>
+                <div className="text-xs text-gray-500">
+                  {t('recommendations.hint')}
+                </div>
               </div>
             </div>
+
+            {/* Ручное обновление */}
+            <button
+              onClick={() => !isGenerating && generateRecommendations()}
+              className={`px-3 py-2 border rounded-lg text-sm flex items-center gap-2 ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+              title={t('vacancies.aiRefresh')}
+              aria-label={t('vacancies.aiRefresh')}
+            >
+              <RefreshCw size={16} className={isGenerating ? 'animate-spin' : ''} />
+              {t('vacancies.aiRefresh')}
+            </button>
           </div>
 
           {/* Если данных мало */}
@@ -883,7 +934,7 @@ function RecommendationsPage({
               type="text"
               value={selectedProfession}
               onChange={(e) => setSelectedProfession(e.target.value)}
-              placeholder={t('vacancies.suitableRole')}
+              placeholder={t('recommendations.suitableRole') || t('vacancies.suitableRole')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
 
@@ -921,7 +972,7 @@ function RecommendationsPage({
               ))}
               {(!recommendations || (recommendations?.skillsToLearn || []).length === 0) && (
                 <span className="text-sm text-gray-500">
-                  {t('builder.skills.aiEmpty')}
+                  {t('recommendations.aiEmpty')}
                 </span>
               )}
             </div>
@@ -965,7 +1016,7 @@ function RecommendationsPage({
 
                 {(!recommendations || (recommendations?.courses || []).length === 0) && !isGenerating && (
                   <div className="rounded-lg border px-3 py-6 text-center text-gray-500 text-sm">
-                    {t('builder.skills.aiEmpty')}
+                    {t('recommendations.aiEmpty')}
                   </div>
                 )}
               </div>
