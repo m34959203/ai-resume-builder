@@ -1,129 +1,85 @@
-// server/index.js
-import express from 'express';
-import cors from 'cors';
-import { fileURLToPath } from 'url';
-import path from 'path';
+'use strict';
 
-// ⬇️ .env в dev (в проде переменные приходят от платформы)
+/*
+ * AI Resume Builder — BFF (CommonJS)
+ * - Без ESM: никаких import/top-level await
+ * - Без внешних middleware/*.js — всё локально
+ * - Без translateRouter (его файла нет в дереве)
+ * - Роуты: /api/hh, /api/recommendations (+ health)
+ * - Встроенный /api/ai/infer-search для фронта (минимальный эвристический)
+ */
+
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const process = require('process');
+
 if (process.env.NODE_ENV !== 'production') {
-  try { await import('dotenv/config'); } catch {}
+  try { require('dotenv').config(); } catch {}
 }
 
 // Опциональные зависимости (не падаем, если не установлены)
 let compression = null;
 let helmet = null;
-try { ({ default: compression } = await import('compression')); } catch {}
-try { ({ default: helmet } = await import('helmet')); } catch {}
+try { compression = require('compression'); } catch {}
+try { helmet = require('helmet'); } catch {}
 
-// ============================================
-// 🔧 PATHS
-// ============================================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ============================================
-// ⚙️ CONFIGURATION
-// ============================================
+// ────────────────────────────────────────────────────────────
+// CONFIG
+// ────────────────────────────────────────────────────────────
 const config = {
-  port: Number.parseInt(process.env.PORT || '3001', 10),
+  port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
   frontOrigins: (process.env.FRONT_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  // эвристика: разрешаем onrender / vercel домены
-  allowRenderVercel: true,
 };
 
 const defaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
-  'http://127.0.0.1:4173',
   'http://localhost:3000',
-  'http://127.0.0.1:3000',
 ];
 
-// ============================================
-// 📦 ROUTES & MIDDLEWARE
-// ============================================
-import translateRouter from './routes/translate.js';
-import hhRouter from './routes/hh.js';
-import recommendationsRouter from './routes/recommendations.js';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
-import { apiLimiter } from './middleware/rateLimiter.js';
+const __dirnameResolved = __dirname || path.dirname(require.main?.filename || '');
 
-// ============================================
-// 🚀 EXPRESS APP
-// ============================================
+// ────────────────────────────────────────────────────────────
 const app = express();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
-// Безопасность/сжатие — если установлены
-if (helmet) {
-  // CSP выключен (SPA с внешними скриптами/стилями), CORP смягчаем
-  app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-    referrerPolicy: { policy: 'no-referrer' },
-  }));
-}
+if (helmet) app.use(helmet({ contentSecurityPolicy: false }));
 if (compression) app.use(compression());
 
-// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ============================================
-// 🆔 REQUEST ID + LOGGING
-// ============================================
-app.use((req, res, next) => {
-  const existing = req.get('X-Request-ID');
-  const id = existing || (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  res.setHeader('X-Request-ID', id);
-  req.requestId = id;
-  next();
-});
-
-app.use((req, res, next) => {
-  const t0 = Date.now();
-  res.on('finish', () => {
-    const ms = Date.now() - t0;
-    const s = res.statusCode;
-    const e = s >= 500 ? '❌' : s >= 400 ? '⚠️' : '✅';
-    console.log(`${e} [${req.requestId}] ${req.method} ${req.path} - ${s} - ${ms}ms`);
-  });
-  next();
-});
-
-// ============================================
-// 🌐 CORS
-// ============================================
+// ────────────────────────────────────────────────────────────
+// CORS (дружелюбный к Render/Vercel и локалке)
+// ────────────────────────────────────────────────────────────
 const allowedOrigins = config.frontOrigins.length > 0 ? config.frontOrigins : defaultOrigins;
 
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Разрешить запросы без origin (Postman, curl)
+  origin(origin, callback) {
+    // Разрешаем запросы без Origin (curl/Postman)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-
-    if (config.allowRenderVercel) {
-      if (/\.onrender\.com$/.test(new URL(origin).hostname)) return callback(null, true);
-      if (/\.vercel\.app$/.test(new URL(origin).hostname)) return callback(null, true);
-    }
-
-    // В development разрешить любой localhost:порт
-    if (!config.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
-      return callback(null, true);
-    }
+    try {
+      const url = new URL(origin);
+      const host = url.hostname || '';
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (host.endsWith('onrender.com')) return callback(null, true);
+      if (host.endsWith('vercel.app')) return callback(null, true);
+      // Dev: любой localhost:порт
+      if (!config.isProduction && /^localhost$/.test(host)) return callback(null, true);
+    } catch {}
 
     console.warn(`⚠️ CORS rejected: ${origin}`);
-    callback(new Error(`Not allowed by CORS: ${origin}`));
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -134,82 +90,166 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// ============================================
-// 🚦 RATE LIMITING
-// ============================================
-app.use('/api', apiLimiter);
+// ────────────────────────────────────────────────────────────
+// ЛОГИ
+// ────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - t0;
+    const s = res.statusCode;
+    const e = s >= 500 ? '❌' : s >= 400 ? '⚠️' : '✅';
+    console.log(`${e} ${req.method} ${req.path} - ${s} - ${ms}ms`);
+  });
+  next();
+});
 
-// ============================================
-// 🏥 HEALTH
-// ============================================
-function noCache(res) {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-}
-
+// ────────────────────────────────────────────────────────────
+// HEALTH
+// ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  noCache(res);
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: config.nodeEnv,
-    memory: process.memoryUsage(),
+    memory: process.memoryUsage?.() || {},
   });
 });
-app.get('/ready', (_req, res) => {
-  noCache(res);
-  res.json({ status: 'ready', timestamp: new Date().toISOString() });
-});
-app.get('/alive', (_req, res) => {
-  noCache(res);
-  res.json({ status: 'alive' });
-});
+app.get('/ready', (_req, res) => res.json({ status: 'ready', timestamp: new Date().toISOString() }));
+app.get('/alive', (_req, res) => res.json({ status: 'alive' }));
 
-// Небольшой debug-эндпоинт для быстрой диагностики ключей
-app.get('/api/debug', (_req, res) => {
-  const masked = s => (s ? s.slice(0, 4) + '***' + s.slice(-4) : null);
-  res.json({
-    hh: {
-      client_id: Boolean(process.env.HH_CLIENT_ID),
-      client_secret: Boolean(process.env.HH_CLIENT_SECRET),
-    },
-    ai: {
-      openrouter_key: Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY_DEEPSEEK),
-      openrouter_model: process.env.OPENROUTER_MODEL || null,
-      deepseek_key: Boolean(process.env.API_KEY_DEEPSEEK),
-    },
-    translate: process.env.TRANSLATE_URL || 'argos (встроенный)',
-    masked: {
-      OPENROUTER_API_KEY: masked(process.env.OPENROUTER_API_KEY),
-      API_KEY_DEEPSEEK: masked(process.env.API_KEY_DEEPSEEK),
+// ────────────────────────────────────────────────────────────
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ────────────────────────────────────────────────────────────
+function safeUseRouter(mountPath, localPath) {
+  try {
+    const mod = require(localPath);
+    const router = mod?.default || mod?.router || mod;
+    if (router && typeof router === 'function') {
+      app.use(mountPath, router);
+      console.log(`✓ Mounted ${mountPath} from ${localPath}`);
+    } else {
+      console.warn(`⚠️ Router at ${localPath} has unexpected export, skipping`);
     }
-  });
+  } catch (e) {
+    console.warn(`⚠️ Router ${localPath} not found or failed to load: ${e?.message}`);
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+/**
+ * Мини-эндпойнт /api/ai/infer-search
+ * Нужен фронту для "умной" подсказки поиска. Эвристика простая:
+ *  - роль из position/последнего опыта/skills/summary
+ *  - город из profile.location
+ *  - опыт категорийно
+ *  - skills top-N
+ * Если у вас есть отдельный роут — смело удалите этот блок.
+ */
+function normalizeText(s) { return String(s || '').trim(); }
+function bestDate(obj, keys = []) {
+  for (const k of keys) {
+    const d = obj && obj[k] ? new Date(obj[k]) : null;
+    if (d && !isNaN(+d)) return d;
+  }
+  return null;
+}
+function pickLatestExperience(profile) {
+  const items = Array.isArray(profile?.experience) ? profile.experience : [];
+  if (!items.length) return null;
+  const scored = items.map((it, i) => {
+    const end = bestDate(it, ['end','to','dateEnd','date_to']);
+    const start = bestDate(it, ['start','from','dateStart','date_from']);
+    const endScore = end ? +end : Number.MAX_SAFE_INTEGER - i;
+    const startScore = start ? +start : 0;
+    return { it, endScore, startScore };
+  }).sort((a,b) => (b.endScore - a.endScore) || (b.startScore - a.startScore));
+  return scored[0]?.it || items[0];
+}
+function deriveRole(profile) {
+  const explicit = normalizeText(profile?.position || profile?.desiredRole || profile?.desiredPosition || profile?.targetRole || profile?.objective || '');
+  if (explicit) return explicit;
+  const latest = pickLatestExperience(profile);
+  const role = normalizeText(latest?.position || latest?.title || latest?.role || '');
+  if (role) return role;
+  const skills = (profile?.skills || []).map(String).map(s => s.trim()).filter(Boolean);
+  if (skills.length) return skills.slice(0, 3).join(' ');
+  const sum = normalizeText(profile?.summary);
+  if (sum) return sum.split(/\s+/).slice(0, 3).join(' ');
+  return '';
+}
+function calcExperienceCategory(profile) {
+  const items = Array.isArray(profile?.experience) ? profile.experience : [];
+  if (!items.length) return 'none';
+  let ms = 0;
+  for (const it of items) {
+    const start = bestDate(it, ['start','from','dateStart','date_from']);
+    const end = bestDate(it, ['end','to','dateEnd','date_to']) || new Date();
+    if (start && end && end > start) ms += (+end - +start);
+    else ms += 365 * 24 * 3600 * 1000;
+  }
+  const years = ms / (365 * 24 * 3600 * 1000);
+  if (years < 1) return '0-1';
+  if (years < 3) return '1-3';
+  if (years < 6) return '3-6';
+  return '6+';
+}
+function uniqCI(arr = []) {
+  const seen = new Set();
+  const out = [];
+  for (const v of arr) {
+    const k = String(v || '').trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(String(v).trim());
+  }
+  return out;
+}
+app.post('/api/ai/infer-search', (req, res) => {
+  try {
+    const profile = req.body?.profile || {};
+    const role = deriveRole(profile);
+    const city = normalizeText(profile?.location);
+    const exp = calcExperienceCategory(profile);
+    const skills = uniqCI((Array.isArray(profile?.skills) ? profile.skills : []).map(String)).slice(0, 12);
+    const confidence =
+      (role ? 0.4 : 0) +
+      (city ? 0.2 : 0) +
+      (skills.length >= 4 ? 0.2 : skills.length ? 0.1 : 0) +
+      (exp !== 'none' ? 0.2 : 0);
+    return res.json({
+      role,
+      city: city || undefined,
+      experience: exp,   // 'none' | '0-1' | '1-3' | '3-6' | '6+'
+      skills,
+      confidence: Math.max(0.5, Math.min(0.95, confidence || 0.6)),
+    });
+  } catch (e) {
+    console.error('infer-search error:', e);
+    res.status(500).json({ error: 'infer-failed' });
+  }
 });
 
-// ============================================
-// 🛣️ API ROUTES
-// ============================================
-// Alias: некоторые клиенты шлют сразу /api/recommendations (без /generate)
-app.post('/api/recommendations', (req, res) => {
-  // 307 — сохраняет метод и тело при редиректе
-  res.redirect(307, '/api/recommendations/generate');
-});
+// ────────────────────────────────────────────────────────────
+// РОУТЫ HH и РЕКОМЕНДАЦИЙ
+// ────────────────────────────────────────────────────────────
+// Основные (ожидаемые фронтом) префиксы:
+safeUseRouter('/api/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
+safeUseRouter('/api/recommendations', path.join(__dirnameResolved, 'routes', 'recommendations.js'));
 
-app.use('/api/translate', translateRouter);
-app.use('/api/hh',        hhRouter);
-app.use('/api/recommendations', recommendationsRouter);
+// Бэкап-монтаж без /api (на случай старых ссылок со фронта)
+safeUseRouter('/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
+safeUseRouter('/recommendations', path.join(__dirnameResolved, 'routes', 'recommendations.js'));
 
-// ============================================
-// 🏠 ROOT ENDPOINT
-// ============================================
+// ────────────────────────────────────────────────────────────
+// ROOT
+// ────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.send(`
-╔═══════════════════════════════════════════════════════════════╗
-║                AI RESUME BUILDER - SERVER v2.1.0             ║
-╚═══════════════════════════════════════════════════════════════╝
+  res.type('text/plain; charset=utf-8').send(`
+╔════════════════════════════════════════════════════╗
+║      AI RESUME BUILDER - SERVER (CommonJS)        ║
+╚════════════════════════════════════════════════════╝
 
 ✅ Server is running
 
@@ -218,17 +258,8 @@ Health:
   GET  /ready
   GET  /alive
 
-Debug:
-  GET  /api/debug
-
-Translation:
-  POST /api/translate/text
-  POST /api/translate/resume
-  POST /api/translate/vacancies
-  GET  /api/translate/health
-
 HeadHunter:
-  POST /api/hh/jobs/search
+  GET  /api/hh/jobs/search
   GET  /api/hh/areas
   GET  /api/hh/suggest-areas?text=almaty
   GET  /api/hh/me
@@ -236,69 +267,45 @@ HeadHunter:
   POST /api/hh/respond
 
 Recommendations:
-  POST /api/recommendations            (alias → 307 → /api/recommendations/generate)
   POST /api/recommendations/generate
+
+AI helpers:
+  POST /api/ai/infer-search
 `.trim());
 });
 
-// ============================================
-// 🚫 ERRORS
-// ============================================
-app.use(notFoundHandler);
-app.use(errorHandler);
+// ────────────────────────────────────────────────────────────
+// ERRORS
+// ────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: 'Not Found', path: req.originalUrl });
+});
 
-// ============================================
-// 🎬 START
-// ============================================
+app.use((err, req, res, _next) => {
+  console.error('💥 Unhandled error:', err);
+  const status = err?.statusCode || err?.status || 500;
+  res.status(status).json({ ok: false, error: err?.message || 'Internal Server Error' });
+});
+
+// ────────────────────────────────────────────────────────────
+// START
+// ────────────────────────────────────────────────────────────
 const server = app.listen(config.port, '0.0.0.0', () => {
   console.log('═══════════════════════════════════════════════════════════');
-  console.log('🚀 AI Resume Builder Server v2.1.0');
+  console.log('🚀 AI Resume Builder Server (CommonJS)');
   console.log('═══════════════════════════════════════════════════════════');
   console.log(`📍 Environment: ${config.nodeEnv}`);
   console.log(`🌐 Listening on: http://0.0.0.0:${config.port}`);
   console.log(`🔒 CORS Origins: ${allowedOrigins.length} configured`);
-  console.log('───────────────────────────────────────────────────────────');
-  console.log(`🔑 HH Client: ${process.env.HH_CLIENT_ID ? '✓' : '✗'}`);
-  console.log(`🤖 OpenRouter: ${(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY_DEEPSEEK) ? '✓' : '✗'}`);
-  console.log(`🧠 DeepSeek: ${process.env.API_KEY_DEEPSEEK ? '✓' : '✗'}`);
-  console.log(`🛰 Translate: ${process.env.TRANSLATE_URL || 'default (argos)'}`);
   console.log('═══════════════════════════════════════════════════════════');
   console.log('✅ Server ready');
   console.log('═══════════════════════════════════════════════════════════');
 });
-
-// Современные таймауты (Node 18+)
 server.timeout = 120000;
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
-// ============================================
-// 🛑 GRACEFUL SHUTDOWN
-// ============================================
-let isShuttingDown = false;
-function gracefulShutdown(signal) {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-  console.log(`\n[${signal}] Gracefully shutting down...`);
-  server.close(() => {
-    console.log('✅ HTTP server closed');
-    process.exit(0);
-  });
-  setTimeout(() => {
-    console.error('⚠️ Forced shutdown');
-    process.exit(1);
-  }, 10000);
-}
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
-process.on('uncaughtException', (err) => {
-  console.error('💥 Uncaught Exception:', err);
-  gracefulShutdown('UNCAUGHT_EXCEPTION');
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('💥 Unhandled Rejection:', reason);
-  gracefulShutdown('UNHANDLED_REJECTION');
-});
-
-export default app;
-export { server, config };
+// Экспорты для тестов/импорта
+module.exports = app;
+module.exports.server = server;
+module.exports.config = config;
