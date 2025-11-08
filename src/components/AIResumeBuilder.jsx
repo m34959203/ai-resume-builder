@@ -218,159 +218,7 @@ function profileSignature(p = {}) {
   return JSON.stringify({ role, summary, location, skills, exp, edu });
 }
 
-// --- детект трека по навыкам + ролям/саммари/опыту ---
-function detectTrack(skills = [], profile = {}) {
-  const expText = (Array.isArray(profile?.experience) ? profile.experience : [])
-    .map(e => [e?.position, e?.title, e?.role, e?.responsibilities, e?.description].filter(Boolean).join(' '))
-    .join(' ');
-
-  const text = (
-    skills.join(' ') + ' ' +
-    (profile?.summary || '') + ' ' +
-    (profile?.position || '') + ' ' +
-    expText
-  ).toLowerCase();
-
-  const score = (arr) => arr.reduce((acc, w) => acc + (text.includes(w) ? 1 : 0), 0);
-
-  const dict = {
-    dev: ['react', 'vue', 'angular', 'typescript', 'node', 'java', 'spring', 'django', 'flask', 'kotlin', 'swift', 'ios', 'android', 'c#', '.net', 'docker', 'kubernetes', 'graphql', 'rest api', 'git'],
-    data: ['sql', 'python', 'pandas', 'numpy', 'power bi', 'tableau', 'excel', 'airflow', 'dbt', 'etl', 'data', 'ml', 'machine learning', 'a/b', 'hypothesis', 'statistics'],
-    design: ['figma', 'ux', 'ui', 'user research', 'prototype', 'wireframe', 'design system', 'typography', 'interface', 'interaction'],
-    qa: ['qa', 'quality', 'test', 'selenium', 'cypress', 'postman', 'jmeter', 'pytest', 'playwright', 'automation', 'регресс', 'тест-кейс'],
-    product: ['product manager', 'product owner', 'roadmap', 'backlog', 'hypothesis', 'unit economics', 'metrics', 'a/b', 'custdev', 'discovery'],
-    marketing: ['smm', 'seo', 'sem', 'context', 'performance', 'facebook ads', 'google ads', 'content', 'email marketing', 'crm'],
-    ba_pm: ['business analyst', 'бизнес аналит', 'system analyst', 'системн', 'project manager', 'проектн', 'scrum', 'kanban'],
-  };
-
-  const scores = Object.fromEntries(Object.keys(dict).map(k => [k, score(dict[k])]));
-  // выберем трек с максимальным счетом
-  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-  if (best && best[1] > 0) return best[0];
-
-  // fallback по ключевым словам должности
-  const pos = String(profile?.position || '').toLowerCase();
-  if (/product/.test(pos)) return 'product';
-  if (/manager|проект/.test(pos)) return 'ba_pm';
-  if (/analyst|аналит/.test(pos)) return 'data';
-  if (/designer|дизайн|ux|ui/.test(pos)) return 'design';
-  if (/qa|test|тест/.test(pos)) return 'qa';
-  if (/market|маркет/.test(pos)) return 'marketing';
-  if (/dev|разработ|engineer|инженер|программи/.test(pos)) return 'dev';
-
-  // по умолчанию
-  return 'ba_pm';
-}
-
-// --- fallback пресеты по трекам (профессии/скиллы/курсы)
-function trackFallback(track = 'ba_pm') {
-  const C = (name, url = '', duration = '') => ({ name, url, duration });
-
-  const presets = {
-    dev: {
-      professions: [
-        'Frontend Developer', 'Backend Developer', 'Full-Stack Developer',
-        'Software Engineer', 'Mobile Developer', 'DevOps Engineer'
-      ],
-      grow: ['TypeScript', 'Node.js', 'Docker', 'Git', 'CI/CD', 'SQL', 'REST API', 'GraphQL', 'Unit Testing', 'Linux'],
-      courses: [
-        C('Coursera — Meta Front-End Developer', 'https://coursera.org', '3–6 мес'),
-        C('Udemy — Node.js Complete Guide', 'https://udemy.com', '1–2 мес'),
-        C('Stepik — Алгоритмы и структуры данных', 'https://stepik.org', '1–2 мес'),
-        C('Hexlet — Верстка и JavaScript', 'https://ru.hexlet.io', '2–4 мес'),
-        C('Karpov.Courses — Frontend', 'https://karpov.courses', '2–4 мес'),
-      ],
-    },
-    data: {
-      professions: [
-        'Data Analyst', 'BI Analyst', 'Data Engineer', 'ML Engineer', 'Product Analyst', 'Financial Analyst'
-      ],
-      grow: ['SQL', 'Python', 'Pandas', 'Power BI', 'Tableau', 'A/B-тесты', 'Статистика', 'ETL', 'Airflow', 'Docker'],
-      courses: [
-        C('Karpov.Courses — Аналитик данных', 'https://karpov.courses', '3–6 мес'),
-        C('Coursera — Google Data Analytics', 'https://coursera.org', '3–6 мес'),
-        C('Stepik — Введение в Data Science', 'https://stepik.org', '1–2 мес'),
-        C('Udemy — The Data Analyst Course', 'https://udemy.com', '2–3 мес'),
-      ],
-    },
-    design: {
-      professions: [
-        'UI/UX Designer', 'Product Designer', 'UX Researcher', 'Interaction Designer', 'Design System Specialist', 'Graphic Designer'
-      ],
-      grow: ['User Research', 'UX Writing', 'Interaction Design', 'Design Systems', 'Prototyping', 'Accessibility', 'Figma Advanced'],
-      courses: [
-        C('Coursera — UI/UX Design', 'https://coursera.org', '2–4 мес'),
-        C('Bang Bang Education — Product Design', 'https://bangbangeducation.ru', '2–6 мес'),
-        C('Udemy — Figma UI/UX', 'https://udemy.com', '1–2 мес'),
-      ],
-    },
-    qa: {
-      professions: ['QA Engineer', 'QA Automation Engineer', 'Test Analyst', 'Test Manager'],
-      grow: ['Test Design', 'Postman', 'Selenium', 'Playwright', 'Cypress', 'PyTest', 'Java/JUnit', 'API Testing', 'SQL'],
-      courses: [
-        C('Stepik — Тестирование ПО', 'https://stepik.org', '1–2 мес'),
-        C('Udemy — Selenium WebDriver', 'https://udemy.com', '1–2 мес'),
-        C('Coursera — Software Testing', 'https://coursera.org', '2–3 мес'),
-      ],
-    },
-    product: {
-      professions: ['Product Manager', 'Product Owner', 'Growth PM', 'Scrum Master', 'UX Writer'],
-      grow: ['Roadmapping', 'Unit Economics', 'Product Discovery', 'JTBD', 'A/B-тесты', 'SQL для PM', 'CustDev', 'Metrics'],
-      courses: [
-        C('Coursera — Digital Product Management', 'https://coursera.org', '2–3 мес'),
-        C('GoPractice — Симулятор', 'https://gopractice.io', '1–2 мес'),
-        C('ProductStar — PM', 'https://productstar.ru', '2–4 мес'),
-      ],
-    },
-    marketing: {
-      professions: ['Digital Marketing Specialist', 'SMM Manager', 'Content Manager', 'Performance Marketer', 'SEO Specialist'],
-      grow: ['SEO', 'Google Ads', 'Facebook Ads', 'Аналитика', 'Копирайтинг', 'E-mail Marketing', 'CRM', 'А/Б-тесты'],
-      courses: [
-        C('Coursera — Digital Marketing', 'https://coursera.org', '2–4 мес'),
-        C('Netology — Интернет-маркетолог', 'https://netology.ru', '3–6 мес'),
-      ],
-    },
-    ba_pm: {
-      professions: ['Business Analyst', 'Project Manager', 'Scrum Master', 'Product Owner'],
-      grow: ['UML/BPMN', 'SQL базовый', 'API (REST/GraphQL)', 'Системный анализ', 'Agile/Scrum', 'Jira/Confluence', 'BRD/FRD', 'Backlog'],
-      courses: [
-        C('Coursera — Business Analysis', 'https://coursera.org', '2–3 мес'),
-        C('PMI — Project Management Basics', 'https://pmi.org', '1–2 мес'),
-      ],
-    },
-  };
-
-  return presets[track] || presets['ba_pm'];
-}
-
-// --- целевая роль ---
-function roleFromEducation(eduItem) {
-  if (!eduItem) return '';
-  const raw = [
-    eduItem?.specialization, eduItem?.speciality, eduItem?.major, eduItem?.faculty,
-    eduItem?.field, eduItem?.program, eduItem?.department, eduItem?.degree,
-  ].map((s) => String(s || '').toLowerCase()).join(' ');
-
-  const any = (...words) => words.some((w) => raw.includes(w));
-
-  if (any('информат', 'программи', 'computer', 'software', 'cs', 'it', 'information technology', 'айти')) {
-    if (any('данн', 'data', 'ml', 'машин', 'искусствен')) return 'Data Analyst (Junior)';
-    if (any('frontend', 'фронтенд', 'веб', 'web')) return 'Frontend Developer (Junior)';
-    if (any('mobile', 'ios', 'android')) return 'Mobile Developer (Junior)';
-    return 'Software Engineer (Junior)';
-  }
-  if (any('дизайн', 'ui', 'ux', 'graphic', 'product design', 'интерфейс'))
-    return 'UI/UX Designer (Junior)';
-  if (any('аналит', 'эконом', 'финан', 'бизнес'))
-    return 'Business Analyst (Junior)';
-  if (any('маркет', 'реклам', 'digital marketing'))
-    return 'Маркетолог (Junior)';
-  if (any('менедж', 'управл', 'project'))
-    return 'Project Manager (Junior)';
-
-  return '';
-}
-
+// --- целевая роль (чисто как локальный фолбэк для UI, без треков/пресетов) ---
 function deriveDesiredRole(profile) {
   const explicit =
     profile?.position ||
@@ -384,19 +232,6 @@ function deriveDesiredRole(profile) {
   const latest = pickLatestExperience(profile);
   const role = latest?.position || latest?.title || latest?.role || '';
   if (role) return String(role).trim();
-
-  const edus = Array.isArray(profile?.education) ? profile.education : [];
-  if (edus.length) {
-    const scored = edus.map((e, i) => {
-      const end = bestOfDates(e, ['end', 'dateEnd', 'date_to']) || null;
-      const year = Number(e?.year || e?.graduationYear || 0);
-      const endScore = end ? +end : (year ? new Date(year, 6, 1).getTime() : 0);
-      return { e, score: endScore || i };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    const eduRole = roleFromEducation(scored[0]?.e);
-    if (eduRole) return eduRole;
-  }
 
   const skills = (profile?.skills || []).map(String).filter(Boolean);
   if (skills.length) return skills.slice(0, 3).join(' ');
@@ -449,17 +284,6 @@ function missingProfileSections(p = {}, t) {
   if (!(Array.isArray(p.education) && p.education.length)) miss.push(t('builder.steps.education'));
   if (!(normalizeText(p.summary).length >= 20)) miss.push(t('builder.personal.summary'));
   return miss;
-}
-
-// --- спец-проверка: ответы только BA/PM
-function onlyBA_PM(arr = []) {
-  const items = (arr || []).map((s) => String(s).toLowerCase());
-  if (!items.length) return false;
-  const isOnlyKnown = items.every((s) =>
-    s.includes('business analyst') || s.includes('бизнес') || s.includes('analyst') ||
-    s.includes('project manager') || s.includes('проектн') || s.includes('scrum') || s.includes('product owner')
-  );
-  return isOnlyKnown;
 }
 
 /* ===================== Выбор города (только KZ) ===================== */
@@ -641,8 +465,49 @@ function AIResumeBuilder() {
     }
   ]), [t]);
 
-  // === Улучшенная логика рекомендаций с треками и фолбэком ===
+  // === AI-FIRST рекомендации без треков/пресетов ===
+  const normalizeAIRecs = useCallback((recRaw) => {
+    if (!recRaw) return null;
+
+    let professions = (recRaw?.roles || recRaw?.professions || [])
+      .map((r) => (typeof r === 'string' ? r : (r?.title || '')))
+      .filter(Boolean);
+
+    let skillsToLearn = (recRaw?.growSkills || recRaw?.skillsToGrow || [])
+      .map((s) => (typeof s === 'string' ? s : (s?.name || '')))
+      .filter(Boolean);
+
+    let courses = (recRaw?.courses || []).map((c) => ({
+      name: [c?.provider, c?.title].filter(Boolean).join(' — '),
+      duration: c?.duration || '',
+      url: c?.url || c?.link || ''
+    })).filter(c => c.name);
+
+    professions = uniq(professions).slice(0, 6);
+    skillsToLearn = uniq(skillsToLearn).slice(0, 10);
+    courses = courses.slice(0, 10);
+
+    const matchScore = Number(recRaw?.marketFitScore ?? recRaw?.marketScore);
+    return {
+      professions,
+      skillsToLearn,
+      courses,
+      matchScore: Number.isFinite(matchScore) ? Math.max(0, Math.min(100, matchScore)) : undefined,
+      debug: recRaw?.debug || {}
+    };
+  }, []);
+
+  const isTooNarrow = (r) => {
+    if (!r) return true;
+    const roles = Array.isArray(r.professions) ? r.professions.length : 0;
+    const skills = Array.isArray(r.skillsToLearn) ? r.skillsToLearn.length : 0;
+    const crs = Array.isArray(r.courses) ? r.courses.length : 0;
+    // узким считаем ответ, где ролей <3 или навыков <5 или курсов <3
+    return roles < 3 || skills < 5 || crs < 3;
+  };
+
   const generateRecommendations = async () => {
+    const { t, lang } = useTranslation(); // локальный доступ не используем, оставим основной t
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
       setIsGenerating(false);
@@ -650,70 +515,74 @@ function AIResumeBuilder() {
     }
     setIsGenerating(true);
 
-    const skills = extractSkills(profile);
-    const track = detectTrack(skills, profile) || 'ba_pm';
-    const fb = trackFallback(track);
+    const langCode = (typeof navigator !== 'undefined' && navigator.language?.startsWith('kk')) ? 'kk'
+                      : (typeof navigator !== 'undefined' && navigator.language?.startsWith('en')) ? 'en' : 'ru';
 
     try {
       const city = (profile?.location || '').trim();
-      const rec = await fetchRecommendations(
-        profile,
-        { city, signature: profileSignature(profile), ts: Date.now() } // пробиваем кэш
-      );
-
-      // Нормализация полученных данных
-      let professions = (rec?.roles || rec?.professions || [])
-        .map((r) => (typeof r === 'string' ? r : (r?.title || '')))
-        .filter(Boolean);
-      professions = uniq(professions);
-
-      let skillsToLearn = (rec?.growSkills || rec?.skillsToGrow || [])
-        .map((s) => (typeof s === 'string' ? s : (s?.name || '')))
-        .filter(Boolean);
-      skillsToLearn = uniq(skillsToLearn);
-
-      let courses = (rec?.courses || []).map((c) => ({
-        name: [c?.provider, c?.title].filter(Boolean).join(' — '),
-        duration: c?.duration || '',
-        url: c?.url || c?.link || ''
-      })).filter(c => c.name);
-
-      // Если пришло узко ИЛИ только BA/PM — расширяем профессиями по треку
-      if (professions.length <= 2 || onlyBA_PM(professions)) {
-        professions = uniq([...professions, ...fb.professions]);
-      }
-      professions = professions.slice(0, 6);
-
-      // Навыки для развития: топ-ап до 10
-      if (skillsToLearn.length < 10) {
-        const have = new Set(skillsToLearn.map((x) => x.toLowerCase()));
-        const toAdd = fb.grow.filter((g) => !have.has(g.toLowerCase()));
-        skillsToLearn = uniq([...skillsToLearn, ...toAdd]).slice(0, 10);
-      }
-
-      // Курсы: топ-ап до 10
-      if (courses.length < 10) {
-        const have = new Set(courses.map((c) => c.name.toLowerCase()));
-        const add = (fb.courses || []).filter((c) => c?.name && !have.has(c.name.toLowerCase()));
-        courses = [...courses, ...add].slice(0, 10);
-      }
-
-      const matchScore = Number(rec?.marketFitScore ?? rec?.marketScore);
-      setRecommendations({
-        professions,
-        skillsToLearn,
-        courses,
-        matchScore: Number.isFinite(matchScore) ? Math.max(0, Math.min(100, matchScore)) : computeMarketFit(profile),
-        debug: { ...(rec?.debug || {}), track },
+      // 1) Основной запрос к ИИ-бэкенду
+      let raw = await fetchRecommendations(profile, {
+        city,
+        signature: profileSignature(profile),
+        lang: langCode,
+        // мягкие подсказки для промпта на бэке (если поддерживается)
+        expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
+        meta: { diversify: true, avoidNarrow: true }
       });
+
+      let rec = normalizeAIRecs(raw);
+
+      // 2) Если ИИ выдал узко — переспрашиваем ИИ, подсеивая роль/скиллы из inferSearchFromProfile
+      if (isTooNarrow(rec)) {
+        try {
+          const seed = await inferSearchFromProfile(profile, { lang: langCode });
+          const seededRaw = await fetchRecommendations(profile, {
+            city,
+            signature: profileSignature(profile),
+            lang: langCode,
+            focusRole: seed?.role || '',
+            seedSkills: Array.isArray(seed?.skills) ? seed.skills.slice(0, 12) : [],
+            expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
+            meta: { diversify: true, avoidNarrow: true, seeded: true }
+          });
+          const seeded = normalizeAIRecs(seededRaw);
+
+          // берём более «богатый» по суммарному количеству пунктов
+          const richness = (r) => (r?.professions?.length || 0) + (r?.skillsToLearn?.length || 0) + (r?.courses?.length || 0);
+          if (richness(seeded) > richness(rec)) rec = seeded;
+        } catch {
+          /* игнор, оставим первую версию rec */
+        }
+      }
+
+      // 3) Финал: если всё ещё бедно или пусто — без выдумок, только локальный фолбэк
+      if (!rec || isTooNarrow(rec)) {
+        const seedRole = deriveDesiredRole(profile);
+        const seedSkills = extractSkills(profile).slice(0, 10);
+        rec = {
+          professions: seedRole ? [seedRole] : [],
+          skillsToLearn: seedSkills,
+          courses: [],
+          matchScore: computeMarketFit(profile),
+          debug: { fallback: 'profile-seed', ai: false }
+        };
+      } else {
+        if (!Number.isFinite(rec.matchScore)) {
+          rec.matchScore = computeMarketFit(profile);
+        }
+      }
+
+      setRecommendations(rec);
     } catch {
-      // Полный локальный фолбэк
+      // Сервис ИИ недоступен: показываем только то, что реально есть в профиле (без домыслов)
+      const seedRole = deriveDesiredRole(profile);
+      const seedSkills = extractSkills(profile).slice(0, 10);
       setRecommendations({
-        professions: fb.professions.slice(0, 6),
-        skillsToLearn: fb.grow.slice(0, 10),
-        courses: fb.courses.slice(0, 10),
+        professions: seedRole ? [seedRole] : [],
+        skillsToLearn: seedSkills,
+        courses: [],
         matchScore: computeMarketFit(profile),
-        debug: { track, fallback: true },
+        debug: { error: 'ai-service-error', fallback: 'profile-seed' }
       });
     } finally {
       setIsGenerating(false);
@@ -961,7 +830,7 @@ function RecommendationsPage({
   const sig = React.useMemo(() => profileSignature(profile), [profile]);
   const debouncedSig = useDebouncedValue(sig, 900);
 
-  // выбранная (целевая) профессия — одно поле, как на макете
+  // выбранная (целевая) профессия — одно поле
   const [selectedProfession, setSelectedProfession] = React.useState(() => {
     const p = recommendations?.professions?.[0] || '';
     return String(p || '').trim();
@@ -973,9 +842,7 @@ function RecommendationsPage({
 
   // авто-обновление рекомендаций при изменении профиля (дебаунс)
   React.useEffect(() => {
-    if (!isGenerating) {
-      generateRecommendations();
-    }
+    if (!isGenerating) generateRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSig, profileOk]);
 
@@ -1103,7 +970,7 @@ function RecommendationsPage({
             <ScoreBar value={score} />
           </div>
 
-          {/* Целевая профессия (одно поле) и быстрый выбор */}
+          {/* Целевая профессия */}
           <div className="mb-5">
             <div className="text-sm font-semibold text-gray-800 mb-2">
               {t('recommendations.professions')}
@@ -1202,7 +1069,7 @@ function RecommendationsPage({
             )}
           </div>
 
-          {/* Нижние кнопки как на макете */}
+          {/* Нижние кнопки */}
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleFindJobs}
@@ -1577,7 +1444,7 @@ function VacanciesPage({
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
 
-  // локализованные сообщения для авто-расширения, чтобы не зависеть от отсутствующих ключей
+  // локализованные сообщения для авто-расширения
   const autoRelaxMsg = (kind) => {
     if (lang === 'kk') {
       if (kind === 'city') return 'Іздеуді кеңейттік: қала сүзгісі алынды.';
@@ -1700,7 +1567,7 @@ function VacanciesPage({
             </div>
           )}
 
-          {/* Бейджик про авто-расширение (локализовано без новых ключей) */}
+          {/* Бейджик про авто-расширение */}
           {autoRelaxInfo && (
             <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
               {autoRelaxMsg(autoRelaxInfo.dropped)}
