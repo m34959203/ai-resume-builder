@@ -396,7 +396,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation(); // ⬅️ язык и перевод берём один раз
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
@@ -507,7 +507,6 @@ function AIResumeBuilder() {
   };
 
   const generateRecommendations = async () => {
-    const { t, lang } = useTranslation(); // локальный доступ не используем, оставим основной t
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
       setIsGenerating(false);
@@ -515,15 +514,17 @@ function AIResumeBuilder() {
     }
     setIsGenerating(true);
 
-    const langCode = (typeof navigator !== 'undefined' && navigator.language?.startsWith('kk')) ? 'kk'
-                      : (typeof navigator !== 'undefined' && navigator.language?.startsWith('en')) ? 'en' : 'ru';
+    const langCode =
+      (lang && (lang === 'ru' || lang === 'kk' || lang === 'en')) ? lang :
+      (typeof navigator !== 'undefined' && navigator.language?.startsWith('kk')) ? 'kk' :
+      (typeof navigator !== 'undefined' && navigator.language?.startsWith('en')) ? 'en' : 'ru';
 
     try {
       const city = (profile?.location || '').trim();
       // 1) Основной запрос к ИИ-бэкенду
       let raw = await fetchRecommendations(profile, {
         city,
-        signature: profileSignature(profile),
+        sig: profileSignature(profile),        // ⬅️ sig вместо signature
         lang: langCode,
         // мягкие подсказки для промпта на бэке (если поддерживается)
         expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
@@ -538,7 +539,7 @@ function AIResumeBuilder() {
           const seed = await inferSearchFromProfile(profile, { lang: langCode });
           const seededRaw = await fetchRecommendations(profile, {
             city,
-            signature: profileSignature(profile),
+            sig: profileSignature(profile),     // ⬅️ sig вместо signature
             lang: langCode,
             focusRole: seed?.role || '',
             seedSkills: Array.isArray(seed?.skills) ? seed.skills.slice(0, 12) : [],
@@ -547,7 +548,6 @@ function AIResumeBuilder() {
           });
           const seeded = normalizeAIRecs(seededRaw);
 
-          // берём более «богатый» по суммарному количеству пунктов
           const richness = (r) => (r?.professions?.length || 0) + (r?.skillsToLearn?.length || 0) + (r?.courses?.length || 0);
           if (richness(seeded) > richness(rec)) rec = seeded;
         } catch {
@@ -1208,7 +1208,6 @@ function VacanciesPage({
         location: aiSuggestion.city || f.location,
         experience: hhExpFromAi(aiSuggestion.experience) || f.experience,
       }));
-
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
