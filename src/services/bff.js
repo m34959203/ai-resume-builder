@@ -40,11 +40,12 @@ function computeApiBase() {
   const isLocal = /^localhost$|^127\.0\.0\.1$/.test(host);
 
   // 3) Render: фронт и бэкенд на разных доменах
-  //    Пример: фронт → ai-resume-frontend-nepa.onrender.com
+  //    Пример: фронт → ai-resume-frontend-*.onrender.com
   //            BFF  → ai-resume-bff.onrender.com
-  const isRenderFrontend = typeof host === 'string'
-    && host.includes('onrender.com')
-    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+  const isRenderFrontend =
+    typeof host === 'string' &&
+    host.includes('onrender.com') &&
+    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -257,6 +258,86 @@ export async function safeFetchJSON(url, options = {}) {
   }
 }
 
+/* -------------------- Нормализация профиля/навыков + сигнатура -------------------- */
+
+const normalizeText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+export function normalizeSkills(skills) {
+  const arr = Array.isArray(skills) ? skills : [];
+  const out = [];
+  for (const it of arr) {
+    if (typeof it === 'string') {
+      const v = normalizeText(it);
+      if (v) out.push(v);
+    } else if (it && typeof it === 'object') {
+      const v = normalizeText(it.name || it.title || it.skill || it.label || '');
+      if (v) out.push(v);
+    }
+  }
+  // уникальные (регистронезависимо), но в оригинальном регистре первой встречи
+  const seen = new Set();
+  const uniq = [];
+  for (const s of out) {
+    const k = s.toLowerCase();
+    if (!seen.has(k)) {
+      seen.add(k);
+      uniq.push(s);
+    }
+  }
+  return uniq;
+}
+
+export function normalizeProfileForRecs(profile = {}) {
+  const p = profile || {};
+  const skills = normalizeSkills(p.skills);
+  const languages = Array.isArray(p.languages) ? p.languages : [];
+  const experience = Array.isArray(p.experience) ? p.experience : [];
+  const education = Array.isArray(p.education) ? p.education : [];
+  return {
+    ...p,
+    position: p.position || p.desiredRole || p.desiredPosition || p.targetRole || p.objective || '',
+    summary: normalizeText(p.summary),
+    location: normalizeText(p.location),
+    skills,
+    languages,
+    experience,
+    education,
+  };
+}
+
+// Каноничная сигнатура профиля — стабильный JSON по ключевым полям.
+// Совпадает по духу с логикой на фронте, но автономна (без импорта из компонентов).
+export function profileSignature(raw = {}) {
+  const p = normalizeProfileForRecs(raw);
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const role = norm(p.position || '');
+  const summary = norm(p.summary);
+  const location = norm(p.location);
+  const skills = Array.from(new Set((p.skills || []).map(norm).filter(Boolean))).sort();
+
+  const exp = Array.isArray(p.experience)
+    ? p.experience.slice(0, 6).map((e) => ({
+        t: norm(e?.title || e?.position),
+        c: norm(e?.company),
+        s: norm(e?.start || e?.from || e?.dateStart || e?.date_from),
+        e: norm(e?.end || e?.to || e?.dateEnd || e?.date_to),
+        d: norm(e?.description),
+      }))
+    : [];
+
+  const edu = Array.isArray(p.education)
+    ? p.education.slice(0, 6).map((e) => ({
+        i: norm(e?.institution || e?.school || e?.university),
+        d: norm(e?.degree),
+        m: norm(e?.major || e?.speciality || e?.specialization),
+        y: String(e?.year || e?.graduationYear || '').trim(),
+      }))
+    : [];
+
+  return JSON.stringify({ role, summary, location, skills, exp, edu });
+}
+
 /* -------------------- Нормализация опыта -------------------- */
 
 const EXP_MAP = {
@@ -276,7 +357,8 @@ export function normalizeExperience(v) {
   return EXP_MAP[key] || undefined;
 }
 
-const stripCurrency = (v) => (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
+const stripCurrency = (v) =>
+  (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
 
 /* -------------------- HOST/COUNTRY helpers -------------------- */
 
@@ -611,33 +693,78 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
 /* -------------------- AI: рекомендации -------------------- */
 
 export async function fetchRecommendations(profile, opts = {}) {
+  // нормализуем профиль заранее (навыки → строки, summary/location → trim)
+  const normProfile = normalizeProfileForRecs(profile);
+
+  // areaId по городу (если не пришёл)
   let areaId = opts.areaId ?? null;
   if (!areaId && opts.city) {
     const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
     if (resolved?.id) areaId = resolved.id;
   }
-  return safeFetchJSON('/recommendations/analyze', {
+
+  // сигнатура профиля и таймстамп — для пробития любого кэша
+  const sig = profileSignature(normProfile);
+  const ts = Date.now();
+
+  // query-string с метаданными (дополнительно к телу)
+  const qs = new URLSearchParams();
+  qs.set('ts', String(ts));
+  qs.set('sig', sig);
+  if (opts.city) qs.set('city', String(opts.city));
+  if (opts.host) qs.set('host', normalizeHost(opts.host));
+
+  // отправляем no-store, плюс дублируем служебные заголовки
+  return safeFetchJSON(`/recommendations/analyze?${qs.toString()}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: areaId ?? null },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+      'X-Recs-Signature': sig,
+      'X-Recs-Ts': String(ts),
+    },
+    body: { profile: normProfile, areaId: areaId ?? null },
     noDedupe: true,
   });
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  return safeFetchJSON('/recommendations/generate', {
+  const normProfile = normalizeProfileForRecs(profile);
+  let areaId = opts.areaId ?? null;
+  if (!areaId && opts.city) {
+    const resolved = await resolveAreaId(opts.city, normalizeHost()).catch(() => null);
+    if (resolved?.id) areaId = resolved.id;
+  }
+  const sig = profileSignature(normProfile);
+  const ts = Date.now();
+
+  const qs = new URLSearchParams();
+  qs.set('ts', String(ts));
+  qs.set('sig', sig);
+  if (opts.city) qs.set('city', String(opts.city));
+  if (opts.host) qs.set('host', normalizeHost(opts.host));
+
+  return safeFetchJSON(`/recommendations/generate?${qs.toString()}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: { profile, areaId: opts.areaId ?? null },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+      'X-Recs-Signature': sig,
+      'X-Recs-Ts': String(ts),
+    },
+    body: { profile: normProfile, areaId: areaId ?? null },
     noDedupe: true,
   });
 }
 
 export async function improveProfileAI(profile) {
+  const normProfile = normalizeProfileForRecs(profile);
   return safeFetchJSON('/recommendations/improve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { profile },
+    body: { profile: normProfile },
     noDedupe: true,
   });
 }
