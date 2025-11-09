@@ -11,8 +11,10 @@ export const translations = {
     // Главная страница
     home: {
       badge: 'AI-powered Resume Builder',
+      // для синего акцента
       titlePrefix: 'Создайте идеальное резюме',
       titleAccent: 'за минуты',
+      // совместимость со старым ключом
       title: 'Создайте идеальное резюме за минуты',
       subtitle: 'ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии',
       createButton: 'Создать резюме',
@@ -34,9 +36,7 @@ export const translations = {
       viewVacancies: 'Посмотреть вакансии',
       analyzing: 'Анализируем ваш профиль…',
       marketScore: 'Оценка соответствия рынку',
-      matchScore: 'Оценка соответствия рынку',
       professions: 'Рекомендуемые профессии',
-      suitableRole: 'Целевая профессия',
       findVacancies: 'Найти вакансии',
       skillsToLearn: 'Навыки для развития',
       courses: 'Рекомендуемые курсы',
@@ -44,14 +44,14 @@ export const translations = {
       details: 'Подробнее',
       findVacanciesButton: 'Найти вакансии',
       improveResume: 'Улучшить резюме',
+      // новые ключи
       needMoreData: 'Нужно немного больше данных',
       missingSections: 'Отсутствуют разделы',
       hint: 'Ниже — подборка направлений, навыков и курсов. Нажмите на профессию, чтобы сразу искать вакансии.',
       generate: 'Сгенерировать рекомендации',
       generating: 'Генерируем рекомендации…',
       openCourse: 'Открыть курс',
-      searchVacancies: 'Искать вакансии по этой профессии',
-      aiEmpty: 'Пока нет рекомендаций'
+      searchVacancies: 'Искать вакансии по этой профессии'
     },
 
     // Вакансии
@@ -102,12 +102,7 @@ export const translations = {
       addToSearch: 'Добавить в запрос',
       aiError: 'Не удалось получить подсказку ИИ.',
       searchError: 'Поиск недоступен',
-      loadError: 'Ошибка загрузки вакансий.',
-      autoRelax: {
-        city: 'Мы расширили поиск: убрали фильтр по городу.',
-        experience: 'Мы расширили поиск: убрали фильтр по опыту.',
-        all: 'Мы расширили запрос: показываем общие ИТ-вакансии.'
-      }
+      loadError: 'Ошибка загрузки вакансий.'
     },
 
     // Конструктор
@@ -120,9 +115,11 @@ export const translations = {
         skills: 'Навыки',
         languages: 'Языки',
         template: 'Шаблон',
+        // совместимость
         preview: 'Предварительный просмотр'
       },
 
+      // Личные данные
       personal: {
         fullName: 'Полное имя',
         fullNamePlaceholder: 'Фамилия Имя Отчество',
@@ -136,6 +133,7 @@ export const translations = {
         titlePlaceholder: 'Frontend разработчик',
         summary: 'О себе',
         summaryPlaceholder: 'Опишите ваш опыт и цели...',
+        // новые поля
         age: 'Возраст',
         agePlaceholder: '30',
         maritalStatus: 'Семейное положение',
@@ -148,6 +146,7 @@ export const translations = {
         hint: 'Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.'
       },
 
+      // Опыт
       experience: {
         label: 'Опыт',
         addExperience: 'Добавить опыт',
@@ -163,6 +162,7 @@ export const translations = {
         remove: 'Удалить'
       },
 
+      // Образование
       education: {
         title: 'Добавленное образование',
         addEducation: 'Добавить образование',
@@ -177,6 +177,7 @@ export const translations = {
         remove: 'Удалить'
       },
 
+      // Навыки
       skills: {
         title: 'Навыки',
         addSkill: 'Добавить навык',
@@ -189,6 +190,7 @@ export const translations = {
         refresh: 'Обновить рекомендации'
       },
 
+      // Языки
       languages: {
         title: 'Знание языков',
         language: 'Язык',
@@ -206,6 +208,7 @@ export const translations = {
         }
       },
 
+      // Превью
       preview: {
         title: 'Предпросмотр резюме',
         photoAlt: 'Фото',
@@ -215,6 +218,7 @@ export const translations = {
         languagesCount: 'языков'
       },
 
+      // Шаблоны
       templates: {
         title: 'Выберите шаблон резюме:',
         subtitle: 'Стильный и профессиональный дизайн',
@@ -224,6 +228,7 @@ export const translations = {
         choose: 'Выбрать шаблон {name}'
       },
 
+      // Кнопки
       buttons: {
         previous: 'Назад',
         next: 'Далее',
@@ -233,6 +238,7 @@ export const translations = {
         cancel: 'Отмена'
       },
 
+      // Сообщения
       messages: {
         saving: 'Сохранение...',
         saved: 'Сохранено',
@@ -275,12 +281,12 @@ export const translations = {
       edit: 'Редактировать',
       save: 'Сохранить',
       back: 'Назад',
-      select: 'Выберите',
-      notAvailable: 'Недоступно'
+      select: 'Выберите'
     }
   },
 
   kk: {
+    // Навигация
     nav: {
       home: 'Басты бет',
       builder: 'Түйіндеме',
@@ -288,6 +294,7 @@ export const translations = {
       recommendations: 'Ұсыныстар'
     },
 
+    // Басты бет
     home: {
       badge: 'AI-қолдаумен Түйіндеме Құрастырушы',
       titlePrefix: 'Керемет түйіндеме жасаңыз',
@@ -303,6 +310,7 @@ export const translations = {
       }
     },
 
+    // Ұсыныстар
     recommendations: {
       title: 'AI Ұсыныстары',
       subtitle: 'Түйіндемеңізге негізделген кеңестер',
@@ -312,9 +320,7 @@ export const translations = {
       viewVacancies: 'Вакансияларды қарау',
       analyzing: 'Профиліңізді талдап жатырмыз…',
       marketScore: 'Нарыққа сәйкестік бағасы',
-      matchScore: 'Нарыққа сәйкестік бағасы',
       professions: 'Ұсынылатын мамандықтар',
-      suitableRole: 'Мақсатты мамандық',
       findVacancies: 'Вакансия табу',
       skillsToLearn: 'Үйренуге арналған дағдылар',
       courses: 'Ұсынылатын курстар',
@@ -322,16 +328,17 @@ export const translations = {
       details: 'Толығырақ',
       findVacanciesButton: 'Вакансия табу',
       improveResume: 'Түйіндемені жақсарту',
+      // жаңа кілттер
       needMoreData: 'Қосымша бірнеше дерек қажет',
       missingSections: 'Жетіспейтін бөлімдер',
       hint: 'Төменде бағыттар, дағдылар және курстар іріктелді. Вакансияны бірден іздеу үшін мамандықты басыңыз.',
       generate: 'Ұсыныстарды генерациялау',
       generating: 'Ұсыныстар жасалуда…',
       openCourse: 'Курсты ашу',
-      searchVacancies: 'Осы мамандық бойынша іздеу',
-      aiEmpty: 'Әзірге ұсыныстар жоқ'
+      searchVacancies: 'Осы мамандық бойынша іздеу'
     },
 
+    // Вакансиялар
     vacancies: {
       title: 'Вакансия іздеу',
       searchPlaceholder: 'Лауазым немесе компания бойынша іздеу...',
@@ -379,14 +386,10 @@ export const translations = {
       addToSearch: 'Іздеуге қосу',
       aiError: 'AI кеңесін алу мүмкін болмады.',
       searchError: 'Іздеу қолжетімсіз',
-      loadError: 'Вакансияларды жүктеу қатесі.',
-      autoRelax: {
-        city: 'Іздеу кеңейді: қала сүзгісі алынды.',
-        experience: 'Іздеу кеңейді: тәжірибе сүзгісі алынды.',
-        all: 'Іздеу кеңейді: жалпы IT вакансиялары көрсетілді.'
-      }
+      loadError: 'Вакансияларды жүктеу қатесі.'
     },
 
+    // Құрастырушы
     builder: {
       title: 'Түйіндеме құрастырушысы',
       steps: {
@@ -412,6 +415,7 @@ export const translations = {
         titlePlaceholder: 'Frontend әзірлеуші',
         summary: 'Өзім туралы',
         summaryPlaceholder: 'Тәжірибеңіз бен мақсаттарыңызды сипаттаңыз...',
+        // жаңа өрістер
         age: 'Жасы',
         agePlaceholder: '30',
         maritalStatus: 'Отбасылық жағдайы',
@@ -549,12 +553,12 @@ export const translations = {
       edit: 'Өңдеу',
       save: 'Сақтау',
       back: 'Артқа',
-      select: 'Таңдаңыз',
-      notAvailable: 'Қолжетімсіз'
+      select: 'Таңдаңыз'
     }
   },
 
   en: {
+    // Navigation
     nav: {
       home: 'Home',
       builder: 'Resume',
@@ -562,6 +566,7 @@ export const translations = {
       recommendations: 'Recommendations'
     },
 
+    // Home
     home: {
       badge: 'AI-powered Resume Builder',
       titlePrefix: 'Create the perfect resume',
@@ -577,6 +582,7 @@ export const translations = {
       }
     },
 
+    // Recommendations
     recommendations: {
       title: 'AI Recommendations',
       subtitle: 'Tips based on your resume',
@@ -586,9 +592,7 @@ export const translations = {
       viewVacancies: 'View Jobs',
       analyzing: 'Analyzing your profile…',
       marketScore: 'Market Fit Score',
-      matchScore: 'Market Fit Score',
       professions: 'Recommended Professions',
-      suitableRole: 'Target profession',
       findVacancies: 'Find Jobs',
       skillsToLearn: 'Skills to Learn',
       courses: 'Recommended Courses',
@@ -596,16 +600,17 @@ export const translations = {
       details: 'Details',
       findVacanciesButton: 'Find Jobs',
       improveResume: 'Improve Resume',
+      // new keys
       needMoreData: 'We need a bit more data',
       missingSections: 'Missing sections',
       hint: 'Below are suggested roles, skills and courses. Click a profession to search jobs instantly.',
       generate: 'Generate recommendations',
       generating: 'Generating recommendations…',
       openCourse: 'Open course',
-      searchVacancies: 'Search jobs for this profession',
-      aiEmpty: 'No recommendations yet'
+      searchVacancies: 'Search jobs for this profession'
     },
 
+    // Jobs
     vacancies: {
       title: 'Job Search',
       searchPlaceholder: 'Search by position or company...',
@@ -653,14 +658,10 @@ export const translations = {
       addToSearch: 'Add to search',
       aiError: 'Could not get AI suggestion.',
       searchError: 'Search unavailable',
-      loadError: 'Error loading vacancies.',
-      autoRelax: {
-        city: 'Search widened: removed city filter.',
-        experience: 'Search widened: removed experience filter.',
-        all: 'Search widened: showing generic IT jobs.'
-      }
+      loadError: 'Error loading vacancies.'
     },
 
+    // Builder
     builder: {
       title: 'Resume Builder',
       steps: {
@@ -686,6 +687,7 @@ export const translations = {
         titlePlaceholder: 'Frontend Developer',
         summary: 'About',
         summaryPlaceholder: 'Describe your experience and goals...',
+        // new
         age: 'Age',
         agePlaceholder: '30',
         maritalStatus: 'Marital status',
@@ -823,8 +825,7 @@ export const translations = {
       edit: 'Edit',
       save: 'Save',
       back: 'Back',
-      select: 'Select',
-      notAvailable: 'Not available'
+      select: 'Select'
     }
   }
 };

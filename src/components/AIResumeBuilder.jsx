@@ -37,31 +37,6 @@ function useDebouncedValue(value, delay = 800) {
   return v;
 }
 
-// --- уникализация без учёта регистра
-const uniqCI = (arr = []) => {
-  const seen = new Set();
-  const out = [];
-  for (const v of arr) {
-    const k = String(v || '').trim().toLowerCase();
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(String(v).trim());
-  }
-  return out;
-};
-const uniq = (arr = []) => uniqCI(arr);
-
-// --- нормализация навыков профиля (строки и объекты)
-function extractSkillName(s) {
-  if (!s) return '';
-  if (typeof s === 'string') return s;
-  return s.name || s.title || s.skill || '';
-}
-function extractSkills(profile = {}) {
-  const raw = (Array.isArray(profile.skills) ? profile.skills : []).map(extractSkillName);
-  return uniqCI(raw).map((x) => x.toLowerCase());
-}
-
 // --- даты / опыт ---
 function safeDate(d) { if (!d) return null; const s = new Date(d); return isNaN(+s) ? null : s; }
 function bestOfDates(obj, keys = []) {
@@ -106,119 +81,34 @@ function calcExperienceCategory(profile) {
   return 'moreThan6';
 }
 
-// --- Market Fit score (0..100) ---
-function yearsOfExperience(profile = {}) {
-  const items = Array.isArray(profile.experience) ? profile.experience : [];
-  let ms = 0;
-  for (const it of items) {
-    const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
-    const end   = bestOfDates(it, ['end', 'to', 'dateEnd', 'date_to']) || new Date();
-    if (start && end && end > start) ms += (+end - +start);
+// --- целевая роль ---
+function roleFromEducation(eduItem) {
+  if (!eduItem) return '';
+  const raw = [
+    eduItem?.specialization, eduItem?.speciality, eduItem?.major, eduItem?.faculty,
+    eduItem?.field, eduItem?.program, eduItem?.department, eduItem?.degree,
+  ].map((s) => String(s || '').toLowerCase()).join(' ');
+
+  const any = (...words) => words.some((w) => raw.includes(w));
+
+  if (any('информат', 'программи', 'computer', 'software', 'cs', 'it', 'information technology', 'айти')) {
+    if (any('данн', 'data', 'ml', 'машин', 'искусствен')) return 'Data Analyst (Junior)';
+    if (any('frontend', 'фронтенд', 'веб', 'web')) return 'Frontend Developer (Junior)';
+    if (any('mobile', 'ios', 'android')) return 'Mobile Developer (Junior)';
+    return 'Software Engineer (Junior)';
   }
-  return ms / (365 * 24 * 3600 * 1000);
+  if (any('дизайн', 'ui', 'ux', 'graphic', 'product design', 'интерфейс'))
+    return 'UI/UX Designer (Junior)';
+  if (any('аналит', 'эконом', 'финан', 'бизнес'))
+    return 'Business Analyst (Junior)';
+  if (any('маркет', 'реклам', 'digital marketing'))
+    return 'Маркетолог (Junior)';
+  if (any('менедж', 'управл', 'project'))
+    return 'Project Manager (Junior)';
+
+  return '';
 }
 
-function englishLevelScore(langs = []) {
-  const arr = Array.isArray(langs) ? langs : [];
-  const isEn = (s) => /англ|english/i.test(String(s || ''));
-  const lvlOk = (s) => /B1|B2|C1|C2|upper|advanced|intermediate/i.test(String(s || ''));
-  for (const l of arr) {
-    if (isEn(l?.language || l?.name || l)) {
-      if (lvlOk(l?.level || l)) return 5;
-      return 2;
-    }
-  }
-  return 0;
-}
-
-function computeMarketFit(profile = {}) {
-  const hasAnything =
-    (profile.summary && profile.summary.trim().length > 0) ||
-    (Array.isArray(profile.skills) && profile.skills.length > 0) ||
-    (Array.isArray(profile.experience) && profile.experience.length > 0) ||
-    (Array.isArray(profile.education) && profile.education.length > 0);
-
-  if (!hasAnything) return 0;
-
-  let score = 0;
-
-  // Конкретика роли/позиции
-  const roleText = String(profile.position || profile.title || '').trim();
-  if (roleText.length >= 3) score += Math.min(10, Math.floor(roleText.split(/\s+/).length * 2)); // до 10
-
-  // Навыки
-  const uniqSkills = Array.from(new Set((profile.skills || []).map((s) => String(s).trim()).filter(Boolean)));
-  score += Math.min(30, uniqSkills.length * 3);
-
-  // Опыт
-  const y = yearsOfExperience(profile);
-  if (y >= 6) score += 35;
-  else if (y >= 3) score += 25;
-  else if (y >= 1) score += 15;
-  else if (y > 0) score += 5;
-
-  // О себе
-  const sumLen = String(profile.summary || '').trim().length;
-  if (sumLen >= 200) score += 10;
-  else if (sumLen >= 120) score += 7;
-  else if (sumLen >= 60) score += 5;
-  else if (sumLen >= 20) score += 2;
-
-  // Образование
-  if (Array.isArray(profile.education) && profile.education.length) {
-    score += 8;
-    const e = profile.education[0];
-    const txt = [e?.degree, e?.fieldOfStudy, e?.speciality, e?.major].map(String).join(' ').toLowerCase();
-    if (txt && roleText) {
-      const hit = roleText.toLowerCase().split(/\W+/).some((w) => w && txt.includes(w));
-      if (hit) score += 4;
-    }
-  }
-
-  // Языки
-  score += englishLevelScore(profile.languages);
-
-  // Локация
-  if (String(profile.location || '').trim()) score += 3;
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-// --- подпись профиля для авто-обновления рекомендаций ---
-function profileSignature(p = {}) {
-  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-
-  const role = norm(p.position || p.desiredRole || p.desiredPosition || p.targetRole || '');
-  const summary = norm(p.summary);
-  const location = norm(p.location);
-
-  const skills = Array.isArray(p.skills)
-    ? Array.from(new Set(p.skills.map(norm).filter(Boolean))).sort()
-    : [];
-
-  const exp = Array.isArray(p.experience)
-    ? p.experience.slice(0, 6).map(e => ({
-        t: norm(e.title || e.position),
-        c: norm(e.company),
-        s: norm(e.start || e.from || e.dateStart || e.date_from),
-        e: norm(e.end || e.to || e.dateEnd || e.date_to),
-        d: norm(e.description),
-      }))
-    : [];
-
-  const edu = Array.isArray(p.education)
-    ? p.education.slice(0, 6).map(e => ({
-        i: norm(e.institution || e.school || e.university),
-        d: norm(e.degree),
-        m: norm(e.major || e.speciality || e.specialization),
-        y: String(e.year || e.graduationYear || '').trim(),
-      }))
-    : [];
-
-  return JSON.stringify({ role, summary, location, skills, exp, edu });
-}
-
-// --- целевая роль (чисто как локальный фолбэк для UI, без треков/пресетов) ---
 function deriveDesiredRole(profile) {
   const explicit =
     profile?.position ||
@@ -232,6 +122,19 @@ function deriveDesiredRole(profile) {
   const latest = pickLatestExperience(profile);
   const role = latest?.position || latest?.title || latest?.role || '';
   if (role) return String(role).trim();
+
+  const edus = Array.isArray(profile?.education) ? profile.education : [];
+  if (edus.length) {
+    const scored = edus.map((e, i) => {
+      const end = bestOfDates(e, ['end', 'dateEnd', 'date_to']) || null;
+      const year = Number(e?.year || e?.graduationYear || 0);
+      const endScore = end ? +end : (year ? new Date(year, 6, 1).getTime() : 0);
+      return { e, score: endScore || i };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const eduRole = roleFromEducation(scored[0]?.e);
+    if (eduRole) return eduRole;
+  }
 
   const skills = (profile?.skills || []).map(String).filter(Boolean);
   if (skills.length) return skills.slice(0, 3).join(' ');
@@ -318,14 +221,14 @@ function CitySelect({ value, onChange }) {
         }
         if (kz) walk(kz);
 
-        const uniqCities = [];
+        const uniq = [];
         const seen = new Set();
         acc.forEach((x) => {
           const k = x.name.toLowerCase();
-          if (!seen.has(k)) { seen.add(k); uniqCities.push(x); }
+          if (!seen.has(k)) { seen.add(k); uniq.push(x); }
         });
 
-        setCities(uniqCities.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
+        setCities(uniq.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
       } catch {
         setCities([
           { id: 'almaty', name: 'Алматы' },
@@ -396,7 +299,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t, lang } = useTranslation(); // ⬅️ язык и перевод берём один раз
+  const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
@@ -465,47 +368,6 @@ function AIResumeBuilder() {
     }
   ]), [t]);
 
-  // === AI-FIRST рекомендации без треков/пресетов ===
-  const normalizeAIRecs = useCallback((recRaw) => {
-    if (!recRaw) return null;
-
-    let professions = (recRaw?.roles || recRaw?.professions || [])
-      .map((r) => (typeof r === 'string' ? r : (r?.title || '')))
-      .filter(Boolean);
-
-    let skillsToLearn = (recRaw?.growSkills || recRaw?.skillsToGrow || [])
-      .map((s) => (typeof s === 'string' ? s : (s?.name || '')))
-      .filter(Boolean);
-
-    let courses = (recRaw?.courses || []).map((c) => ({
-      name: [c?.provider, c?.title].filter(Boolean).join(' — '),
-      duration: c?.duration || '',
-      url: c?.url || c?.link || ''
-    })).filter(c => c.name);
-
-    professions = uniq(professions).slice(0, 6);
-    skillsToLearn = uniq(skillsToLearn).slice(0, 10);
-    courses = courses.slice(0, 10);
-
-    const matchScore = Number(recRaw?.marketFitScore ?? recRaw?.marketScore);
-    return {
-      professions,
-      skillsToLearn,
-      courses,
-      matchScore: Number.isFinite(matchScore) ? Math.max(0, Math.min(100, matchScore)) : undefined,
-      debug: recRaw?.debug || {}
-    };
-  }, []);
-
-  const isTooNarrow = (r) => {
-    if (!r) return true;
-    const roles = Array.isArray(r.professions) ? r.professions.length : 0;
-    const skills = Array.isArray(r.skillsToLearn) ? r.skillsToLearn.length : 0;
-    const crs = Array.isArray(r.courses) ? r.courses.length : 0;
-    // узким считаем ответ, где ролей <3 или навыков <5 или курсов <3
-    return roles < 3 || skills < 5 || crs < 3;
-  };
-
   const generateRecommendations = async () => {
     if (!hasProfileForRecs(profile)) {
       setRecommendations(null);
@@ -513,76 +375,54 @@ function AIResumeBuilder() {
       return;
     }
     setIsGenerating(true);
-
-    const langCode =
-      (lang && (lang === 'ru' || lang === 'kk' || lang === 'en')) ? lang :
-      (typeof navigator !== 'undefined' && navigator.language?.startsWith('kk')) ? 'kk' :
-      (typeof navigator !== 'undefined' && navigator.language?.startsWith('en')) ? 'en' : 'ru';
-
     try {
       const city = (profile?.location || '').trim();
-      // 1) Основной запрос к ИИ-бэкенду
-      let raw = await fetchRecommendations(profile, {
-        city,
-        sig: profileSignature(profile),        // ⬅️ sig вместо signature
-        lang: langCode,
-        // мягкие подсказки для промпта на бэке (если поддерживается)
-        expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
-        meta: { diversify: true, avoidNarrow: true }
-      });
+      const rec = await fetchRecommendations(profile, { city });
 
-      let rec = normalizeAIRecs(raw);
+      const professions = (rec?.roles || rec?.professions || [])
+        .map(r => (typeof r === 'string' ? r : (r?.title || '')))
+        .filter(Boolean);
 
-      // 2) Если ИИ выдал узко — переспрашиваем ИИ, подсеивая роль/скиллы из inferSearchFromProfile
-      if (isTooNarrow(rec)) {
-        try {
-          const seed = await inferSearchFromProfile(profile, { lang: langCode });
-          const seededRaw = await fetchRecommendations(profile, {
-            city,
-            sig: profileSignature(profile),     // ⬅️ sig вместо signature
-            lang: langCode,
-            focusRole: seed?.role || '',
-            seedSkills: Array.isArray(seed?.skills) ? seed.skills.slice(0, 12) : [],
-            expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
-            meta: { diversify: true, avoidNarrow: true, seeded: true }
-          });
-          const seeded = normalizeAIRecs(seededRaw);
+      const skillsToLearn = (rec?.growSkills || rec?.skillsToGrow || [])
+        .map(s => (typeof s === 'string' ? s : (s?.name || '')))
+        .filter(Boolean);
 
-          const richness = (r) => (r?.professions?.length || 0) + (r?.skillsToLearn?.length || 0) + (r?.courses?.length || 0);
-          if (richness(seeded) > richness(rec)) rec = seeded;
-        } catch {
-          /* игнор, оставим первую версию rec */
-        }
-      }
+      const courses = (rec?.courses || []).map(c => ({
+        name: [c?.provider, c?.title].filter(Boolean).join(' — '),
+        duration: c?.duration || '',
+        url: c?.url || c?.link || ''
+      }));
 
-      // 3) Финал: если всё ещё бедно или пусто — без выдумок, только локальный фолбэк
-      if (!rec || isTooNarrow(rec)) {
-        const seedRole = deriveDesiredRole(profile);
-        const seedSkills = extractSkills(profile).slice(0, 10);
-        rec = {
-          professions: seedRole ? [seedRole] : [],
-          skillsToLearn: seedSkills,
-          courses: [],
-          matchScore: computeMarketFit(profile),
-          debug: { fallback: 'profile-seed', ai: false }
-        };
-      } else {
-        if (!Number.isFinite(rec.matchScore)) {
-          rec.matchScore = computeMarketFit(profile);
-        }
-      }
+      const matchScore = Number(rec?.marketFitScore ?? rec?.marketScore ?? 0);
 
-      setRecommendations(rec);
-    } catch {
-      // Сервис ИИ недоступен: показываем только то, что реально есть в профиле (без домыслов)
-      const seedRole = deriveDesiredRole(profile);
-      const seedSkills = extractSkills(profile).slice(0, 10);
       setRecommendations({
-        professions: seedRole ? [seedRole] : [],
-        skillsToLearn: seedSkills,
-        courses: [],
-        matchScore: computeMarketFit(profile),
-        debug: { error: 'ai-service-error', fallback: 'profile-seed' }
+        professions: professions.slice(0, 6),
+        skillsToLearn: skillsToLearn.slice(0, 10),
+        courses: courses.slice(0, 10),
+        matchScore: isNaN(matchScore) ? 0 : Math.max(0, Math.min(100, matchScore)),
+        debug: rec?.debug || null,
+      });
+    } catch {
+      const userSkills = (profile.skills || []).map(s => String(s).toLowerCase());
+      const hasDev = userSkills.some(s => ['react', 'javascript', 'python', 'java'].includes(s));
+      const hasDesign = userSkills.some(s => ['figma', 'photoshop', 'design'].includes(s));
+      setRecommendations({
+        professions: hasDev
+          ? ['Frontend Developer', 'Full-Stack Developer', 'Software Engineer']
+          : hasDesign
+          ? ['UI/UX Designer', 'Product Designer', 'Graphic Designer']
+          : ['Project Manager', 'Business Analyst', 'Marketing Specialist'],
+        skillsToLearn: hasDev
+          ? ['TypeScript', 'Node.js', 'Docker', 'GraphQL']
+          : hasDesign
+          ? ['User Research', 'Interaction Design', 'Design Systems']
+          : ['Agile', 'Data Analysis', 'Digital Marketing'],
+        courses: [
+          { name: 'Coursera — React Специализация', duration: '3 месяца', url: '' },
+          { name: 'Udemy — Complete Web Development', duration: '2 месяца', url: '' },
+          { name: 'Stepik — Python для начинающих', duration: '1 месяц', url: '' }
+        ],
+        matchScore: 62
       });
     } finally {
       setIsGenerating(false);
@@ -820,17 +660,13 @@ function RecommendationsPage({
   setSearchQuery,
   profile
 }) {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
 
   // Достаточно ли данных резюме для советов
   const profileOk = hasProfileForRecs(profile);
   const missing = profileOk ? [] : missingProfileSections(profile, t);
 
-  // подпись профиля + дебаунс
-  const sig = React.useMemo(() => profileSignature(profile), [profile]);
-  const debouncedSig = useDebouncedValue(sig, 900);
-
-  // выбранная (целевая) профессия — одно поле
+  // выбранная (целевая) профессия — одно поле, как на макете
   const [selectedProfession, setSelectedProfession] = React.useState(() => {
     const p = recommendations?.professions?.[0] || '';
     return String(p || '').trim();
@@ -840,18 +676,20 @@ function RecommendationsPage({
     setSelectedProfession(String(recommendations?.professions?.[0] || '').trim());
   }, [recommendations?.professions]);
 
-  // авто-обновление рекомендаций при изменении профиля (дебаунс)
+  // авто-генерация при наличии профиля
   React.useEffect(() => {
-    if (!isGenerating) generateRecommendations();
+    if (!recommendations && profileOk && !isGenerating) {
+      generateRecommendations();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSig, profileOk]);
+  }, [profileOk]);
 
-  // Реальная оценка соответствия
-  const score = React.useMemo(() => {
+  // оценка соответствия
+  const score = (() => {
     const v = Number(recommendations?.matchScore);
     if (Number.isFinite(v)) return Math.max(0, Math.min(100, v));
-    return computeMarketFit(profile);
-  }, [recommendations?.matchScore, profile]);
+    return 33; // дефолт чтобы бар не был пустым
+  })();
 
   const handleFindJobs = React.useCallback(() => {
     const q = (selectedProfession || '').trim();
@@ -863,7 +701,7 @@ function RecommendationsPage({
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm text-gray-600">
-          {t('recommendations.marketScore') || 'Оценка соответствия рынку'}
+          {t('recommendations.matchScore') || 'Оценка соответствия рынку'}
         </div>
         <div className="text-sm font-semibold text-purple-700">{value}%</div>
       </div>
@@ -891,13 +729,9 @@ function RecommendationsPage({
     </div>
   );
 
-  const notAvailable =
-    lang === 'kk' ? 'Қолжетімсіз' :
-    lang === 'en' ? 'Unavailable' : 'Недоступно';
-
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4">
+      <div className="max-w-2xl mx-auto px-4">
         <button
           onClick={onBack}
           className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
@@ -910,31 +744,18 @@ function RecommendationsPage({
 
         <div className="bg-white rounded-2xl shadow p-6 border">
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
-                <Sparkles size={18} className="text-purple-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold leading-tight">
-                  {t('recommendations.title')}
-                </h2>
-                <div className="text-xs text-gray-500">
-                  {t('recommendations.hint')}
-                </div>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+              <Sparkles size={18} className="text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold leading-tight">
+                {t('recommendations.title') || 'AI Рекомендации'}
+              </h2>
+              <div className="text-xs text-gray-500">
+                {t('recommendations.hint') || 'Собрано из вашего резюме'}
               </div>
             </div>
-
-            {/* Ручное обновление */}
-            <button
-              onClick={() => !isGenerating && generateRecommendations()}
-              className={`px-3 py-2 border rounded-lg text-sm flex items-center gap-2 ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-              title={t('vacancies.aiRefresh')}
-              aria-label={t('vacancies.aiRefresh')}
-            >
-              <RefreshCw size={16} className={isGenerating ? 'animate-spin' : ''} />
-              {t('vacancies.aiRefresh')}
-            </button>
           </div>
 
           {/* Если данных мало */}
@@ -970,7 +791,7 @@ function RecommendationsPage({
             <ScoreBar value={score} />
           </div>
 
-          {/* Целевая профессия */}
+          {/* Целевая профессия (одно поле) и быстрый выбор */}
           <div className="mb-5">
             <div className="text-sm font-semibold text-gray-800 mb-2">
               {t('recommendations.professions')}
@@ -980,7 +801,7 @@ function RecommendationsPage({
               type="text"
               value={selectedProfession}
               onChange={(e) => setSelectedProfession(e.target.value)}
-              placeholder={t('recommendations.suitableRole') || t('vacancies.suitableRole')}
+              placeholder={t('recommendations.suitableRole') || 'Целевая профессия'}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
 
@@ -1018,7 +839,7 @@ function RecommendationsPage({
               ))}
               {(!recommendations || (recommendations?.skillsToLearn || []).length === 0) && (
                 <span className="text-sm text-gray-500">
-                  {t('recommendations.aiEmpty')}
+                  {t('recommendations.aiEmpty') || 'Подсказок пока нет'}
                 </span>
               )}
             </div>
@@ -1055,33 +876,35 @@ function RecommendationsPage({
                         {t('recommendations.openCourse')}
                       </a>
                     ) : (
-                      <span className="text-xs text-gray-400">{notAvailable}</span>
+                      <span className="text-xs text-gray-400">
+                        {t('common.notAvailable') || 'Недоступно'}
+                      </span>
                     )}
                   </div>
                 ))}
 
                 {(!recommendations || (recommendations?.courses || []).length === 0) && !isGenerating && (
                   <div className="rounded-lg border px-3 py-6 text-center text-gray-500 text-sm">
-                    {t('recommendations.aiEmpty')}
+                    {t('recommendations.aiEmpty') || 'Пока нет рекомендаций по курсам'}
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Нижние кнопки */}
+          {/* Нижние кнопки как на макете */}
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleFindJobs}
               className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
             >
-              {t('home.findJobsButton')}
+              {t('home.findJobsButton') || 'Найти вакансии'}
             </button>
             <button
               onClick={onImproveResume}
               className="flex-1 px-4 py-2.5 rounded-lg border font-medium hover:bg-gray-50"
             >
-              {t('recommendations.improveResume')}
+              {t('recommendations.improveResume') || 'Улучшить резюме'}
             </button>
           </div>
         </div>
@@ -1100,7 +923,7 @@ function VacanciesPage({
   mockVacancies,
   profile,
 }) {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -1208,6 +1031,7 @@ function VacanciesPage({
         location: aiSuggestion.city || f.location,
         experience: hhExpFromAi(aiSuggestion.experience) || f.experience,
       }));
+
       setPage(0);
       aiAutoAppliedRef.current = true;
     }
@@ -1228,8 +1052,7 @@ function VacanciesPage({
   const addSkillToQuery = (skill) => {
     const s = String(skill || '').trim();
     if (!s) return;
-    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);
-    if (has) return;
+    const has = new RegExp(`(^|\\s)${s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(\\s|$)`, 'i').test(searchQuery);    if (has) return;
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
@@ -1443,24 +1266,6 @@ function VacanciesPage({
   const canPrev = page > 0 && !blocked;
   const canNext = pages > 0 && page + 1 < pages && !blocked;
 
-  // локализованные сообщения для авто-расширения
-  const autoRelaxMsg = (kind) => {
-    if (lang === 'kk') {
-      if (kind === 'city') return 'Іздеуді кеңейттік: қала сүзгісі алынды.';
-      if (kind === 'experience') return 'Іздеуді кеңейттік: тәжірибе сүзгісі алынды.';
-      return 'Іздеуді кеңейттік: жалпы сұраныс қолданылды.';
-    }
-    if (lang === 'en') {
-      if (kind === 'city') return 'Search widened: city filter removed.';
-      if (kind === 'experience') return 'Search widened: experience filter removed.';
-      return 'Search widened: using a more generic query.';
-    }
-    // ru
-    if (kind === 'city') return 'Расширили поиск: убрали фильтр по городу.';
-    if (kind === 'experience') return 'Расширили поиск: убрали фильтр по опыту.';
-    return 'Расширили поиск: использован более общий запрос.';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-6xl mx-auto px-4">
@@ -1569,7 +1374,9 @@ function VacanciesPage({
           {/* Бейджик про авто-расширение */}
           {autoRelaxInfo && (
             <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
-              {autoRelaxMsg(autoRelaxInfo.dropped)}
+              {autoRelaxInfo.dropped === 'city' && t('vacancies.autoRelax.city')}
+              {autoRelaxInfo.dropped === 'experience' && t('vacancies.autoRelax.experience')}
+              {autoRelaxInfo.dropped === 'all' && t('vacancies.autoRelax.all')}
             </div>
           )}
 
@@ -1736,5 +1543,6 @@ function VacanciesPage({
     </div>
   );
 }
+
 
 export default AIResumeBuilder;
