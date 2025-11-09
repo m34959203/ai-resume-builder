@@ -51,7 +51,9 @@ async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 
     const res = await fetch(url, { method, headers: hhHeaders(headers), body, signal });
     const text = await res.text();
     let data = text;
-    try { if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null; } catch {}
+    try {
+      if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null;
+    } catch {}
     return { ok: res.ok, status: res.status, data, headers: res.headers };
   };
   let attempt = 0;
@@ -95,54 +97,143 @@ async function hhGetVacancy(id) {
 }
 
 /* ============================== NORMALIZATION & HEURISTICS ============================== */
+/** Расширенный лексикон навыков — рус/англ + популярные синонимы. */
 const SKILL_LEXICON = [
-  'Agile','Scrum','Kanban','Project Management','Risk Management','Stakeholder Management',
-  'Presentation','Communication','Requirements','UML','BPMN','Jira','Confluence',
-  'Excel','Power BI','Tableau','SQL','Python','R','Pandas','NumPy','Statistics','A/B Testing',
-  'JavaScript','TypeScript','HTML','CSS','Sass','React','Redux','Node.js','Express','Git','REST','GraphQL','Testing','Webpack','Vite',
-  'Figma','UI/UX','Digital Marketing','SEO','SMM','Google Analytics','Copywriting',
-];
-const CANON = {
-  js: 'javascript', javascript: 'javascript',
-  'react.js': 'react', react: 'react',
-  ts: 'typescript', typescript: 'typescript',
-  'node.js': 'node', node: 'node', express: 'express',
-  html: 'html', css: 'css', sass: 'sass',
-  redux: 'redux', webpack: 'webpack', vite: 'vite',
-  python: 'python', pandas: 'pandas', numpy: 'numpy',
-  powerbi: 'power bi', 'power bi': 'power bi', tableau: 'tableau', excel: 'excel',
-  sql: 'sql', jira: 'jira', confluence: 'confluence',
-  graphql: 'graphql', rest: 'rest',
-  'ui/ux': 'ui/ux', 'ux/ui': 'ui/ux',
-  'a/b testing': 'a/b testing', testing: 'testing',
-  agile: 'agile', scrum: 'scrum', kanban: 'kanban',
-  communication: 'communication', presentation: 'presentation',
-  requirements: 'requirements', uml: 'uml', bpmn: 'bpmn',
-  'risk management': 'risk management', 'stakeholder management': 'stakeholder management',
-  'digital marketing': 'digital marketing', seo: 'seo', smm: 'smm',
-};
-const ROLE_PATTERNS = [
-  { title: 'Project Manager',      rx: /(project\s*manager|руководитель\s*проектов|менеджер\s*проекта|pm)/i },
-  { title: 'Business Analyst',     rx: /(business\s*analyst|бизнес[-\s]?аналитик)/i },
-  { title: 'Marketing Specialist', rx: /(marketing|маркетолог|smm|digital)/i },
-  { title: 'Data Analyst',         rx: /(data\s*analyst|аналитик\s*данных)/i },
-  { title: 'Frontend Developer',   rx: /(frontend|react|javascript\s*developer)/i },
-  { title: 'Product Manager',      rx: /(product\s*manager|продакт)/i },
-  { title: 'QA Engineer',          rx: /(qa|тестировщик|quality\s*assurance)/i },
-]; // ← ВАЖНО: массив закрыт
+  // Core office / analytics
+  'Excel','MS Excel','Google Sheets','Google Data Studio','Looker Studio','Power Query','Power Pivot',
+  'SQL','Postgres','MySQL','SQLite','NoSQL','MongoDB','Redis',
+  'Python','Pandas','NumPy','SciPy','Matplotlib','Seaborn','Plotly',
+  'R','Statistics','A/B Testing','Experimentation','Hypothesis testing',
 
+  // BI / data
+  'Power BI','DAX','Tableau','Qlik','Metabase',
+
+  // Web FE
+  'JavaScript','TypeScript','HTML','CSS','Sass','Less','React','Redux','Next.js','Vite','Webpack','Babel',
+  'Vue','Nuxt','Angular',
+
+  // Web BE / platforms
+  'Node.js','Express','Nest.js','Django','Flask','FastAPI','Spring','Spring Boot','.NET','ASP.NET','Laravel','PHP',
+
+  // Testing / QA
+  'Testing','Unit testing','Integration testing','E2E','Selenium','Cypress','Playwright','Jest','Mocha','Chai','PyTest','JMeter','Postman','Swagger',
+
+  // DevOps
+  'Git','GitHub','GitLab','CI/CD','GitHub Actions','GitLab CI',
+  'Docker','Kubernetes','Terraform','Ansible','NGINX','Linux','Bash',
+
+  // Clouds
+  'AWS','GCP','Azure','S3','EC2','Lambda','BigQuery','Cloud Functions',
+
+  // PM / BA
+  'Agile','Scrum','Kanban','Project Management','Risk Management','Stakeholder Management',
+  'Requirements','UML','BPMN','Jira','Confluence','Presentation','Communication','Roadmapping','Backlog',
+
+  // Design/Marketing
+  'Figma','UI/UX','Prototyping','SEO','SMM','Digital Marketing','Google Analytics',
+];
+
+/** Канонизация синонимов в «базовую форму» */
+const CANON = {
+  // BI / analytics
+  'ms excel': 'excel', 'excel': 'excel',
+  'google sheets': 'google sheets',
+  'google data studio': 'looker studio', 'looker studio': 'looker studio',
+  'power query': 'power query', 'power pivot': 'power pivot',
+  'sql': 'sql', 'postgres': 'postgres', 'mysql': 'mysql', 'sqlite': 'sqlite',
+  'mongodb': 'mongodb', 'redis': 'redis',
+  'power bi': 'power bi', 'dax': 'dax', 'tableau': 'tableau', 'qlik': 'qlik', 'metabase': 'metabase',
+  'python': 'python', 'pandas': 'pandas', 'numpy': 'numpy', 'scipy': 'scipy',
+  'matplotlib': 'matplotlib', 'seaborn': 'seaborn', 'plotly': 'plotly',
+  'r': 'r', 'statistics': 'statistics', 'a/b testing': 'a/b testing',
+
+  // FE
+  'javascript': 'javascript', 'js': 'javascript',
+  'typescript': 'typescript', 'ts': 'typescript',
+  'html': 'html', 'css': 'css', 'sass': 'sass', 'less': 'less',
+  'react': 'react', 'redux': 'redux', 'next.js': 'next', 'next': 'next',
+  'vite': 'vite', 'webpack': 'webpack', 'babel': 'babel',
+  'vue': 'vue', 'nuxt': 'nuxt', 'angular': 'angular',
+
+  // BE
+  'node.js': 'node', 'node': 'node', 'express': 'express', 'nest.js': 'nest', 'nest': 'nest',
+  'django': 'django', 'flask': 'flask', 'fastapi': 'fastapi',
+  'spring': 'spring', 'spring boot': 'spring', '.net': '.net', 'asp.net': '.net',
+  'laravel': 'laravel', 'php': 'php',
+
+  // Testing / QA
+  'testing': 'testing', 'unit testing': 'unit testing', 'integration testing': 'integration testing', 'e2e': 'e2e',
+  'selenium': 'selenium', 'cypress': 'cypress', 'playwright': 'playwright',
+  'jest': 'jest', 'mocha': 'mocha', 'chai': 'chai', 'pytest': 'pytest',
+  'jmeter': 'jmeter', 'postman': 'postman', 'swagger': 'swagger',
+
+  // DevOps
+  'git': 'git', 'github': 'github', 'gitlab': 'gitlab',
+  'ci/cd': 'ci/cd', 'github actions': 'github actions', 'gitlab ci': 'gitlab ci',
+  'docker': 'docker', 'kubernetes': 'kubernetes',
+  'terraform': 'terraform', 'ansible': 'ansible',
+  'nginx': 'nginx', 'linux': 'linux', 'bash': 'bash',
+
+  // Cloud
+  'aws': 'aws', 'gcp': 'gcp', 'azure': 'azure', 's3': 's3', 'ec2': 'ec2', 'lambda': 'lambda',
+  'bigquery': 'bigquery', 'cloud functions': 'cloud functions',
+
+  // PM / BA
+  'agile': 'agile', 'scrum': 'scrum', 'kanban': 'kanban',
+  'project management': 'project management', 'risk management': 'risk management',
+  'stakeholder management': 'stakeholder management', 'requirements': 'requirements',
+  'uml': 'uml', 'bpmn': 'bpmn', 'jira': 'jira', 'confluence': 'confluence',
+  'presentation': 'presentation', 'communication': 'communication',
+  'roadmapping': 'roadmapping', 'backlog': 'backlog',
+
+  // Design/Marketing
+  'figma': 'figma', 'ui/ux': 'ui/ux', 'ux/ui': 'ui/ux',
+  'prototyping': 'prototyping', 'seo': 'seo', 'smm': 'smm',
+  'digital marketing': 'digital marketing', 'google analytics': 'google analytics',
+};
+
+/** Расширенные паттерны по ролям (ru/en + синонимы) */
+const ROLE_PATTERNS = [
+  { title: 'Project Manager',      rx: /(project\s*manager|руководитель\s*проект(ов|а)|менеджер\s*проекта|pm\b)/i },
+  { title: 'Product Manager',      rx: /(product\s*manager|продакт(\s*менеджер)?|po\b)/i },
+  { title: 'Business Analyst',     rx: /(business\s*analyst|бизнес[-\s]?аналитик)/i },
+  { title: 'Data Analyst',         rx: /(data\s*analyst|аналитик\s*данных)/i },
+  { title: 'Data Scientist',       rx: /(data\s*scientist|учен(ый|ого)\s*данных)/i },
+  { title: 'ML Engineer',          rx: /(ml\s*engineer|machine\s*learning|ml-инженер|машинн(ого|ое)\s*обучени[яе])/i },
+  { title: 'QA Engineer',          rx: /(qa\b|quality\s*assurance|тестировщик|инженер\s*по\s*тестированию)/i },
+  { title: 'Frontend Developer',   rx: /(front[\s-]*end|фронт[\s-]*енд|react\b|javascript\s*developer)/i },
+  { title: 'Backend Developer',    rx: /(back[\s-]*end|бэк[\s-]*енд|серверн(ый|ая)\s*разработчик|node\.?js|django|spring|\.net)/i },
+  { title: 'Fullstack Developer',  rx: /(full[\s-]*stack|фулл[\s-]*стек)/i },
+  { title: 'DevOps Engineer',      rx: /(devops|дейвопс|ci\/cd\s*инженер|platform\s*engineer)/i },
+  { title: 'Marketing Specialist', rx: /(marketing|маркетолог|smm|digital)/i },
+];
+
+/** Доп. треки прокачки по ролям — когда явных «гэпов» нет */
 const ADVANCED_BY_ROLE = {
   'Frontend Developer': ['Accessibility', 'Performance', 'GraphQL', 'Testing'],
+  'Backend Developer': ['API Design', 'SQL Optimization', 'Caching', 'Security'],
+  'Fullstack Developer': ['System Design', 'DevOps basics', 'Testing'],
   'Data Analyst': ['SQL Optimization', 'A/B Testing', 'Power BI DAX', 'Python Visualization'],
+  'Data Scientist': ['Feature Engineering', 'Model Monitoring', 'MLOps'],
+  'ML Engineer': ['MLOps', 'Optimization', 'Experiment Tracking'],
   'Business Analyst': ['BPMN 2.0', 'Prototyping', 'System Analysis'],
   'Project Manager': ['People Management', 'Budgeting', 'Roadmapping', 'Metrics'],
+  'DevOps Engineer': ['IaC', 'Observability', 'Security'],
+  'QA Engineer': ['Automation', 'Performance testing', 'CI/CD testing'],
   'Marketing Specialist': ['CRO', 'Email Marketing', 'Marketing Analytics'],
 };
 
+/* ---------- helpers ---------- */
+const lower = (s) => String(s || '').toLowerCase().trim();
+const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/** Канонизация навыков профиля + извлечение из свободного текста */
 function normalizeSkills(profile) {
   const base = (Array.isArray(profile?.skills) ? profile.skills : [])
     .flatMap((s) => String(s || '').split(/[,/;|]+/))
-    .map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase());
+    .map((s) => lower(s))
+    .filter(Boolean);
+
   const text = [
     String(profile.summary || ''),
     ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) =>
@@ -152,30 +243,48 @@ function normalizeSkills(profile) {
       [e.degree, e.major, e.specialization].map((x) => String(x || '')).join(' ')
     ),
   ].join(' ').toLowerCase();
+
   const extra = SKILL_LEXICON.map((s) => s.toLowerCase()).filter((sk) => text.includes(sk));
+
   const out = new Set();
-  [...base, ...extra].forEach((raw) => { const k = CANON[raw] || raw; if (k) out.add(k); });
+  [...base, ...extra].forEach((raw) => {
+    const k = CANON[raw] || raw;
+    if (k) out.add(k);
+  });
   return Array.from(out);
 }
 
+/** Определение роли по тексту и по наборам навыков (без BA/PM по умолчанию) */
 function guessRoles(profile) {
   const hay = [
-    String(profile.targetTitle || ''), String(profile.desiredRole || ''), String(profile.position || ''),
+    String(profile.targetTitle || ''),
+    String(profile.desiredRole || ''),
+    String(profile.position || ''),
     String(profile.summary || ''),
     ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) => String(e.title || '')),
   ].join(' ');
+
   const roles = [];
   for (const r of ROLE_PATTERNS) if (r.rx.test(hay)) roles.push(r.title);
+
   const skills = normalizeSkills(profile);
+  const has = (arr) => arr.some((s) => skills.includes(s));
+
   if (!roles.length) {
-    if (skills.some((s) => ['react','javascript','typescript','html','css'].includes(s))) roles.push('Frontend Developer');
-    if (skills.some((s) => ['sql','excel','python','power bi','tableau','pandas'].includes(s))) roles.push('Data Analyst');
-    if (skills.some((s) => ['requirements','uml','bpmn','jira','confluence'].includes(s))) roles.push('Business Analyst');
+    if (has(['react','javascript','typescript','html','css','redux'])) roles.push('Frontend Developer');
+    if (has(['node','express','nest','.net','spring','django','flask','fastapi','postgres','mysql'])) roles.push('Backend Developer');
+    if (has(['sql','excel','power bi','tableau','python','pandas','numpy'])) roles.push('Data Analyst');
+    if (has(['python','pandas','numpy','scipy','tensorflow','pytorch'])) roles.push('Data Scientist');
+    if (has(['ml','mlops','tensorflow','pytorch'])) roles.push('ML Engineer');
+    if (has(['selenium','cypress','playwright','testing','pytest','jmeter','postman'])) roles.push('QA Engineer');
+    if (has(['docker','kubernetes','ci/cd','terraform','ansible'])) roles.push('DevOps Engineer');
   }
-  if (!roles.length) roles.push('Business Analyst', 'Project Manager');
-  return Array.from(new Set(roles)).slice(0, 3);
+
+  // ограничим до 4, чтобы не грузить HH избыточно
+  return Array.from(new Set(roles)).slice(0, 4);
 }
 
+/** Опыт, бэкенд-категории под HH */
 function yearsOfExperience(profile) {
   const arr = Array.isArray(profile.experience) ? profile.experience : [];
   let ms = 0;
@@ -199,18 +308,19 @@ const expMatchScore = (u, v) => {
   return d === 1 ? 0.7 : d === 2 ? 0.4 : 0.1;
 };
 
+/** Извлечение навыков из вакансии HH (key_skills + текст + наш лексикон) */
 function extractSkillsFromVacancy(v) {
   const pool = [];
   const ks = Array.isArray(v.key_skills) ? v.key_skills.map(k => k.name) : [];
   pool.push(...ks);
-  const txt = [v.name, v.snippet?.requirement, v.snippet?.responsibility, v.description].map(x => String(x||'').toLowerCase()).join(' ');
+  const txt = [v.name, v.snippet?.requirement, v.snippet?.responsibility, v.description]
+    .map(x => String(x||'').toLowerCase()).join(' ');
   for (const s of SKILL_LEXICON) if (txt.includes(s.toLowerCase())) pool.push(s);
   const out = new Set();
-  pool.map(s => String(s||'').toLowerCase()).forEach(raw => { const k = CANON[raw] || raw; if (k) out.add(k); });
+  pool.map(s => lower(s)).forEach(raw => { const k = CANON[raw] || raw; if (k) out.add(k); });
   return Array.from(out);
 }
 
-const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const hhSearchUrl = (role, areaId, host = HH_HOST) => {
   const u = new URL(`https://${host}/search/vacancy`);
   u.searchParams.set('text', role);
@@ -220,9 +330,9 @@ const hhSearchUrl = (role, areaId, host = HH_HOST) => {
 const courseLinks = (skill) => {
   const q = encodeURIComponent(skill);
   return [
-    { provider: 'Coursera', title: `${capital(skill)} — специализации`, duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
+    { provider: 'Coursera', title: `${capital(skill)} — специализации`,   duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
     { provider: 'Udemy',    title: `${capital(skill)} — практические курсы`, duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
-    { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,     duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
+    { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,   duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
   ];
 };
 
@@ -232,7 +342,15 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const mySkills = normalizeSkills(profile);
   const userYears = yearsOfExperience(profile);
   const userBucket = expBucket(userYears);
-  const roles = guessRoles(profile);
+
+  let roles = guessRoles(profile);
+  // подстраховка — если совсем пусто, попробуем минимальный вывод из навыков
+  if (!roles.length) {
+    if (mySkills.some(s => ['sql','excel','power bi','tableau','python','pandas','numpy'].includes(s))) roles = ['Data Analyst'];
+    else if (mySkills.some(s => ['react','javascript','typescript','html','css'].includes(s))) roles = ['Frontend Developer'];
+    else if (mySkills.some(s => ['node','django','spring','.net'].includes(s))) roles = ['Backend Developer'];
+    else if (mySkills.some(s => ['selenium','cypress','testing'].includes(s))) roles = ['QA Engineer'];
+  }
 
   const roleStats = [];
   const allVacancyIds = [];
@@ -277,7 +395,7 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
         skillFreq.set(s, (skillFreq.get(s) || 0) + 1);
         localSkills.set(s, (localSkills.get(s) || 0) + 1);
       }
-      const vb = v.experience?.id || null;
+      const vb = v.experience?.id || null; // 'noExperience'|'between1And3'|'between3And6'|'moreThan6'
       expScores.push(expMatchScore(userBucket, vb));
     }
     const topLocal = [...localSkills.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,freq])=>({ name, freq }));
@@ -285,14 +403,17 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   }
 
   const topDemand = [...skillFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).map(([name,freq])=>({ name, freq }));
+
+  // дефицит: в топ-спросе, но не в профиле
   const mySet = new Set(mySkills);
   let gaps = topDemand.filter(s => !mySet.has(s.name)).slice(0, 8);
   if (!gaps.length && rolesAgg.length) {
     const r0 = rolesAgg[0].title;
-    const adv = (ADVANCED_BY_ROLE[r0] || ['Communication','Presentation']).map(s => s.toLowerCase());
+    const adv = (ADVANCED_BY_ROLE[r0] || ['Communication','Presentation']).map(s => lower(s));
     gaps = adv.map(n => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
   }
 
+  // курсы строго по гэпам
   let courses = gaps.slice(0,3).flatMap(g => courseLinks(g.name));
   if (typeof getCoursesExt === 'function') {
     try {
@@ -301,6 +422,7 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     } catch (e) { console.warn('[courses/ext]', e?.message || e); }
   }
 
+  // скоринг market-fit (скиллы/опыт/вакансии)
   const demandSet = new Set(topDemand.map(s=>s.name));
   const overlap = mySkills.filter(s => demandSet.has(s)).length;
   const fitSkills = topDemand.length ? (overlap / topDemand.length) : 0;
@@ -326,36 +448,46 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
 }
 
 /* ======================================== FALLBACKS ===================================== */
+/** Фолбэк — без BA/PM по умолчанию, только эвристики от навыков профиля */
 async function fallbackRecommendations(profile = {}) {
   const skills = normalizeSkills(profile);
+
   const professions = [];
-  if (skills.some(s => /react|javascript|typescript|html|css/.test(s))) professions.push({ title: 'Frontend Developer', vacancies: 0, hhQuery: 'Frontend Developer', topSkills: [], url: hhSearchUrl('Frontend Developer', null) });
-  if (skills.some(s => /python|django|flask|fastapi/.test(s)))  professions.push({ title: 'Python Developer', vacancies: 0, hhQuery: 'Python Developer', topSkills: [], url: hhSearchUrl('Python Developer', null) });
-  if (skills.some(s => /sql|postgres|mysql|excel|data|pandas/.test(s))) professions.push({ title: 'Data Analyst', vacancies: 0, hhQuery: 'Data Analyst', topSkills: [], url: hhSearchUrl('Data Analyst', null) });
-  if (!professions.length) {
-    professions.push({ title: 'Business Analyst', vacancies: 0, hhQuery: 'Business Analyst', topSkills: [], url: hhSearchUrl('Business Analyst', null) });
-    professions.push({ title: 'Project Manager',  vacancies: 0, hhQuery: 'Project Manager',  topSkills: [], url: hhSearchUrl('Project Manager',  null) });
-  }
-  let courses = [
-    { provider: 'Coursera', title: 'React Specialization', duration: '3 месяца', url: 'https://www.coursera.org/' },
-    { provider: 'Udemy', title: 'Complete Web Development', duration: '2 месяца', url: 'https://www.udemy.com/' },
-    { provider: 'Stepik', title: 'Python для начинающих', duration: '1 месяц', url: 'https://stepik.org/' },
-  ];
+  const has = (arr) => arr.some((s) => skills.includes(s));
+
+  if (has(['react','javascript','typescript','html','css','redux'])) professions.push({ title: 'Frontend Developer', vacancies: 0, hhQuery: 'Frontend Developer', topSkills: [], url: hhSearchUrl('Frontend Developer', null) });
+  if (has(['node','express','nest','.net','spring','django','flask','fastapi'])) professions.push({ title: 'Backend Developer', vacancies: 0, hhQuery: 'Backend Developer', topSkills: [], url: hhSearchUrl('Backend Developer', null) });
+  if (has(['sql','postgres','mysql','excel','data','pandas','power bi','tableau'])) professions.push({ title: 'Data Analyst', vacancies: 0, hhQuery: 'Data Analyst', topSkills: [], url: hhSearchUrl('Data Analyst', null) });
+  if (has(['selenium','cypress','playwright','testing','pytest'])) professions.push({ title: 'QA Engineer', vacancies: 0, hhQuery: 'QA Engineer', topSkills: [], url: hhSearchUrl('QA Engineer', null) });
+
+  // курсы только по дефицитным навыкам (условно возьмём 2–3 из «разумных» направлений)
+  const gapsSeed = skills.length
+    ? skills.filter((s) => ['sql','excel','power bi','tableau','python','react','node','docker','kubernetes'].includes(s)).slice(0, 3)
+    : [];
+  let courses = gapsSeed.flatMap(s => courseLinks(s));
   if (typeof getCoursesExt === 'function') {
-    try { courses = await getCoursesExt(profile); } catch (e) { console.warn('[courses/fallback]', e?.message || e); }
+    try { courses = await getCoursesExt({ profile, gaps: gapsSeed.map(n => ({ name: n })), keywords: gapsSeed.join(', ') }); } catch (e) { console.warn('[courses/fallback]', e?.message || e); }
   }
-  const basicGrow = skills.length ? ['Communication','Presentation','Critical thinking'] : ['Agile','Data Analysis','Digital Marketing'];
+
+  const basicGrow = skills.length
+    ? ['Communication','Presentation']
+    : ['Agile','Data Analysis','Digital Marketing'];
+
+  // консервативная оценка (без рынка) — UI всегда умеет пересчитать локально
+  const marketFitScore = Math.max(10, Math.min(60, 20 + skills.length * 3));
+
   return {
-    marketFitScore: 65,
-    marketScore: 65,
+    marketFitScore,
+    marketScore: marketFitScore,
     roles: professions,
     professions,
-    growSkills: basicGrow.map(s => ({ name: s.toLowerCase(), demand: 1, gap: true })),
+    growSkills: basicGrow.map(s => ({ name: lower(s), demand: 1, gap: true })),
     skillsToGrow: basicGrow,
     courses,
-    debug: { fallback: true }
+    debug: { fallback: true, skillsDetected: skills }
   };
 }
+
 function fallbackImprove(profile = {}) {
   const uniq = (arr) => Array.from(new Set((arr || []).map(String).map(s => s.trim()).filter(Boolean)));
   const cap  = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
