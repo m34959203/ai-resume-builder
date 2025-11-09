@@ -68,6 +68,9 @@ export default defineConfig(async ({ mode }) => {
   // ===== Plugins =====
   const plugins = [react()];
 
+  // Управление PWA: по умолчанию включаем в prod, можно отключить переменной
+  const enablePWA = String(env.VITE_ENABLE_PWA ?? (isProd ? '1' : '0')).trim() === '1';
+
   if (isProd) {
     try {
       const { default: compression } = await import('vite-plugin-compression');
@@ -79,50 +82,100 @@ export default defineConfig(async ({ mode }) => {
       console.warn('vite-plugin-compression не установлен — пропускаю.');
     }
 
-    try {
-      const { VitePWA } = await import('vite-plugin-pwa');
-      plugins.push(
-        VitePWA({
-          registerType: 'autoUpdate',
-          includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
-          manifest: {
-            name: env.VITE_APP_NAME || 'AI Resume Builder',
-            short_name: 'AI Resume',
-            description: 'Create professional resumes with AI assistance',
-            theme_color: '#2563eb',
-            background_color: '#ffffff',
-            display: 'standalone',
-            // ВАЖНО: без ведущего "/" — иконки резолвятся относительно base
-            icons: [
-              { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-              { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-            ],
-          },
-          workbox: {
-            globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-            runtimeCaching: [
-              {
-                urlPattern: /^https:\/\/api\.hh\.ru\/.*/i,
-                handler: 'NetworkFirst',
-                options: {
-                  cacheName: 'hh-api-cache',
-                  expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+    if (enablePWA) {
+      try {
+        const { VitePWA } = await import('vite-plugin-pwa');
+
+        // Собираем список доменов, которые нельзя отдавать SW (API)
+        const bffOrigin = (() => {
+          try {
+            const u = new URL(apiUrl);
+            return u.origin.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+          } catch {
+            return null;
+          }
+        })();
+
+        const denylist = [
+          /^\/api\//i,              // локальный прокси
+          /^\/admin\//i,
+          /^\/socket\.io\//i,
+          /^\/vite\//i,
+          /\/assets\/.*\.map$/i,
+        ];
+
+        // Если API не за /api, добавим origin BFF (Render/локалка)
+        if (bffOrigin) {
+          // Workbox denylist работает только по path, поэтому ниже ещё runtimeCaching с прямым urlPattern
+          // Здесь оставляем denylist как есть.
+        }
+
+        plugins.push(
+          VitePWA({
+            // Ключевые флаги, чтобы пользователи не "залипали" на старом SW
+            registerType: 'autoUpdate',
+            injectRegister: 'auto',
+            workbox: {
+              cleanupOutdatedCaches: true,
+              skipWaiting: true,
+              clientsClaim: true,
+              navigateFallback: 'index.html',
+              navigateFallbackDenylist: denylist,
+              globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+              runtimeCaching: [
+                // HH публичное API — сетка сперва, с коротким кешем
+                {
+                  urlPattern: /^https:\/\/api\.hh\.ru\/.*/i,
+                  handler: 'NetworkFirst',
+                  options: {
+                    cacheName: 'hh-api-cache',
+                    expiration: { maxEntries: 60, maxAgeSeconds: 300 },
+                    networkTimeoutSeconds: 5,
+                  },
                 },
-              },
-              {
-                urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
-                handler: 'CacheFirst',
-                options: {
-                  cacheName: 'cdn-cache',
-                  expiration: { maxEntries: 30, maxAgeSeconds: 86_400 },
+                // Ваш BFF (Render/локалка) — тоже NetworkFirst
+                ...(bffOrigin
+                  ? [{
+                      urlPattern: new RegExp(`^${bffOrigin.replace(/\./g, '\\.')}\\/.*`, 'i'),
+                      handler: 'NetworkFirst',
+                      options: {
+                        cacheName: 'bff-api-cache',
+                        expiration: { maxEntries: 60, maxAgeSeconds: 300 },
+                        networkTimeoutSeconds: 5,
+                      },
+                    }]
+                  : []),
+                // Популярные CDN — CacheFirst
+                {
+                  urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
+                  handler: 'CacheFirst',
+                  options: {
+                    cacheName: 'cdn-cache',
+                    expiration: { maxEntries: 50, maxAgeSeconds: 86_400 },
+                  },
                 },
-              },
-            ],
-          },
-        })
-      );
-    } catch {
-      console.warn('vite-plugin-pwa не установлен — пропускаю.');
+              ],
+            },
+            includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
+            manifest: {
+              name: env.VITE_APP_NAME || 'AI Resume Builder',
+              short_name: 'AI Resume',
+              description: 'Create professional resumes with AI assistance',
+              theme_color: '#2563eb',
+              background_color: '#ffffff',
+              display: 'standalone',
+              // ВАЖНО: без ведущего "/" — иконки резолвятся относительно base
+              icons: [
+                { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+                { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+              ],
+            },
+            devOptions: { enabled: false }, // в dev PWA выключен
+          })
+        );
+      } catch {
+        console.warn('vite-plugin-pwa не установлен — пропускаю.');
+      }
     }
 
     try {
@@ -191,6 +244,7 @@ export default defineConfig(async ({ mode }) => {
       https: httpsConfig || undefined,
       headers: { 'Access-Control-Allow-Origin': '*' },
       hmr: { overlay: true },
+      open: false,
       proxy: {
         [apiPrefix]: {
           target: apiUrl,
