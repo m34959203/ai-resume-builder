@@ -1,15 +1,16 @@
-// src/App.jsx - Production-ready Application
+// src/App.jsx - Production-ready Application with i18n
 import React, { Suspense, lazy, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import SEO from './components/SEO';
 import { PageLoader } from './components/LoadingStates';
+import { LanguageProvider } from './context/LanguageContext';
 import { initGA, trackPageView, trackPerformance, initSessionTracking } from './utils/analytics';
 
 // Lazy load main component for better initial load
 const AIResumeBuilder = lazy(() => import('./components/AIResumeBuilder'));
 
-function App() {
+function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
@@ -46,11 +47,21 @@ function App() {
   }, []);
 
   return (
-    <ErrorBoundary>
+    <>
       <SEO />
-      <Suspense fallback={<PageLoader message="Загружаем приложение..." />}>
+      <Suspense fallback={<PageLoader />}>
         <AIResumeBuilder />
       </Suspense>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
     </ErrorBoundary>
   );
 }
