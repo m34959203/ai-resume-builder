@@ -642,6 +642,148 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
   });
 }
 
+/* -------------------- ЛОКАЛЬНЫЕ GAP/РОЛИ/КУРСЫ (клиентский фолбэк) -------------------- */
+
+const CANON = (s) => {
+  const k = String(s || '').toLowerCase().trim();
+  const map = {
+    'ms excel': 'excel', excel: 'excel',
+    'google sheets': 'google sheets',
+    'looker studio': 'looker studio', 'google data studio': 'looker studio',
+    'power query': 'power query', 'power pivot': 'power pivot',
+    sql: 'sql', postgres: 'postgres', mysql: 'mysql', sqlite: 'sqlite',
+    mongodb: 'mongodb', redis: 'redis',
+    'power bi': 'power bi', dax: 'dax', tableau: 'tableau', qlik: 'qlik', metabase: 'metabase',
+    python: 'python', pandas: 'pandas', numpy: 'numpy', scipy: 'scipy',
+    matplotlib: 'matplotlib', seaborn: 'seaborn', plotly: 'plotly',
+    javascript: 'javascript', js: 'javascript', typescript: 'typescript', ts: 'typescript',
+    html: 'html', css: 'css', sass: 'sass', less: 'less',
+    react: 'react', redux: 'redux', 'next.js': 'next', next: 'next', vite: 'vite', webpack: 'webpack', babel: 'babel',
+    vue: 'vue', nuxt: 'nuxt', angular: 'angular',
+    'node.js': 'node', node: 'node', express: 'express', 'nest.js': 'nest', nest: 'nest',
+    django: 'django', flask: 'flask', fastapi: 'fastapi',
+    spring: 'spring', '.net': '.net', 'asp.net': '.net', laravel: 'laravel', php: 'php',
+    testing: 'testing', selenium: 'selenium', cypress: 'cypress', playwright: 'playwright',
+    jest: 'jest', mocha: 'mocha', chai: 'chai', pytest: 'pytest',
+    jmeter: 'jmeter', postman: 'postman', swagger: 'swagger',
+    git: 'git', 'github actions': 'github actions', 'gitlab ci': 'gitlab ci', 'ci/cd': 'ci/cd',
+    docker: 'docker', kubernetes: 'kubernetes', terraform: 'terraform', ansible: 'ansible',
+    nginx: 'nginx', linux: 'linux', bash: 'bash',
+    aws: 'aws', gcp: 'gcp', azure: 'azure',
+    agile: 'agile', scrum: 'scrum', kanban: 'kanban',
+    figma: 'figma', 'ui/ux': 'ui/ux',
+  };
+  return map[k] || k;
+};
+
+function normSkillsArray(arr) {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(arr) ? arr : [])
+    .map((x) => (typeof x === 'string' ? x : (x?.name || x?.title || '')))
+    .map((s) => CANON(s))
+    .filter(Boolean)
+    .forEach((s) => { if (!seen.has(s)) { seen.add(s); out.push(s); } });
+  return out;
+}
+
+function localCourseLinks(skill) {
+  const q = encodeURIComponent(skill);
+  return [
+    { provider: 'Coursera', title: `${skill} — специализации`,    duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
+    { provider: 'Udemy',    title: `${skill} — практические курсы`, duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
+    { provider: 'Stepik',   title: `${skill} — русские курсы`,    duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
+  ];
+}
+
+function localGuessRoles(profile) {
+  const txt = [
+    String(profile?.targetTitle || ''),
+    String(profile?.desiredRole || ''),
+    String(profile?.position || ''),
+    String(profile?.summary || ''),
+    ...(Array.isArray(profile?.experience) ? profile.experience : []).map((e) => String(e?.title || '')),
+  ].join(' ').toLowerCase();
+
+  const roles = [];
+  const push = (r) => { if (!roles.includes(r)) roles.push(r); };
+
+  if (/(front[\s-]*end|react|javascript\s*developer)/i.test(txt)) push('Frontend Developer');
+  if (/(back[\s-]*end|node\.?js|django|spring|\.net)/i.test(txt)) push('Backend Developer');
+  if (/(qa|тестировщик|quality\s*assurance)/i.test(txt)) push('QA Engineer');
+  if (/(data\s*analyst|аналитик\s*данных)/i.test(txt)) push('Data Analyst');
+  if (/(data\s*scientist)/i.test(txt)) push('Data Scientist');
+  if (/(devops|ci\/cd)/i.test(txt)) push('DevOps Engineer');
+
+  const skills = normSkillsArray(profile?.skills);
+  const has = (xs) => xs.some((s) => skills.includes(CANON(s)));
+
+  if (!roles.length) {
+    if (has(['react','javascript','typescript','html','css'])) push('Frontend Developer');
+    if (has(['node','django','spring','.net'])) push('Backend Developer');
+    if (has(['sql','excel','power bi','tableau','python','pandas','numpy'])) push('Data Analyst');
+    if (has(['selenium','cypress','playwright','testing'])) push('QA Engineer');
+    if (has(['docker','kubernetes','terraform','ansible'])) push('DevOps Engineer');
+  }
+  return roles.slice(0, 4);
+}
+
+function localGapFrom(profile) {
+  const mine = new Set(normSkillsArray(profile?.skills));
+  const suggestions = [];
+
+  // Аналитика / Python+SQL+Excel
+  if (mine.has('python') || mine.has('sql') || mine.has('excel')) {
+    ['pandas', 'numpy', 'etl', 'power bi', 'tableau', 'scikit-learn', 'data visualization'].forEach((s) => {
+      const k = CANON(s); if (!mine.has(k)) suggestions.push(k);
+    });
+  }
+
+  // Фронтенд
+  if (['react','javascript','typescript','html','css'].some((s) => mine.has(s))) {
+    ['redux', 'testing', 'jest', 'playwright', 'performance', 'accessibility', 'graphql'].forEach((s) => {
+      const k = CANON(s); if (!mine.has(k)) suggestions.push(k);
+    });
+  }
+
+  // Бэкенд
+  if (['node','django','spring','.net'].some((s) => mine.has(s))) {
+    ['api design','sql optimization','caching','security','docker','kubernetes'].forEach((s) => {
+      const k = CANON(s); if (!mine.has(k)) suggestions.push(k);
+    });
+  }
+
+  // Базовые инженерные
+  ['git', 'github actions', 'ci/cd'].forEach((s) => { const k = CANON(s); if (!mine.has(k)) suggestions.push(k); });
+
+  // Уникализация
+  const out = [];
+  const seen = new Set();
+  for (const s of suggestions) { if (!seen.has(s)) { seen.add(s); out.push(s); } }
+  return out.slice(0, 8);
+}
+
+function localRecommendations(profile) {
+  const roles = localGuessRoles(profile);
+  const grow = localGapFrom(profile);
+  const courses = grow.slice(0, 3).flatMap((s) => localCourseLinks(s));
+  // простой скоринг от заполненности
+  const base = normSkillsArray(profile?.skills).length;
+  const marketFitScore = Math.max(10, Math.min(70, 25 + base * 4));
+  const roleObj = (r) => ({ title: r, vacancies: 0, hhQuery: r, url: `https://hh.kz/search/vacancy?text=${encodeURIComponent(r)}` });
+
+  return {
+    marketFitScore,
+    marketScore: marketFitScore,
+    roles: roles.map(roleObj),
+    professions: roles.map(roleObj),
+    growSkills: grow.map((n) => ({ name: n, demand: 1, gap: true })),
+    skillsToGrow: grow.map((s) => s[0].toUpperCase() + s.slice(1)),
+    courses,
+    debug: { fallback: 'client-local', skillsDetected: normSkillsArray(profile?.skills) }
+  };
+}
+
 /* -------------------- Вспомогательное для рекомендаций -------------------- */
 
 function extractSkills(profile = {}) {
@@ -685,7 +827,6 @@ function marketFit(profile = {}) {
   const uniqSkills = Array.from(new Set((profile.skills || []).map((s) => String(s).trim()).filter(Boolean)));
   score += Math.min(30, uniqSkills.length * 3);
 
-  // грубо по длительности опыта (если есть даты в experience)
   const items = Array.isArray(profile.experience) ? profile.experience : [];
   let ms = 0;
   for (const it of items) {
@@ -725,7 +866,9 @@ function normalizeRecPayload(payload, profile) {
   let roles = Array.isArray(raw.roles) ? raw.roles
            : Array.isArray(raw.professions) ? raw.professions
            : [];
-  roles = roles.map(r => (typeof r === 'string' ? { title: r } : r)).filter(Boolean);
+  roles = roles
+    .map(r => (typeof r === 'string' ? { title: r } : r))
+    .filter(Boolean);
 
   // навыки для развития (допускаем разные ключи и типы)
   const growArr =
@@ -741,6 +884,12 @@ function normalizeRecPayload(payload, profile) {
   const userSkills = new Set(extractSkills(profile).map(s => s.toLowerCase()));
   growSkills = growSkills.filter(s => !userSkills.has(String(s.name).toLowerCase()));
 
+  // если GAP пуст — подстрахуемся локальным вычислением
+  if (!growSkills.length) {
+    const localGrow = localGapFrom(profile);
+    growSkills = localGrow.map((n) => ({ name: n, demand: 1, gap: true }));
+  }
+
   // курсы
   let courses = Array.isArray(raw.courses) ? raw.courses
              : Array.isArray(raw.recommendedCourses) ? raw.recommendedCourses
@@ -748,8 +897,19 @@ function normalizeRecPayload(payload, profile) {
              : [];
   courses = courses.map(c => (typeof c === 'string' ? { title: c, provider: '', url: c } : c));
 
+  // если курсов нет — сгенерируем по GAP
+  if (!courses.length && growSkills.length) {
+    courses = growSkills.slice(0, 3).flatMap((g) => localCourseLinks(String(g.name)));
+  }
+
   // оценка соответствия
-  const market = raw.marketFitScore ?? raw.marketScore ?? raw.score ?? 0;
+  const market = raw.marketFitScore ?? raw.marketScore ?? raw.score ?? marketFit(profile);
+
+  // если не пришли роли — подскажем локально
+  if (!roles.length) {
+    const localRoles = localGuessRoles(profile).map((r) => ({ title: r, vacancies: 0, hhQuery: r, url: `https://hh.kz/search/vacancy?text=${encodeURIComponent(r)}` }));
+    roles = localRoles;
+  }
 
   return {
     marketFitScore: market,
@@ -807,19 +967,8 @@ export async function fetchRecommendations(profile, opts = {}) {
       });
       return normalizeRecPayload(resp, profile);
     } catch (e2) {
-      // 3) Полный фейл — отдаем безопасные семена
-      const role = seedRole(profile);
-      const skills = extractSkills(profile).slice(0, 10);
-      return normalizeRecPayload(
-        {
-          marketFitScore: marketFit(profile),
-          roles: role ? [role] : [],
-          growSkills: [],
-          recommendedCourses: [],
-          debug: { fallback: 'profile-seed', ai: false, e1: e1?.message, e2: e2?.message },
-        },
-        profile
-      );
+      // 3) Умный клиентский фолбэк (реальный GAP + курсы)
+      return localRecommendations(profile);
     }
   }
 }
@@ -832,15 +981,25 @@ export async function generateRecommendations(profile, opts = {}) {
 export async function improveProfileAI(profile, opts = {}) {
   const body = { profile, sig: opts.sig || undefined, ts: typeof opts.ts === 'number' ? opts.ts : Date.now() };
   try {
-    return await safeFetchJSON('/recommendations/improve', {
+    const resp = await safeFetchJSON('/recommendations/improve', {
       method: 'POST',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body,
       noDedupe: true,
     });
+    if (resp && resp.ok && resp.updated) return resp; // унификация
+    return resp || { ok: true, updated: profile, changes: {} };
   } catch {
-    return { profile, debug: { fallback: 'no-endpoint' } };
+    // локальная минимальная нормализация
+    const uniq = (arr) => Array.from(new Set((arr || []).map(String).map((s) => s.trim()).filter(Boolean)));
+    const cap  = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const normalizedSkills = uniq(profile.skills).map(cap);
+    const bullets = [];
+    const txt = String(profile.summary || '').trim();
+    if (txt) txt.split(/[\n\.]+/).map((s) => s.trim()).filter(Boolean).forEach((line) => bullets.push(`• ${line}`));
+    const updated = { ...profile, skills: normalizedSkills, bullets, summary: txt || undefined };
+    return { ok: true, updated, changes: { skillsCount: normalizedSkills.length, bulletsCount: bullets.length } };
   }
 }
 
