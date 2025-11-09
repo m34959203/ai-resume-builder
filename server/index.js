@@ -64,7 +64,7 @@ const allowedOrigins = config.frontOrigins.length > 0 ? config.frontOrigins : de
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // SSR/health/локальные curl
     try {
       const url = new URL(origin);
       const host = url.hostname || '';
@@ -78,12 +78,25 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Accept-Language'],
+  /**
+   * ВАЖНО:
+   * Не задаём allowedHeaders вручную — тогда пакет `cors`
+   * отразит всё из Access-Control-Request-Headers (включая x-no-cache).
+   * Если хотите зафиксировать список — добавьте 'X-No-Cache' и др.
+   */
+  // allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Accept-Language', 'X-No-Cache'],
   exposedHeaders: ['X-Request-ID'],
   maxAge: 86400,
 };
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+
+// Кэширование префлайтов и корректный Vary
+app.use((req, res, next) => {
+  // Помогаем CDN и браузерам корректно кэшировать ответы CORS
+  res.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
+  next();
+});
 
 // ────────────────────────────────────────────────────────────
 // ЛОГИ
@@ -94,7 +107,8 @@ app.use((req, res, next) => {
     const ms = Date.now() - t0;
     const s = res.statusCode;
     const e = s >= 500 ? '❌' : s >= 400 ? '⚠️' : '✅';
-    console.log(`${e} ${req.method} ${req.path} - ${s} - ${ms}ms`);
+    const origin = req.headers.origin ? ` [${req.headers.origin}]` : '';
+    console.log(`${e} ${req.method} ${req.path}${origin} - ${s} - ${ms}ms`);
   });
   next();
 });

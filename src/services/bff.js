@@ -126,6 +126,7 @@ export const isHttpError = (e) => e && typeof e === 'object' && e.name === 'BFFH
 // In-flight dedupe для GET-запросов
 const IN_FLIGHT = new Map(); // key: normalizedUrl -> Promise<any>
 
+/** внутренняя обёртка fetch с таймаутом */
 function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const normalizedUrl = makeApiUrl(url);
   if (options.signal) {
@@ -133,8 +134,11 @@ function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   }
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), timeoutMs);
-  return fetch(normalizedUrl, { credentials: 'include', signal: controller.signal, ...options })
-    .finally(() => clearTimeout(id));
+  return fetch(normalizedUrl, {
+    credentials: 'include',
+    signal: controller.signal,
+    ...options,
+  }).finally(() => clearTimeout(id));
 }
 
 async function parsePayload(res) {
@@ -157,6 +161,7 @@ async function parsePayload(res) {
  *  - signal?: AbortSignal
  *  - timeoutMs?: number
  *  - noDedupe?: boolean (по умолчанию false; dedupe только для GET)
+ *  - cache?: RequestCache (по умолчанию 'no-store')
  */
 export async function safeFetchJSON(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
@@ -183,7 +188,17 @@ export async function safeFetchJSON(url, options = {}) {
   }
 
   const doFetch = async () => {
-    const res = await fetchWithTimeout(normalizedUrl, { ...options, method, headers, body }, timeoutMs);
+    const res = await fetchWithTimeout(
+      normalizedUrl,
+      {
+        cache: options.cache ?? 'no-store',         // <— важно: без кастомных заголовков и без кэша
+        ...options,
+        method,
+        headers,
+        body,
+      },
+      timeoutMs
+    );
 
     if (normalizedUrl.includes('/hh/jobs/search')) {
       console.log('[BFF Client] Response status:', res.status);
@@ -727,7 +742,8 @@ export async function fetchRecommendations(profile, opts = {}) {
   try {
     return await safeFetchJSON('/recommendations/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+      cache: 'no-store',                         // <— без кэша и без префлайтов
+      headers: { 'Content-Type': 'application/json' },
       body,
       noDedupe: true,
     });
@@ -736,7 +752,8 @@ export async function fetchRecommendations(profile, opts = {}) {
     try {
       return await safeFetchJSON('/recommendations/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
         body,
         noDedupe: true,
       });
@@ -766,7 +783,8 @@ export async function improveProfileAI(profile, opts = {}) {
   try {
     return await safeFetchJSON('/recommendations/improve', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-no-cache': '1' },
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
       body,
       noDedupe: true,
     });
