@@ -8,16 +8,22 @@ const router = express.Router();
 let buildRecommendationsExt = null;
 let improveProfileExt = null;
 let getCoursesExt = null;
-try { ({ buildRecommendations: buildRecommendationsExt, improveProfile: improveProfileExt } = require('../services/recommender')); } catch {}
-try { ({ getCourses: getCoursesExt } = require('../services/courseAggregator')); } catch {}
+try {
+  ({ buildRecommendations: buildRecommendationsExt, improveProfile: improveProfileExt } =
+    require('../services/recommender'));
+} catch {}
+try {
+  ({ getCourses: getCoursesExt } = require('../services/courseAggregator'));
+} catch {}
 
 /* ================================== ENV & CONSTANTS ==================================== */
 const HH_HOST = (process.env.HH_HOST || 'hh.kz').trim();
 const HH_API = 'https://api.hh.ru';
-const USER_AGENT = process.env.HH_USER_AGENT || 'AI-Resume-Builder/1.0 (+github.com)';
+const USER_AGENT =
+  process.env.HH_USER_AGENT || 'AI-Resume-Builder/1.0 (+github.com/m34959203/ai-resume-builder)';
 
-const SAMPLE_PAGES = Math.max(1, Number(process.env.RECS_SAMPLE_PAGES || 2));
-const PER_PAGE = Math.max(1, Number(process.env.RECS_PER_PAGE || 50));
+const SAMPLE_PAGES = Math.max(1, Number(process.env.RECS_SAMPLE_PAGES || 2)); // страниц листинга на роль
+const PER_PAGE = Math.max(1, Number(process.env.RECS_PER_PAGE || 50));        // вакансий на страницу
 const VACANCY_SAMPLE_PER_ROLE = Math.max(1, Number(process.env.RECS_VACANCY_SAMPLE_PER_ROLE || 30));
 const CACHE_TTL_MS = Number(process.env.RECS_CACHE_TTL_MS || 180000);
 const DETAIL_CONCURRENCY = Math.max(2, Number(process.env.RECS_DETAIL_CONCURRENCY || 6));
@@ -28,7 +34,10 @@ const _cache = new Map();
 const cacheGet = (k) => {
   const it = _cache.get(k);
   if (!it) return null;
-  if (it.exp < Date.now()) { _cache.delete(k); return null; }
+  if (it.exp < Date.now()) {
+    _cache.delete(k);
+    return null;
+  }
   return it.data;
 };
 const cacheSet = (k, v, ttl = CACHE_TTL_MS) => _cache.set(k, { exp: Date.now() + ttl, data: v });
@@ -37,34 +46,41 @@ const cacheSet = (k, v, ttl = CACHE_TTL_MS) => _cache.set(k, { exp: Date.now() +
 const hhHeaders = (extra = {}) => ({
   'User-Agent': USER_AGENT,
   'HH-User-Agent': USER_AGENT,
-  'Accept': 'application/json',
-  'Accept-Language': 'ru',
+  Accept: 'application/json',
+  'Accept-Language': 'ru-RU,ru;q=0.9',
   ...extra,
 });
+
 function withTimeout(pf, ms = FETCH_TIMEOUT_MS) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error('timeout')), ms);
   return pf(ctrl.signal).finally(() => clearTimeout(t));
 }
+
 async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 } = {}) {
   const doFetch = async (signal) => {
     const res = await fetch(url, { method, headers: hhHeaders(headers), body, signal });
     const text = await res.text();
     let data = text;
     try {
-      if ((res.headers.get('content-type') || '').includes('application/json')) data = text ? JSON.parse(text) : null;
+      if ((res.headers.get('content-type') || '').includes('application/json')) {
+        data = text ? JSON.parse(text) : null;
+      }
     } catch {}
     return { ok: res.ok, status: res.status, data, headers: res.headers };
   };
+
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       const r = await withTimeout((signal) => doFetch(signal), FETCH_TIMEOUT_MS);
       if (r.ok) return r;
+
       const retryAfter = Number(r.headers?.get?.('Retry-After') || 0);
-      const shouldRetry = (r.status === 429 || (r.status >= 500 && r.status < 600)) && attempt < retries;
-      if (!shouldRetry) return r;
+      const retriable = (r.status === 429 || (r.status >= 500 && r.status < 600)) && attempt < retries;
+      if (!retriable) return r;
+
       const delay = retryAfter > 0 ? retryAfter * 1000 : Math.min(3000, 400 * Math.pow(2, attempt));
       await new Promise((res) => setTimeout(res, delay));
       attempt += 1;
@@ -75,6 +91,7 @@ async function fetchJSON(url, { method = 'GET', headers = {}, body, retries = 2 
     }
   }
 }
+
 async function getJsonCached(url) {
   const hit = cacheGet(url);
   if (hit) return hit;
@@ -83,13 +100,14 @@ async function getJsonCached(url) {
   cacheSet(url, data);
   return data;
 }
-async function hhSearchVacancies({ text, area, page = 0, per_page = PER_PAGE, host = HH_HOST }) {
+
+async function hhSearchVacancies({ text, area, page = 0, per_page = PER_PAGE }) {
   const u = new URL(`${HH_API}/vacancies`);
   if (text) u.searchParams.set('text', text);
   if (area) u.searchParams.set('area', String(area));
   u.searchParams.set('per_page', String(per_page));
   u.searchParams.set('page', String(page));
-  if (host) u.searchParams.set('host', host);
+  // host параметр HH API не использует; оставляем только text/area/pagination
   return getJsonCached(u.toString());
 }
 async function hhGetVacancy(id) {
@@ -97,43 +115,44 @@ async function hhGetVacancy(id) {
 }
 
 /* ============================== NORMALIZATION & HEURISTICS ============================== */
-/** Расширенный лексикон навыков — рус/англ + популярные синонимы. */
+// Расширенный лексикон навыков: рус/англ + популярные синонимы (чтобы чаще ловить спрос)
 const SKILL_LEXICON = [
-  // Core office / analytics
-  'Excel','MS Excel','Google Sheets','Google Data Studio','Looker Studio','Power Query','Power Pivot',
-  'SQL','Postgres','MySQL','SQLite','NoSQL','MongoDB','Redis',
-  'Python','Pandas','NumPy','SciPy','Matplotlib','Seaborn','Plotly',
-  'R','Statistics','A/B Testing','Experimentation','Hypothesis testing',
+  // Office / analytics
+  'Excel', 'MS Excel', 'Google Sheets', 'Looker Studio', 'Power Query', 'Power Pivot',
+  'SQL', 'Postgres', 'MySQL', 'SQLite', 'NoSQL', 'MongoDB', 'Redis',
+  'Python', 'Pandas', 'NumPy', 'SciPy', 'Matplotlib', 'Seaborn', 'Plotly',
+  'R', 'Statistics', 'A/B Testing', 'Experimentation', 'Hypothesis testing',
 
   // BI / data
-  'Power BI','DAX','Tableau','Qlik','Metabase',
+  'Power BI', 'DAX', 'Tableau', 'Qlik', 'Metabase',
 
-  // Web FE
-  'JavaScript','TypeScript','HTML','CSS','Sass','Less','React','Redux','Next.js','Vite','Webpack','Babel',
-  'Vue','Nuxt','Angular',
+  // FE
+  'JavaScript', 'TypeScript', 'HTML', 'CSS', 'Sass', 'Less', 'React', 'Redux', 'Next.js', 'Vite', 'Webpack', 'Babel',
+  'Vue', 'Nuxt', 'Angular',
 
-  // Web BE / platforms
-  'Node.js','Express','Nest.js','Django','Flask','FastAPI','Spring','Spring Boot','.NET','ASP.NET','Laravel','PHP',
+  // BE
+  'Node.js', 'Express', 'Nest.js', 'Django', 'Flask', 'FastAPI', 'Spring', 'Spring Boot', '.NET', 'ASP.NET', 'Laravel', 'PHP',
 
   // Testing / QA
-  'Testing','Unit testing','Integration testing','E2E','Selenium','Cypress','Playwright','Jest','Mocha','Chai','PyTest','JMeter','Postman','Swagger',
+  'Testing', 'Unit testing', 'Integration testing', 'E2E', 'Selenium', 'Cypress', 'Playwright',
+  'Jest', 'Mocha', 'Chai', 'PyTest', 'JMeter', 'Postman', 'Swagger',
 
   // DevOps
-  'Git','GitHub','GitLab','CI/CD','GitHub Actions','GitLab CI',
-  'Docker','Kubernetes','Terraform','Ansible','NGINX','Linux','Bash',
+  'Git', 'GitHub', 'GitLab', 'CI/CD', 'GitHub Actions', 'GitLab CI',
+  'Docker', 'Kubernetes', 'Terraform', 'Ansible', 'NGINX', 'Linux', 'Bash',
 
   // Clouds
-  'AWS','GCP','Azure','S3','EC2','Lambda','BigQuery','Cloud Functions',
+  'AWS', 'GCP', 'Azure', 'S3', 'EC2', 'Lambda', 'BigQuery', 'Cloud Functions',
 
   // PM / BA
-  'Agile','Scrum','Kanban','Project Management','Risk Management','Stakeholder Management',
-  'Requirements','UML','BPMN','Jira','Confluence','Presentation','Communication','Roadmapping','Backlog',
+  'Agile', 'Scrum', 'Kanban', 'Project Management', 'Risk Management', 'Stakeholder Management',
+  'Requirements', 'UML', 'BPMN', 'Jira', 'Confluence', 'Presentation', 'Communication',
+  'Roadmapping', 'Backlog',
 
   // Design/Marketing
-  'Figma','UI/UX','Prototyping','SEO','SMM','Digital Marketing','Google Analytics',
+  'Figma', 'UI/UX', 'Prototyping', 'SEO', 'SMM', 'Digital Marketing', 'Google Analytics',
 ];
 
-/** Канонизация синонимов в «базовую форму» */
 const CANON = {
   // BI / analytics
   'ms excel': 'excel', 'excel': 'excel',
@@ -192,11 +211,13 @@ const CANON = {
   'digital marketing': 'digital marketing', 'google analytics': 'google analytics',
 };
 
-/** Расширенные паттерны по ролям (ru/en + синонимы) */
 const ROLE_PATTERNS = [
+  // BA/PM включаем только при явных совпадениях в тексте профиля
   { title: 'Project Manager',      rx: /(project\s*manager|руководитель\s*проект(ов|а)|менеджер\s*проекта|pm\b)/i },
   { title: 'Product Manager',      rx: /(product\s*manager|продакт(\s*менеджер)?|po\b)/i },
   { title: 'Business Analyst',     rx: /(business\s*analyst|бизнес[-\s]?аналитик)/i },
+
+  // Эвристики под инженерные роли
   { title: 'Data Analyst',         rx: /(data\s*analyst|аналитик\s*данных)/i },
   { title: 'Data Scientist',       rx: /(data\s*scientist|учен(ый|ого)\s*данных)/i },
   { title: 'ML Engineer',          rx: /(ml\s*engineer|machine\s*learning|ml-инженер|машинн(ого|ое)\s*обучени[яе])/i },
@@ -208,7 +229,6 @@ const ROLE_PATTERNS = [
   { title: 'Marketing Specialist', rx: /(marketing|маркетолог|smm|digital)/i },
 ];
 
-/** Доп. треки прокачки по ролям — когда явных «гэпов» нет */
 const ADVANCED_BY_ROLE = {
   'Frontend Developer': ['Accessibility', 'Performance', 'GraphQL', 'Testing'],
   'Backend Developer': ['API Design', 'SQL Optimization', 'Caching', 'Security'],
@@ -223,11 +243,18 @@ const ADVANCED_BY_ROLE = {
   'Marketing Specialist': ['CRO', 'Email Marketing', 'Marketing Analytics'],
 };
 
-/* ---------- helpers ---------- */
 const lower = (s) => String(s || '').toLowerCase().trim();
 const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const uniqBy = (arr, key) => {
+  const seen = new Set(); const out = [];
+  for (const x of arr) {
+    const k = key(x);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(x);
+  }
+  return out;
+};
 
-/** Канонизация навыков профиля + извлечение из свободного текста */
 function normalizeSkills(profile) {
   const base = (Array.isArray(profile?.skills) ? profile.skills : [])
     .flatMap((s) => String(s || '').split(/[,/;|]+/))
@@ -242,7 +269,9 @@ function normalizeSkills(profile) {
     ...(Array.isArray(profile.education) ? profile.education : []).map((e) =>
       [e.degree, e.major, e.specialization].map((x) => String(x || '')).join(' ')
     ),
-  ].join(' ').toLowerCase();
+  ]
+    .join(' ')
+    .toLowerCase();
 
   const extra = SKILL_LEXICON.map((s) => s.toLowerCase()).filter((sk) => text.includes(sk));
 
@@ -254,14 +283,17 @@ function normalizeSkills(profile) {
   return Array.from(out);
 }
 
-/** Определение роли по тексту и по наборам навыков (без BA/PM по умолчанию) */
-function guessRoles(profile) {
+function guessRoles(profile, focusRole) {
+  if (focusRole) return [String(focusRole)];
+
   const hay = [
     String(profile.targetTitle || ''),
     String(profile.desiredRole || ''),
     String(profile.position || ''),
     String(profile.summary || ''),
-    ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) => String(e.title || '')),
+    ...(Array.isArray(profile.experience) ? profile.experience : []).map((e) =>
+      String(e.title || '')
+    ),
   ].join(' ');
 
   const roles = [];
@@ -271,20 +303,18 @@ function guessRoles(profile) {
   const has = (arr) => arr.some((s) => skills.includes(s));
 
   if (!roles.length) {
-    if (has(['react','javascript','typescript','html','css','redux'])) roles.push('Frontend Developer');
-    if (has(['node','express','nest','.net','spring','django','flask','fastapi','postgres','mysql'])) roles.push('Backend Developer');
-    if (has(['sql','excel','power bi','tableau','python','pandas','numpy'])) roles.push('Data Analyst');
-    if (has(['python','pandas','numpy','scipy','tensorflow','pytorch'])) roles.push('Data Scientist');
-    if (has(['ml','mlops','tensorflow','pytorch'])) roles.push('ML Engineer');
-    if (has(['selenium','cypress','playwright','testing','pytest','jmeter','postman'])) roles.push('QA Engineer');
-    if (has(['docker','kubernetes','ci/cd','terraform','ansible'])) roles.push('DevOps Engineer');
+    if (has(['react', 'javascript', 'typescript', 'html', 'css', 'redux'])) roles.push('Frontend Developer');
+    if (has(['node', 'express', 'nest', '.net', 'spring', 'django', 'flask', 'fastapi', 'postgres', 'mysql'])) roles.push('Backend Developer');
+    if (has(['sql', 'excel', 'power bi', 'tableau', 'python', 'pandas', 'numpy'])) roles.push('Data Analyst');
+    if (has(['python', 'pandas', 'numpy', 'scipy', 'tensorflow', 'pytorch'])) roles.push('Data Scientist');
+    if (has(['ml', 'mlops', 'tensorflow', 'pytorch'])) roles.push('ML Engineer');
+    if (has(['selenium', 'cypress', 'playwright', 'testing', 'pytest', 'jmeter', 'postman'])) roles.push('QA Engineer');
+    if (has(['docker', 'kubernetes', 'ci/cd', 'terraform', 'ansible'])) roles.push('DevOps Engineer');
   }
 
-  // ограничим до 4, чтобы не грузить HH избыточно
   return Array.from(new Set(roles)).slice(0, 4);
 }
 
-/** Опыт, бэкенд-категории под HH */
 function yearsOfExperience(profile) {
   const arr = Array.isArray(profile.experience) ? profile.experience : [];
   let ms = 0;
@@ -294,73 +324,109 @@ function yearsOfExperience(profile) {
     if (!start) continue;
     const a = new Date(start).getTime();
     const b = new Date(end).getTime();
-    if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) ms += (b - a);
+    if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) ms += b - a;
   }
   const years = ms / (1000 * 60 * 60 * 24 * 365);
   return Math.max(0, Math.round(years * 10) / 10);
 }
-const expBucket = (y) => (y < 1 ? 'noExperience' : y < 3 ? 'between1And3' : y < 6 ? 'between3And6' : 'moreThan6');
+const expBucket = (y) =>
+  y < 1 ? 'noExperience' : y < 3 ? 'between1And3' : y < 6 ? 'between3And6' : 'moreThan6';
 const expMatchScore = (u, v) => {
   if (!v) return 0.5;
   if (u === v) return 1;
-  const order = ['noExperience','between1And3','between3And6','moreThan6'];
+  const order = ['noExperience', 'between1And3', 'between3And6', 'moreThan6'];
   const d = Math.abs(order.indexOf(u) - order.indexOf(v));
   return d === 1 ? 0.7 : d === 2 ? 0.4 : 0.1;
 };
 
-/** Извлечение навыков из вакансии HH (key_skills + текст + наш лексикон) */
 function extractSkillsFromVacancy(v) {
   const pool = [];
-  const ks = Array.isArray(v.key_skills) ? v.key_skills.map(k => k.name) : [];
+  const ks = Array.isArray(v.key_skills) ? v.key_skills.map((k) => k.name) : [];
   pool.push(...ks);
   const txt = [v.name, v.snippet?.requirement, v.snippet?.responsibility, v.description]
-    .map(x => String(x||'').toLowerCase()).join(' ');
+    .map((x) => String(x || '').toLowerCase())
+    .join(' ');
   for (const s of SKILL_LEXICON) if (txt.includes(s.toLowerCase())) pool.push(s);
   const out = new Set();
-  pool.map(s => lower(s)).forEach(raw => { const k = CANON[raw] || raw; if (k) out.add(k); });
+  pool
+    .map((s) => lower(s))
+    .forEach((raw) => {
+      const k = CANON[raw] || raw;
+      if (k) out.add(k);
+    });
   return Array.from(out);
 }
 
-const hhSearchUrl = (role, areaId, host = HH_HOST) => {
-  const u = new URL(`https://${host}/search/vacancy`);
+const hhSearchUrl = (role, areaId) => {
+  const u = new URL(`https://${HH_HOST}/search/vacancy`);
   u.searchParams.set('text', role);
   if (areaId) u.searchParams.set('area', String(areaId));
   return u.toString();
 };
+
 const courseLinks = (skill) => {
   const q = encodeURIComponent(skill);
   return [
-    { provider: 'Coursera', title: `${capital(skill)} — специализации`,   duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
-    { provider: 'Udemy',    title: `${capital(skill)} — практические курсы`, duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
-    { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,   duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
+    {
+      provider: 'Coursera',
+      title: `${capital(skill)} — специализации`,
+      duration: '1–3 мес',
+      url: `https://www.coursera.org/search?query=${q}`,
+    },
+    {
+      provider: 'Udemy',
+      title: `${capital(skill)} — практические курсы`,
+      duration: '1–2 мес',
+      url: `https://www.udemy.com/courses/search/?q=${q}`,
+    },
+    {
+      provider: 'Stepik',
+      title: `${capital(skill)} — русские курсы`,
+      duration: '2–8 нед',
+      url: `https://stepik.org/search?query=${q}`,
+    },
   ];
 };
 
 /* =============================== CORE RECOMMENDATIONS ENGINE ============================ */
 async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const areaId = opts.areaId ?? null;
-  const mySkills = normalizeSkills(profile);
+  const focusRole = opts.focusRole || null;
+  const seedSkills = Array.isArray(opts.seedSkills) ? opts.seedSkills : [];
+  const mySkills = Array.from(
+    new Set([...normalizeSkills(profile), ...seedSkills.map((s) => lower(CANON[lower(s)] || s))])
+  );
+
   const userYears = yearsOfExperience(profile);
   const userBucket = expBucket(userYears);
 
-  let roles = guessRoles(profile);
-  // подстраховка — если совсем пусто, попробуем минимальный вывод из навыков
+  // 1) роли
+  let roles = guessRoles(profile, focusRole);
   if (!roles.length) {
-    if (mySkills.some(s => ['sql','excel','power bi','tableau','python','pandas','numpy'].includes(s))) roles = ['Data Analyst'];
-    else if (mySkills.some(s => ['react','javascript','typescript','html','css'].includes(s))) roles = ['Frontend Developer'];
-    else if (mySkills.some(s => ['node','django','spring','.net'].includes(s))) roles = ['Backend Developer'];
-    else if (mySkills.some(s => ['selenium','cypress','testing'].includes(s))) roles = ['QA Engineer'];
+    if (mySkills.some((s) => ['sql', 'excel', 'power bi', 'tableau', 'python', 'pandas', 'numpy'].includes(s)))
+      roles = ['Data Analyst'];
+    else if (mySkills.some((s) => ['react', 'javascript', 'typescript', 'html', 'css'].includes(s)))
+      roles = ['Frontend Developer'];
+    else if (mySkills.some((s) => ['node', 'django', 'spring', '.net'].includes(s)))
+      roles = ['Backend Developer'];
+    else if (mySkills.some((s) => ['selenium', 'cypress', 'testing'].includes(s)))
+      roles = ['QA Engineer'];
   }
 
+  // 2) собираем id вакансий по ролям (страницы листинга)
   const roleStats = [];
   const allVacancyIds = [];
-
   for (const role of roles) {
     let ids = [];
     for (let p = 0; p < SAMPLE_PAGES; p++) {
       try {
-        const page = await hhSearchVacancies({ text: role, area: areaId, page: p, per_page: PER_PAGE, host: HH_HOST });
-        const pageIds = (page.items || []).map(v => v.id);
+        const page = await hhSearchVacancies({
+          text: role,
+          area: areaId,
+          page: p,
+          per_page: PER_PAGE,
+        });
+        const pageIds = (page.items || []).map((v) => v.id);
         ids.push(...pageIds);
         if (typeof page.pages === 'number' && p >= page.pages - 1) break;
       } catch (e) {
@@ -370,9 +436,14 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     }
     ids = Array.from(new Set(ids));
     allVacancyIds.push(...ids);
-    roleStats.push({ role, count: ids.length, ids: ids.slice(0, VACANCY_SAMPLE_PER_ROLE) });
+    roleStats.push({
+      role,
+      count: ids.length,
+      ids: ids.slice(0, VACANCY_SAMPLE_PER_ROLE),
+    });
   }
 
+  // 3) детально вытягиваем вакансии и считаем частоты навыков/соответствие опыта
   const skillFreq = new Map();
   const expScores = [];
   const rolesAgg = [];
@@ -380,12 +451,17 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   for (const r of roleStats) {
     const target = r.ids.slice();
     const details = [];
-    const workers = Array.from({ length: Math.min(DETAIL_CONCURRENCY, target.length) }, async () => {
-      while (target.length) {
-        const id = target.shift();
-        try { details.push(await hhGetVacancy(id)); } catch {}
+    const workers = Array.from(
+      { length: Math.min(DETAIL_CONCURRENCY, target.length) },
+      async () => {
+        while (target.length) {
+          const id = target.shift();
+          try {
+            details.push(await hhGetVacancy(id));
+          } catch {}
+        }
       }
-    });
+    );
     await Promise.all(workers);
 
     const localSkills = new Map();
@@ -398,82 +474,163 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
       const vb = v.experience?.id || null; // 'noExperience'|'between1And3'|'between3And6'|'moreThan6'
       expScores.push(expMatchScore(userBucket, vb));
     }
-    const topLocal = [...localSkills.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,freq])=>({ name, freq }));
-    rolesAgg.push({ title: r.role, vacancies: r.count, hhQuery: r.role, topSkills: topLocal, url: hhSearchUrl(r.role, areaId, HH_HOST) });
+
+    const topLocal = [...localSkills.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, freq]) => ({ name, freq }));
+
+    rolesAgg.push({
+      title: r.role,
+      vacancies: r.count,
+      hhQuery: r.role,
+      topSkills: topLocal,
+      url: hhSearchUrl(r.role, areaId),
+    });
   }
 
-  const topDemand = [...skillFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).map(([name,freq])=>({ name, freq }));
+  // 4) общий спрос и GAP: спрос минус мои навыки
+  const topDemand = [...skillFreq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([name, freq]) => ({ name, freq }));
 
-  // дефицит: в топ-спросе, но не в профиле
   const mySet = new Set(mySkills);
-  let gaps = topDemand.filter(s => !mySet.has(s.name)).slice(0, 8);
+  let gaps = topDemand.filter((s) => !mySet.has(s.name)).slice(0, 8);
+
+  // если рынок не дал «чистых» гэпов — подложим дорожку развития по первой роли
   if (!gaps.length && rolesAgg.length) {
     const r0 = rolesAgg[0].title;
-    const adv = (ADVANCED_BY_ROLE[r0] || ['Communication','Presentation']).map(s => lower(s));
-    gaps = adv.map(n => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
+    const adv = (ADVANCED_BY_ROLE[r0] || ['Communication', 'Presentation'])
+      .map((s) => lower(s))
+      .filter((s) => !mySet.has(s));
+    gaps = adv.map((n) => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
   }
 
-  // курсы строго по гэпам
-  let courses = gaps.slice(0,3).flatMap(g => courseLinks(g.name));
+  // добавим подсказанные seedSkills в самый хвост, но не дублируем
+  for (const seeded of seedSkills) {
+    const n = lower(CANON[lower(seeded)] || seeded);
+    if (!mySet.has(n) && !gaps.some((g) => g.name === n)) gaps.push({ name: n, freq: 1, seed: true });
+  }
+
+  // 5) курсы по гэпам
+  let courses = gaps.slice(0, 3).flatMap((g) => courseLinks(g.name));
   if (typeof getCoursesExt === 'function') {
     try {
-      const keywords = gaps.slice(0, 6).map(g => g.name).join(', ');
-      courses = await getCoursesExt({ profile, gaps, keywords });
-    } catch (e) { console.warn('[courses/ext]', e?.message || e); }
+      const keywords = gaps.slice(0, 6).map((g) => g.name).join(', ');
+      const ext = await getCoursesExt({ profile, gaps, keywords });
+      if (Array.isArray(ext) && ext.length) courses = ext;
+    } catch (e) {
+      console.warn('[courses/ext]', e?.message || e);
+    }
   }
+  courses = uniqBy(courses, (c) => `${lower(c.provider)}|${lower(c.title)}|${c.url}`).slice(0, 12);
 
-  // скоринг market-fit (скиллы/опыт/вакансии)
-  const demandSet = new Set(topDemand.map(s=>s.name));
-  const overlap = mySkills.filter(s => demandSet.has(s)).length;
-  const fitSkills = topDemand.length ? (overlap / topDemand.length) : 0;
-  const fitExp = expScores.length ? (expScores.reduce((a,b)=>a+b,0)/expScores.length) : 0.5;
-  const roleHit = rolesAgg.some(r => r.vacancies > 50) ? 1 : rolesAgg.some(r => r.vacancies > 20) ? 0.7 : rolesAgg.some(r => r.vacancies > 5) ? 0.4 : 0.2;
+  // 6) скоринг market-fit
+  const demandSet = new Set(topDemand.map((s) => s.name));
+  const overlap = mySkills.filter((s) => demandSet.has(s)).length;
+  const fitSkills = topDemand.length ? overlap / topDemand.length : 0;
+  const fitExp = expScores.length ? expScores.reduce((a, b) => a + b, 0) / expScores.length : 0.5;
+  const roleHit = rolesAgg.some((r) => r.vacancies > 50)
+    ? 1
+    : rolesAgg.some((r) => r.vacancies > 20)
+    ? 0.7
+    : rolesAgg.some((r) => r.vacancies > 5)
+    ? 0.4
+    : 0.2;
 
-  const scoreRaw = (fitSkills * 0.60 + fitExp * 0.25 + roleHit * 0.15) * 100;
+  const scoreRaw = (fitSkills * 0.6 + fitExp * 0.25 + roleHit * 0.15) * 100;
   const marketFitScore = Math.max(10, Math.min(95, Math.round(scoreRaw)));
 
+  // нормализованный ответ (под фронт)
   return {
     marketFitScore,
     marketScore: marketFitScore,
-    roles: rolesAgg,
+    roles: rolesAgg.sort((a, b) => b.vacancies - a.vacancies),
     professions: rolesAgg,
-    growSkills: gaps.map(g => ({ name: g.name, demand: g.freq, gap: true })),
-    skillsToGrow: gaps.map(g => capital(g.name)),
+    growSkills: uniqBy(
+      gaps.map((g) => ({ name: g.name, demand: g.freq, gap: true })),
+      (x) => x.name
+    ),
+    skillsToGrow: gaps.map((g) => capital(g.name)),
     courses,
     debug: {
-      skillsDetected: mySkills, rolesGuessed: roles, areaUsed: areaId,
-      sampleVacancies: Array.from(new Set(allVacancyIds)).length, userYears, host: HH_HOST,
-    }
+      skillsDetected: mySkills,
+      rolesGuessed: roles,
+      focusRole: focusRole || undefined,
+      seeded: seedSkills,
+      areaUsed: areaId,
+      sampleVacancies: Array.from(new Set(allVacancyIds)).length,
+      userYears,
+      host: HH_HOST,
+    },
   };
 }
 
 /* ======================================== FALLBACKS ===================================== */
-/** Фолбэк — без BA/PM по умолчанию, только эвристики от навыков профиля */
-async function fallbackRecommendations(profile = {}) {
-  const skills = normalizeSkills(profile);
+async function fallbackRecommendations(profile = {}, opts = {}) {
+  const focusRole = opts.focusRole || null;
+  const seedSkills = Array.isArray(opts.seedSkills) ? opts.seedSkills : [];
+  const skills = Array.from(
+    new Set([...normalizeSkills(profile), ...seedSkills.map((s) => lower(CANON[lower(s)] || s))])
+  );
 
   const professions = [];
   const has = (arr) => arr.some((s) => skills.includes(s));
 
-  if (has(['react','javascript','typescript','html','css','redux'])) professions.push({ title: 'Frontend Developer', vacancies: 0, hhQuery: 'Frontend Developer', topSkills: [], url: hhSearchUrl('Frontend Developer', null) });
-  if (has(['node','express','nest','.net','spring','django','flask','fastapi'])) professions.push({ title: 'Backend Developer', vacancies: 0, hhQuery: 'Backend Developer', topSkills: [], url: hhSearchUrl('Backend Developer', null) });
-  if (has(['sql','postgres','mysql','excel','data','pandas','power bi','tableau'])) professions.push({ title: 'Data Analyst', vacancies: 0, hhQuery: 'Data Analyst', topSkills: [], url: hhSearchUrl('Data Analyst', null) });
-  if (has(['selenium','cypress','playwright','testing','pytest'])) professions.push({ title: 'QA Engineer', vacancies: 0, hhQuery: 'QA Engineer', topSkills: [], url: hhSearchUrl('QA Engineer', null) });
-
-  // курсы только по дефицитным навыкам (условно возьмём 2–3 из «разумных» направлений)
-  const gapsSeed = skills.length
-    ? skills.filter((s) => ['sql','excel','power bi','tableau','python','react','node','docker','kubernetes'].includes(s)).slice(0, 3)
-    : [];
-  let courses = gapsSeed.flatMap(s => courseLinks(s));
-  if (typeof getCoursesExt === 'function') {
-    try { courses = await getCoursesExt({ profile, gaps: gapsSeed.map(n => ({ name: n })), keywords: gapsSeed.join(', ') }); } catch (e) { console.warn('[courses/fallback]', e?.message || e); }
+  if (focusRole) {
+    professions.push({ title: focusRole, vacancies: 0, hhQuery: focusRole, topSkills: [], url: hhSearchUrl(focusRole, null) });
+  } else {
+    if (has(['react', 'javascript', 'typescript', 'html', 'css', 'redux']))
+      professions.push({
+        title: 'Frontend Developer',
+        vacancies: 0,
+        hhQuery: 'Frontend Developer',
+        topSkills: [],
+        url: hhSearchUrl('Frontend Developer', null),
+      });
+    if (has(['node', 'express', 'nest', '.net', 'spring', 'django', 'flask', 'fastapi']))
+      professions.push({
+        title: 'Backend Developer',
+        vacancies: 0,
+        hhQuery: 'Backend Developer',
+        topSkills: [],
+        url: hhSearchUrl('Backend Developer', null),
+      });
+    if (has(['sql', 'postgres', 'mysql', 'excel', 'data', 'pandas', 'power bi', 'tableau']))
+      professions.push({
+        title: 'Data Analyst',
+        vacancies: 0,
+        hhQuery: 'Data Analyst',
+        topSkills: [],
+        url: hhSearchUrl('Data Analyst', null),
+      });
+    if (has(['selenium', 'cypress', 'playwright', 'testing', 'pytest']))
+      professions.push({
+        title: 'QA Engineer',
+        vacancies: 0,
+        hhQuery: 'QA Engineer',
+        topSkills: [],
+        url: hhSearchUrl('QA Engineer', null),
+      });
   }
 
-  const basicGrow = skills.length
-    ? ['Communication','Presentation']
-    : ['Agile','Data Analysis','Digital Marketing'];
+  const basicGrow = skills.length ? ['Communication', 'Presentation'] : ['Agile', 'Data Analysis', 'Digital Marketing'];
 
-  // консервативная оценка (без рынка) — UI всегда умеет пересчитать локально
+  let courses = basicGrow.slice(0, 2).flatMap((s) => courseLinks(lower(s)));
+  if (typeof getCoursesExt === 'function') {
+    try {
+      const ext = await getCoursesExt({
+        profile,
+        gaps: basicGrow.map((n) => ({ name: lower(n) })),
+        keywords: basicGrow.join(', '),
+      });
+      if (Array.isArray(ext) && ext.length) courses = ext;
+    } catch (e) {
+      console.warn('[courses/fallback]', e?.message || e);
+    }
+  }
+
   const marketFitScore = Math.max(10, Math.min(60, 20 + skills.length * 3));
 
   return {
@@ -481,20 +638,28 @@ async function fallbackRecommendations(profile = {}) {
     marketScore: marketFitScore,
     roles: professions,
     professions,
-    growSkills: basicGrow.map(s => ({ name: lower(s), demand: 1, gap: true })),
+    growSkills: uniqBy(
+      basicGrow.map((s) => ({ name: lower(s), demand: 1, gap: true })),
+      (x) => x.name
+    ),
     skillsToGrow: basicGrow,
     courses,
-    debug: { fallback: true, skillsDetected: skills }
+    debug: { fallback: true, skillsDetected: skills, focusRole: focusRole || undefined, seeded: seedSkills },
   };
 }
 
 function fallbackImprove(profile = {}) {
-  const uniq = (arr) => Array.from(new Set((arr || []).map(String).map(s => s.trim()).filter(Boolean)));
-  const cap  = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const uniq = (arr) =>
+    Array.from(new Set((arr || []).map(String).map((s) => s.trim()).filter(Boolean)));
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const normalizedSkills = uniq(profile.skills).map(cap);
   const bullets = [];
   const txt = String(profile.summary || '').trim();
-  if (txt) txt.split(/[\n\.]+/).map(s => s.trim()).filter(Boolean).forEach(line => bullets.push(`• ${line}`));
+  if (txt) txt
+    .split(/[\n\.]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((line) => bullets.push(`• ${line}`));
   const updated = { ...profile, skills: normalizedSkills, bullets, summary: txt || undefined };
   return { ok: true, updated, changes: { skillsCount: normalizedSkills.length, bulletsCount: bullets.length } };
 }
@@ -503,24 +668,29 @@ function fallbackImprove(profile = {}) {
 router.post('/generate', async (req, res) => {
   try {
     const profile = req.body?.profile || {};
-    const areaId  = req.body?.areaId ?? null;
+    const areaId = req.body?.areaId ?? null;
+    const focusRole = req.body?.focusRole || null;
+    const seedSkills = Array.isArray(req.body?.seedSkills) ? req.body.seedSkills : [];
 
     if (typeof buildRecommendationsExt === 'function') {
-      const data = await buildRecommendationsExt(profile, { areaId });
+      const data = await buildRecommendationsExt(profile, { areaId, focusRole, seedSkills });
       return res.json({ ok: true, data });
     }
 
     let data;
     try {
-      data = await buildRecommendationsSmart(profile, { areaId });
+      data = await buildRecommendationsSmart(profile, { areaId, focusRole, seedSkills });
     } catch (e) {
       console.error('[rec/generate smart failed]', e);
-      data = await fallbackRecommendations(profile);
+      data = await fallbackRecommendations(profile, { focusRole, seedSkills });
     }
     return res.json({ ok: true, data });
   } catch (e) {
     console.error('[rec/generate]', e);
-    const data = await fallbackRecommendations(req.body?.profile || {});
+    const data = await fallbackRecommendations(req.body?.profile || {}, {
+      focusRole: req.body?.focusRole || null,
+      seedSkills: req.body?.seedSkills || [],
+    });
     return res.json({ ok: true, data, fallback: true });
   }
 });
@@ -528,15 +698,27 @@ router.post('/generate', async (req, res) => {
 router.post('/analyze', async (req, res) => {
   try {
     const profile = req.body?.profile || {};
-    const areaId  = req.body?.areaId ?? null;
-    const data = await buildRecommendationsSmart(profile, { areaId });
+    const areaId = req.body?.areaId ?? null;
+    const focusRole = req.body?.focusRole || null;
+    const seedSkills = Array.isArray(req.body?.seedSkills) ? req.body.seedSkills : [];
+
+    const data = await buildRecommendationsSmart(profile, { areaId, focusRole, seedSkills });
     const { marketFitScore, roles, growSkills, courses, debug } = data;
     return res.json({ marketFitScore, roles, growSkills, courses, debug });
   } catch (e) {
     console.error('[rec/analyze]', e);
-    const data = await fallbackRecommendations(req.body?.profile || {});
+    const data = await fallbackRecommendations(req.body?.profile || {}, {
+      focusRole: req.body?.focusRole || null,
+      seedSkills: req.body?.seedSkills || [],
+    });
     const { marketFitScore, roles, growSkills, courses, debug } = data;
-    return res.json({ marketFitScore, roles, growSkills, courses, debug: { ...(debug||{}), degraded: true } });
+    return res.json({
+      marketFitScore,
+      roles,
+      growSkills,
+      courses,
+      debug: { ...(debug || {}), degraded: true },
+    });
   }
 });
 

@@ -7,7 +7,7 @@
  * - AI-инференс (подсказка поиска)
  * - AI-рекомендации (роли, skills gap, курсы)
  *
- * ВАЖНО: публичные функции/имена экспортов сохранены для совместимости.
+ * Важно: функции и экспортные имена совместимы с текущим кодом.
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -43,9 +43,10 @@ function computeApiBase() {
 
   // 2) Render: фронт на onrender.com
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isRenderFrontend = typeof host === 'string'
-    && host.includes('onrender.com')
-    && (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+  const isRenderFrontend =
+    typeof host === 'string' &&
+    host.includes('onrender.com') &&
+    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -191,7 +192,7 @@ export async function safeFetchJSON(url, options = {}) {
     const res = await fetchWithTimeout(
       normalizedUrl,
       {
-        cache: options.cache ?? 'no-store',         // <— важно: без кастомных заголовков и без кэша
+        cache: options.cache ?? 'no-store',
         ...options,
         method,
         headers,
@@ -202,10 +203,15 @@ export async function safeFetchJSON(url, options = {}) {
 
     if (normalizedUrl.includes('/hh/jobs/search')) {
       console.log('[BFF Client] Response status:', res.status);
-      try { console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()])); } catch {}
+      try {
+        console.log(
+          '[BFF Client] Response headers:',
+          Object.fromEntries([...res.headers.entries()])
+        );
+      } catch {}
     }
 
-    // Прозрачные редиректы 3xx мы не следуем на клиенте — бросаем BFFHttpError (видно в логе)
+    // Прозрачные редиректы 3xx — бросаем BFFHttpError
     if (res.status >= 300 && res.status < 400) {
       const payload = await parsePayload(res);
       throw new BFFHttpError(`Redirected ${res.status}`, {
@@ -226,10 +232,7 @@ export async function safeFetchJSON(url, options = {}) {
   const key = method === 'GET' && !options.noDedupe ? normalizedUrl : null;
   if (key) {
     const existing = IN_FLIGHT.get(key);
-    if (existing) {
-      // console.log('[BFF Client] Using cached request:', key);
-      return existing;
-    }
+    if (existing) return existing;
     const p = doFetch().finally(() => IN_FLIGHT.delete(key));
     IN_FLIGHT.set(key, p);
     try {
@@ -580,7 +583,6 @@ function localInferSearch(profile) {
     : [];
 
   const city = norm(profile?.location);
-  // грубая уверенность — чем больше данных, тем выше
   const confidence = Math.min(0.9, 0.2 + (Number(Boolean(role)) + skills.length / 12 + Number(Boolean(city))) / 3);
   return { role: role || '', city: city || '', skills, experience: undefined, confidence };
 }
@@ -601,13 +603,11 @@ export async function inferSearchFromProfile(profile, { lang = 'ru', overrideMod
     if (out && out.search) {
       out.search.host = normalizeHost(out.search.host);
     }
-    // Структура старых реализаций: { role, city, skills, experience, confidence }
     if (!out?.search && (out?.role || out?.skills)) {
       return out;
     }
     return out?.search || out || localInferSearch(profile);
   } catch (e) {
-    // пробуем альтернативный путь (на случай другого роутинга на BFF)
     try {
       const alt = await safeFetchJSON('/recommendations/infer-search', {
         method: 'POST',
@@ -642,13 +642,8 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
   });
 }
 
-/* -------------------- AI: рекомендации -------------------- */
-/**
- * Важно: на сервере точно есть /api/recommendations/generate.
- * Здесь мы вызываем /recommendations/generate как основной путь.
- * Если на старом сервере был только /recommendations/analyze — пробуем fallback.
- * В крайних случаях отдаём безопасный локальный “seed”: роль из профиля и текущие скиллы (без домыслов).
- */
+/* -------------------- Вспомогательное для рекомендаций -------------------- */
+
 function extractSkills(profile = {}) {
   const raw = (Array.isArray(profile.skills) ? profile.skills : [])
     .map((s) => (typeof s === 'string' ? s : (s?.name || s?.title || s?.skill || '')))
@@ -718,6 +713,58 @@ function marketFit(profile = {}) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+/** Универсальный нормализатор ответа рекомендаций для UI */
+function normalizeRecPayload(payload, profile) {
+  // расплющиваем {ok,data} → data, иначе payload
+  const raw =
+    payload && typeof payload === 'object'
+      ? (payload.data && payload.ok !== undefined ? payload.data : payload)
+      : {};
+
+  // роли
+  let roles = Array.isArray(raw.roles) ? raw.roles
+           : Array.isArray(raw.professions) ? raw.professions
+           : [];
+  roles = roles.map(r => (typeof r === 'string' ? { title: r } : r)).filter(Boolean);
+
+  // навыки для развития (допускаем разные ключи и типы)
+  const growArr =
+    (Array.isArray(raw.growSkills) ? raw.growSkills : null) ??
+    (Array.isArray(raw.skillsToGrow) ? raw.skillsToGrow.map(n => ({ name: n })) : null) ??
+    (Array.isArray(raw.skillsToLearn) ? raw.skillsToLearn.map(n => ({ name: n })) : null) ??
+    [];
+  let growSkills = growArr
+    .map(s => (typeof s === 'string' ? { name: s } : s))
+    .filter(s => s && s.name);
+
+  // фильтруем дубли с тем, что уже есть в профиле
+  const userSkills = new Set(extractSkills(profile).map(s => s.toLowerCase()));
+  growSkills = growSkills.filter(s => !userSkills.has(String(s.name).toLowerCase()));
+
+  // курсы
+  let courses = Array.isArray(raw.courses) ? raw.courses
+             : Array.isArray(raw.recommendedCourses) ? raw.recommendedCourses
+             : Array.isArray(raw.courseRecommendations) ? raw.courseRecommendations
+             : [];
+  courses = courses.map(c => (typeof c === 'string' ? { title: c, provider: '', url: c } : c));
+
+  // оценка соответствия
+  const market = raw.marketFitScore ?? raw.marketScore ?? raw.score ?? 0;
+
+  return {
+    marketFitScore: market,
+    marketScore: market,
+    roles,
+    professions: roles,
+    growSkills,
+    skillsToGrow: growSkills.map(s => s.name),
+    courses,
+    debug: raw.debug || {},
+  };
+}
+
+/* -------------------- AI: рекомендации -------------------- */
+
 export async function fetchRecommendations(profile, opts = {}) {
   // попытка резолва areaId по городу
   let areaId = opts.areaId ?? null;
@@ -738,43 +785,47 @@ export async function fetchRecommendations(profile, opts = {}) {
     seedSkills: opts.seedSkills || undefined,
   };
 
-  // 1) Основной актуальный путь
+  // 1) Основной путь
   try {
-    return await safeFetchJSON('/recommendations/generate', {
+    const resp = await safeFetchJSON('/recommendations/generate', {
       method: 'POST',
-      cache: 'no-store',                         // <— без кэша и без префлайтов
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body,
       noDedupe: true,
     });
+    return normalizeRecPayload(resp, profile);
   } catch (e1) {
     // 2) Старый путь “analyze”
     try {
-      return await safeFetchJSON('/recommendations/analyze', {
+      const resp = await safeFetchJSON('/recommendations/analyze', {
         method: 'POST',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body,
         noDedupe: true,
       });
+      return normalizeRecPayload(resp, profile);
     } catch (e2) {
-      // 3) Полный фейл — отдаём только «семена» из профиля (без выдумок)
+      // 3) Полный фейл — отдаем безопасные семена
       const role = seedRole(profile);
       const skills = extractSkills(profile).slice(0, 10);
-      return {
-        roles: role ? [role] : [],
-        professions: role ? [role] : [],
-        skillsToLearn: skills,
-        courses: [],
-        marketFitScore: marketFit(profile),
-        debug: { fallback: 'profile-seed', ai: false, e1: e1?.message, e2: e2?.message },
-      };
+      return normalizeRecPayload(
+        {
+          marketFitScore: marketFit(profile),
+          roles: role ? [role] : [],
+          growSkills: [],
+          recommendedCourses: [],
+          debug: { fallback: 'profile-seed', ai: false, e1: e1?.message, e2: e2?.message },
+        },
+        profile
+      );
     }
   }
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  // оставлено для совместимости; теперь вызывает тот же /recommendations/generate
+  // совместимость
   return fetchRecommendations(profile, opts);
 }
 
@@ -789,7 +840,6 @@ export async function improveProfileAI(profile, opts = {}) {
       noDedupe: true,
     });
   } catch {
-    // нет эндпоинта — отдаём то, что есть
     return { profile, debug: { fallback: 'no-endpoint' } };
   }
 }
@@ -813,13 +863,11 @@ export async function importResume(hhResumeId, options = {}) {
 /* -------------------- HEALTH / VERSION -------------------- */
 
 export async function ping(options = {}) {
-  // реальный health на сервере — /health
   return safeFetchJSON('/health', options).catch(() =>
     safeFetchJSON('/alive', options).catch(() => null)
   );
 }
 
 export async function getServerVersion(options = {}) {
-  // отдаём /api/debug как “версию/состояние” сервера
   return safeFetchJSON('/debug', options).catch(() => null);
 }
