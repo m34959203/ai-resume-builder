@@ -403,7 +403,8 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  const { t } = useTranslation();
+  // ВАЖНО: прокидываем текущий язык для PDF-шаблонов
+  const { t, lang } = useTranslation();
 
   const steps = useMemo(() => ([
     t('builder.steps.personal'),
@@ -574,8 +575,27 @@ function BuilderPage({
   }, []);
 
   /* --- Языки --- */
-  const blankLanguage = { language: '', level: 'B1 — Средний' };
+  const LANG_LEVELS = useMemo(() => ([
+    t('builder.languages.levels.a1'),
+    t('builder.languages.levels.a2'),
+    t('builder.languages.levels.b1'),
+    t('builder.languages.levels.b2'),
+    t('builder.languages.levels.c1'),
+    t('builder.languages.levels.c2'),
+  ]), [t]);
+
+  const blankLanguage = useMemo(
+    () => ({ language: '', level: t('builder.languages.levels.b1') }),
+    [t]
+  );
   const [newLanguage, setNewLanguage] = useState(blankLanguage);
+
+  // если сменили язык интерфейса и поле не заполнено — синхронизируем дефолт уровня
+  useEffect(() => {
+    if (!newLanguage.language && newLanguage.level !== blankLanguage.level) {
+      setNewLanguage(blankLanguage);
+    }
+  }, [blankLanguage, newLanguage.language, newLanguage.level]);
 
   const isLanguageDraftFilled = useCallback((l) => !!l && !isBlank(l.language), []);
   const commitLanguageDraft = useCallback(() => {
@@ -585,7 +605,7 @@ function BuilderPage({
       return true;
     }
     return false;
-  }, [newLanguage, isLanguageDraftFilled]);
+  }, [newLanguage, blankLanguage, isLanguageDraftFilled]);
 
   const addLanguage = useCallback(() => { commitLanguageDraft(); }, [commitLanguageDraft]);
 
@@ -678,7 +698,15 @@ function BuilderPage({
         import('./ResumePDF'),
       ]);
 
-      const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
+      // ВАЖНО: прокидываем язык в PDF, чтобы шаблон выводил нужные переводы
+      const blob = await pdf(
+        <ResumePDF
+          profile={exportProfile}
+          template={selectedTemplate}
+          lang={lang}
+        />
+      ).toBlob();
+
       if (!blob || blob.size === 0) throw new Error('Empty PDF blob');
 
       const url = URL.createObjectURL(blob);
@@ -697,21 +725,12 @@ function BuilderPage({
       setDownloading(false);
     }
   }, [
-    t, canDownload, downloading, currentStep,
+    t, lang, canDownload, downloading, currentStep,
     commitExperienceDraft, commitEducationDraft, commitLanguageDraft,
     buildExportProfile, selectedTemplate, fileName,
   ]);
 
   /* --- RENDER --- */
-  const LANG_LEVELS = useMemo(() => ([
-    t('builder.languages.levels.a1'),
-    t('builder.languages.levels.a2'),
-    t('builder.languages.levels.b1'),
-    t('builder.languages.levels.b2'),
-    t('builder.languages.levels.c1'),
-    t('builder.languages.levels.c2'),
-  ]), [t]);
-
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-5xl mx-auto px-4">

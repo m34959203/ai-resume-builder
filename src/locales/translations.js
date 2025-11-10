@@ -279,8 +279,26 @@ export const translations = {
       notAvailable: 'Недоступно'
     },
 
-    // ---------- PDF (заголовки разделов) ----------
+    // ---------- PDF ----------
     pdf: {
+      // ключи для компонентов PDF
+      resume: 'Резюме',
+      present: 'настоящее время',
+      contacts: 'Контакты',
+      profile: 'Профиль',
+      about: 'О себе',
+      work: 'Опыт работы',
+      education: 'Образование',
+      skills: 'Навыки',
+      languages: 'Языки',
+      personal: 'Личная информация',
+      age: 'Возраст',
+      marital: 'Семейное положение',
+      children: 'Дети',
+      license: 'Водительские права',
+      duties: 'Обязанности и достижения',
+
+      // сохранены существующие разделы
       sections: {
         personal: 'Личная информация',
         contacts: 'Контакты',
@@ -573,6 +591,22 @@ export const translations = {
 
     // ---------- PDF ----------
     pdf: {
+      resume: 'Түйіндеме',
+      present: 'қазіргі уақыт',
+      contacts: 'Байланыс',
+      profile: 'Профиль',            // жиі қолданылатын қарыз сөз
+      about: 'Өзім туралы',
+      work: 'Тәжірибе',
+      education: 'Білім',
+      skills: 'Дағдылар',
+      languages: 'Тілдер',
+      personal: 'Жеке ақпарат',
+      age: 'Жасы',
+      marital: 'Отбасылық жағдайы',
+      children: 'Балалар',
+      license: 'Жүргізуші куәлігі',
+      duties: 'Міндеттер мен жетістіктер',
+
       sections: {
         personal: 'Жеке мәліметтер',
         contacts: 'Байланыс',
@@ -865,6 +899,22 @@ export const translations = {
 
     // ---------- PDF ----------
     pdf: {
+      resume: 'Resume',
+      present: 'present',
+      contacts: 'Contacts',
+      profile: 'Profile',
+      about: 'Summary',
+      work: 'Work Experience',
+      education: 'Education',
+      skills: 'Skills',
+      languages: 'Languages',
+      personal: 'Personal Info',
+      age: 'Age',
+      marital: 'Marital status',
+      children: 'Children',
+      license: "Driver's license",
+      duties: 'Responsibilities & Achievements',
+
       sections: {
         personal: 'Personal info',
         contacts: 'Contacts',

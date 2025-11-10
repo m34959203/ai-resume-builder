@@ -5,16 +5,18 @@ import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 /**
  * Creative PDF template (i18n-ready).
  * Props:
- *  - profile  : normalized profile object (from ResumePDF)
- *  - theme    : { accent, header, footer }
- *  - labels   : i18n labels from ResumePDF.getPdfLabels(lang)
- *  - t, lang  : optional (not required here, but passed by ResumePDF)
+ *  - profile      : normalized profile object (from ResumePDF)
+ *  - theme        : { accent, header, footer }
+ *  - labels       : i18n labels object from ResumePDF (sections.* are guaranteed)
+ *  - t, lang      : optional translator and current language
+ *  - hints/flags  : optional rendering hints (e.g., preferEducationFirst)
+ *  - pageInsets   : { header, footer, horizontal } — padding values used by wrapper
  */
 
 /* ---------- helpers ---------- */
 const s = (v) => (v == null ? '' : String(v));
-const t = (v) => s(v).trim();
-const has = (v) => !!t(v);
+const trimStr = (v) => s(v).trim();
+const hasText = (v) => !!trimStr(v);
 
 const normalizeMultiline = (v) =>
   s(v)
@@ -24,7 +26,7 @@ const normalizeMultiline = (v) =>
     .join('\n')
     .trim();
 
-const bullets = (text) => {
+const toBullets = (text) => {
   const lines = normalizeMultiline(text)
     .split('\n')
     .map((l) => l.trim())
@@ -32,14 +34,14 @@ const bullets = (text) => {
   if (!lines.length) return [];
   return lines.map((line) => {
     const m = /^([•\-\*\u2022]|\d+[.)])\s+(.+)$/.exec(line);
-    return t(m ? m[2] : line);
+    return trimStr(m ? m[2] : line);
   });
 };
 
 const fmtPeriod = (start, end, current, fallback, presentWord = 'Present') => {
-  if (has(fallback)) return t(fallback);
-  const st = t(start);
-  const en = current ? presentWord : t(end);
+  if (hasText(fallback)) return trimStr(fallback);
+  const st = trimStr(start);
+  const en = current ? presentWord : trimStr(end);
   if (!st && !en) return '';
   return `${st || '—'} — ${en || '—'}`;
 };
@@ -160,90 +162,241 @@ const SideTitle = ({ children }) => (
 );
 
 const SideRow = ({ primary, secondary }) =>
-  !has(primary) && !has(secondary) ? null : (
+  !hasText(primary) && !hasText(secondary) ? null : (
     <View style={styles.sideRow}>
-      {has(primary) ? <Text style={styles.sideText}>{t(primary)}</Text> : null}
-      {has(secondary) ? <Text style={styles.sideSmall}>{t(secondary)}</Text> : null}
+      {hasText(primary) ? <Text style={styles.sideText}>{trimStr(primary)}</Text> : null}
+      {hasText(secondary) ? <Text style={styles.sideSmall}>{trimStr(secondary)}</Text> : null}
     </View>
   );
 
 /* ---------- main component ---------- */
 export default function CreativeTemplate(props) {
-  const { profile, theme, labels: L = {}, lang } = props;
+  const {
+    profile,
+    theme,
+    labels: L = {},
+    t: tr, // translator from wrapper, optional
+    lang = 'ru',
+    hints = {},
+    pageInsets, // not used directly but kept for API symmetry with other templates
+  } = props;
+
   const accent = (theme && theme.accent) || '#8b5cf6';
 
-  // i18n labels (fallbacks included)
+  // Section labels (fallbacks included)
   const S = L.sections || {};
+  const sec = (k, fb) => S[k] || fb;
+
+  // (Optional) field labels, if provided
   const F = L.fields || {};
-  const PFX = has(L.bulletsPrefix) ? L.bulletsPrefix : '•';
-  const PRESENT = has(L.present) ? L.present : (lang === 'kk' ? 'Қазір' : lang === 'en' ? 'Present' : 'настоящее время');
+  const fld = (k, fb) => F[k] || fb;
+
+  // Bullets prefix & "present" word
+  const bulletsPrefix = L.bulletsPrefix || '•';
+  const presentWord =
+    L.present ||
+    (typeof tr === 'function' && tr('builder.experience.current')) ||
+    (lang === 'kk' ? 'Қазір' : lang === 'en' ? 'Present' : 'настоящее время');
 
   // base fields
-  const fullName = t(profile?.fullName) || (lang === 'kk' ? 'АТЫ ЖӨНІ' : lang === 'en' ? 'NAME SURNAME' : 'ИМЯ ФАМИЛИЯ');
-  const title =
-    t(profile?.position || profile?.title || profile?.professionalTitle);
-  const email = t(profile?.email);
-  const phone = t(profile?.phone);
-  const location = t(profile?.location);
+  const fullName =
+    trimStr(profile?.fullName) ||
+    (lang === 'kk' ? 'АТЫ ЖӨНІ' : lang === 'en' ? 'NAME SURNAME' : 'ИМЯ ФАМИЛИЯ');
+  const title = trimStr(profile?.position || profile?.title || profile?.professionalTitle);
+  const email = trimStr(profile?.email);
+  const phone = trimStr(profile?.phone);
+  const location = trimStr(profile?.location);
 
   // new personal fields (both keys supported)
-  const age = t(profile?.age);
-  const maritalStatus = t(profile?.maritalStatus);
-  const children = t(profile?.children);
-  const driversLicense = t(profile?.driversLicense || profile?.driverLicense);
+  const age = trimStr(profile?.age);
+  const maritalStatus = trimStr(profile?.maritalStatus);
+  const children = trimStr(profile?.children);
+  const driversLicense = trimStr(profile?.driversLicense || profile?.driverLicense);
 
   // collections
-  const skills = Array.isArray(profile?.skills) ? profile.skills.filter(has) : [];
+  const skills = Array.isArray(profile?.skills) ? profile.skills.filter(hasText) : [];
   const languages = Array.isArray(profile?.languages) ? profile.languages : [];
   const education = Array.isArray(profile?.education) ? profile.education : [];
   const experience = Array.isArray(profile?.experience) ? profile.experience : [];
   const summary = normalizeMultiline(profile?.summary);
 
+  // Order: respect hints.preferEducationFirst if provided
+  const firstIsEducation = !!hints.preferEducationFirst;
+
+  const renderEducation = () =>
+    education.length ? (
+      <View style={styles.block}>
+        <Text style={styles.h2}>
+          {sec('education', lang === 'kk' ? 'Білім' : lang === 'en' ? 'Education' : 'Образование')}
+        </Text>
+        <View style={styles.hRuleWrap}>
+          <View style={styles.hRule} />
+          <View style={[styles.hDot, { backgroundColor: accent }]} />
+        </View>
+
+        {education.map((ed, i) => {
+          const period = trimStr(ed.period) || trimStr(ed.year) || '';
+          const degree = trimStr(ed.level || ed.degree);
+          const inst = trimStr(ed.institution || ed.university);
+          const spec = trimStr(ed.specialization || ed.major);
+
+          return (
+            <View key={ed.id || i} style={styles.twoCol} wrap={false}>
+              <Text style={styles.colTime}>{period}</Text>
+              <View style={styles.colBody}>
+                {hasText(degree) ? <Text style={styles.em}>{degree}</Text> : null}
+                {hasText(inst) ? <Text style={styles.muted}>{inst}</Text> : null}
+                {hasText(spec) ? <Text style={styles.paragraph}>{spec}</Text> : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    ) : null;
+
+  const renderExperience = () =>
+    experience.length ? (
+      <View style={styles.block}>
+        <Text style={styles.h2}>
+          {sec(
+            'experience',
+            lang === 'kk' ? 'Жұмыс тәжірибесі' : lang === 'en' ? 'Work Experience' : 'Опыт работы'
+          )}
+        </Text>
+        <View style={styles.hRuleWrap}>
+          <View style={styles.hRule} />
+          <View style={[styles.hDot, { backgroundColor: accent }]} />
+        </View>
+
+        {experience.map((ex, i) => {
+          const left = fmtPeriod(
+            ex.startDate || ex.start,
+            ex.endDate || ex.end,
+            ex.currentlyWorking,
+            ex.period,
+            presentWord
+          );
+          const pos = trimStr(ex.position);
+          const comp = trimStr(ex.company);
+          const loc = trimStr(ex.location);
+          const lines = toBullets(ex.responsibilities || ex.description);
+
+          return (
+            <View key={ex.id || i} style={styles.twoCol} wrap={false}>
+              <Text style={styles.colTime}>{left}</Text>
+              <View style={styles.colBody}>
+                {hasText(pos) ? <Text style={styles.em}>{pos}</Text> : null}
+                {hasText(comp) || hasText(loc) ? (
+                  <Text style={styles.muted}>
+                    {hasText(comp) ? comp : ''}
+                    {hasText(comp) && hasText(loc) ? ' • ' : ''}
+                    {hasText(loc) ? loc : ''}
+                  </Text>
+                ) : null}
+
+                {lines.length ? (
+                  <View style={{ marginTop: 4 }}>
+                    {lines.map((line, j) => (
+                      <View key={j} style={styles.bulletRow} wrap={false}>
+                        <Text style={styles.bulletDot}>{bulletsPrefix}</Text>
+                        <Text style={styles.bulletText}>{line}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    ) : null;
+
   return (
     <View style={styles.layout}>
       {/* ===== LEFT COLUMN ===== */}
       <View style={styles.left}>
-        {has(profile?.photoUrl || profile?.photo) ? (
+        {hasText(profile?.photoUrl || profile?.photo) ? (
           <Image src={profile.photoUrl || profile.photo} style={styles.photo} />
         ) : null}
 
         <View style={styles.nameCard}>
           <Text style={styles.name}>{fullName}</Text>
-          {has(title) ? <Text style={styles.subTitle}>{title}</Text> : null}
+          {hasText(title) ? <Text style={styles.subTitle}>{title}</Text> : null}
         </View>
 
         {/* Personal info */}
-        {(has(age) || has(maritalStatus) || has(children) || has(driversLicense)) && (
+        {hasText(age) || hasText(maritalStatus) || hasText(children) || hasText(driversLicense) ? (
           <View style={styles.sideSection}>
-            <SideTitle>{S.profile || (lang === 'kk' ? 'Жеке ақпарат' : lang === 'en' ? 'Personal Info' : 'Личная информация')}</SideTitle>
-            {has(age) && <SideRow primary={`${F.age || (lang === 'kk' ? 'Жасы' : lang === 'en' ? 'Age' : 'Возраст')}: ${age}`} />}
-            {has(maritalStatus) && (
-              <SideRow primary={`${F.maritalStatus || (lang === 'kk' ? 'Отбасылық жағдайы' : lang === 'en' ? 'Marital status' : 'Семейное положение')}: ${maritalStatus}`} />
+            <SideTitle>
+              {sec(
+                'personal',
+                lang === 'kk' ? 'Жеке ақпарат' : lang === 'en' ? 'Personal Info' : 'Личная информация'
+              )}
+            </SideTitle>
+            {hasText(age) && (
+              <SideRow
+                primary={`${fld(
+                  'age',
+                  lang === 'kk' ? 'Жасы' : lang === 'en' ? 'Age' : 'Возраст'
+                )}: ${age}`}
+              />
             )}
-            {has(children) && <SideRow primary={`${F.children || (lang === 'kk' ? 'Балалар' : lang === 'en' ? 'Children' : 'Дети')}: ${children}`} />}
-            {has(driversLicense) && (
-              <SideRow primary={`${F.driversLicense || (lang === 'kk' ? 'Жүргізуші куәлігі' : lang === 'en' ? 'Driver’s license' : 'Водительские права')}: ${driversLicense}`} />
+            {hasText(maritalStatus) && (
+              <SideRow
+                primary={`${fld(
+                  'maritalStatus',
+                  lang === 'kk'
+                    ? 'Отбасылық жағдайы'
+                    : lang === 'en'
+                    ? 'Marital status'
+                    : 'Семейное положение'
+                )}: ${maritalStatus}`}
+              />
+            )}
+            {hasText(children) && (
+              <SideRow
+                primary={`${fld(
+                  'children',
+                  lang === 'kk' ? 'Балалар' : lang === 'en' ? 'Children' : 'Дети'
+                )}: ${children}`}
+              />
+            )}
+            {hasText(driversLicense) && (
+              <SideRow
+                primary={`${fld(
+                  'driversLicense',
+                  lang === 'kk'
+                    ? 'Жүргізуші куәлігі'
+                    : lang === 'en'
+                    ? 'Driver’s license'
+                    : 'Водительские права'
+                )}: ${driversLicense}`}
+              />
             )}
           </View>
-        )}
+        ) : null}
 
         {/* Contacts */}
-        {(has(location) || has(phone) || has(email)) && (
+        {hasText(location) || hasText(phone) || hasText(email) ? (
           <View style={styles.sideSection}>
-            <SideTitle>{S.contacts || (lang === 'kk' ? 'Байланыс' : lang === 'en' ? 'Contacts' : 'Контакты')}</SideTitle>
-            {has(location) ? <SideRow primary={location} /> : null}
-            {has(email) ? <SideRow primary={email} /> : null}
-            {has(phone) ? <SideRow primary={phone} /> : null}
+            <SideTitle>
+              {sec('contacts', lang === 'kk' ? 'Байланыс' : lang === 'en' ? 'Contacts' : 'Контакты')}
+            </SideTitle>
+            {hasText(location) ? <SideRow primary={location} /> : null}
+            {hasText(email) ? <SideRow primary={email} /> : null}
+            {hasText(phone) ? <SideRow primary={phone} /> : null}
           </View>
-        )}
+        ) : null}
 
         {/* Skills (left meter-style) */}
         {skills.length ? (
           <View style={styles.sideSection}>
-            <SideTitle>{S.skills || (lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}</SideTitle>
+            <SideTitle>
+              {sec('skills', lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}
+            </SideTitle>
             {skills.map((sk, i) => (
               <View key={`${sk}_${i}`} style={styles.skillRow}>
-                <Text style={styles.skillName}>{t(sk)}</Text>
+                <Text style={styles.skillName}>{trimStr(sk)}</Text>
                 <Text style={styles.skillDash}> — — — — — —</Text>
               </View>
             ))}
@@ -253,14 +406,16 @@ export default function CreativeTemplate(props) {
         {/* Languages */}
         {languages.length ? (
           <View style={styles.sideSection}>
-            <SideTitle>{S.languages || (lang === 'kk' ? 'Тілдер' : lang === 'en' ? 'Languages' : 'Языки')}</SideTitle>
+            <SideTitle>
+              {sec('languages', lang === 'kk' ? 'Тілдер' : lang === 'en' ? 'Languages' : 'Языки')}
+            </SideTitle>
             {languages.map((l, i) => {
-              const langName = t(l?.language || l?.name);
-              const lvl = t(l?.level);
+              const langName = trimStr(l?.language || l?.name || l?.lang);
+              const lvl = trimStr(l?.level || l?.proficiency);
               return (
                 <View key={l?.id || i} style={styles.langRow}>
                   <Text style={styles.sideText}>{langName}</Text>
-                  {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
+                  {hasText(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
                 </View>
               );
             })}
@@ -270,91 +425,25 @@ export default function CreativeTemplate(props) {
 
       {/* ===== RIGHT COLUMN ===== */}
       <View style={styles.right}>
-        {/* Education */}
-        {education.length ? (
-          <View style={styles.block}>
-            <Text style={styles.h2}>{S.education || (lang === 'kk' ? 'Білім' : lang === 'en' ? 'Education' : 'Образование')}</Text>
-            <View style={styles.hRuleWrap}>
-              <View style={styles.hRule} />
-              <View style={[styles.hDot, { backgroundColor: accent }]} />
-            </View>
-
-            {education.map((ed, i) => {
-              const period = t(ed.period) || t(ed.year) || '';
-              const degree = t(ed.level || ed.degree);
-              const inst = t(ed.institution || ed.university);
-              const spec = t(ed.specialization || ed.major);
-
-              return (
-                <View key={ed.id || i} style={styles.twoCol}>
-                  <Text style={styles.colTime}>{period}</Text>
-                  <View style={styles.colBody}>
-                    {has(degree) ? <Text style={styles.em}>{degree}</Text> : null}
-                    {has(inst) ? <Text style={styles.muted}>{inst}</Text> : null}
-                    {has(spec) ? <Text style={styles.paragraph}>{spec}</Text> : null}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-
-        {/* Experience */}
-        {experience.length ? (
-          <View style={styles.block}>
-            <Text style={styles.h2}>{S.experience || (lang === 'kk' ? 'Жұмыс тәжірибесі' : lang === 'en' ? 'Work Experience' : 'Опыт работы')}</Text>
-            <View style={styles.hRuleWrap}>
-              <View style={styles.hRule} />
-              <View style={[styles.hDot, { backgroundColor: accent }]} />
-            </View>
-
-            {experience.map((ex, i) => {
-              const left = fmtPeriod(
-                ex.startDate || ex.start,
-                ex.endDate || ex.end,
-                ex.currentlyWorking,
-                ex.period,
-                PRESENT
-              );
-              const pos = t(ex.position);
-              const comp = t(ex.company);
-              const loc = t(ex.location);
-              const lines = bullets(ex.responsibilities || ex.description);
-
-              return (
-                <View key={ex.id || i} style={styles.twoCol} break={false}>
-                  <Text style={styles.colTime}>{left}</Text>
-                  <View style={styles.colBody}>
-                    {has(pos) ? <Text style={styles.em}>{pos}</Text> : null}
-                    {(has(comp) || has(loc)) && (
-                      <Text style={styles.muted}>
-                        {has(comp) ? comp : ''}
-                        {has(comp) && has(loc) ? ' • ' : ''}
-                        {has(loc) ? loc : ''}
-                      </Text>
-                    )}
-
-                    {lines.length ? (
-                      <View style={{ marginTop: 4 }}>
-                        {lines.map((line, j) => (
-                          <View key={j} style={styles.bulletRow}>
-                            <Text style={styles.bulletDot}>{PFX}</Text>
-                            <Text style={styles.bulletText}>{line}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
+        {/* Order flips by hints.preferEducationFirst */}
+        {firstIsEducation ? (
+          <>
+            {renderEducation()}
+            {renderExperience()}
+          </>
+        ) : (
+          <>
+            {renderExperience()}
+            {renderEducation()}
+          </>
+        )}
 
         {/* Summary */}
-        {has(summary) ? (
+        {hasText(summary) ? (
           <View style={styles.block}>
-            <Text style={styles.h2}>{S.summary || (lang === 'kk' ? 'Өзім туралы' : lang === 'en' ? 'Summary' : 'О себе')}</Text>
+            <Text style={styles.h2}>
+              {sec('summary', lang === 'kk' ? 'Өзім туралы' : lang === 'en' ? 'Summary' : 'О себе')}
+            </Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -366,7 +455,9 @@ export default function CreativeTemplate(props) {
         {/* Skills tags on right (optional duplicate) */}
         {skills.length ? (
           <View style={[styles.block, { marginTop: 4 }]}>
-            <Text style={styles.h2}>{S.skills || (lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}</Text>
+            <Text style={styles.h2}>
+              {sec('skills', lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}
+            </Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -374,7 +465,7 @@ export default function CreativeTemplate(props) {
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
                 <Text key={`${sk}_${i}`} style={styles.skillTag}>
-                  {t(sk)}
+                  {trimStr(sk)}
                 </Text>
               ))}
             </View>
