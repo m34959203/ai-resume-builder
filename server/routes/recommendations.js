@@ -16,6 +16,12 @@ try {
   ({ getCourses: getCoursesExt } = require('../services/courseAggregator'));
 } catch {}
 
+// ИИ (OpenRouter) — опционально
+let ai = null;
+try {
+  ai = require('../services/ai'); // { recommendFromProfile, inferSearch, ... }
+} catch {}
+
 /* ================================== ENV & CONSTANTS ==================================== */
 const HH_HOST = (process.env.HH_HOST || 'hh.kz').trim();
 const HH_API  = 'https://api.hh.ru';
@@ -25,15 +31,17 @@ const USER_AGENT =
 const flag = (v, def = '0') =>
   ['1', 'true', 'yes', 'on'].includes(String(v ?? def).toLowerCase());
 
-const USE_MARKET       = flag(process.env.RECS_USE_MARKET, '1');     // отключить запросы к HH
-const DEBUG_LOGS       = flag(process.env.RECS_DEBUG, '0');
-const MAX_ROLES        = Math.max(1, Number(process.env.RECS_MAX_ROLES || 4));
-const SAMPLE_PAGES     = Math.max(1, Number(process.env.RECS_SAMPLE_PAGES || 2));
-const PER_PAGE         = Math.max(1, Number(process.env.RECS_PER_PAGE || 50));
+const USE_MARKET        = flag(process.env.RECS_USE_MARKET, '1'); // запросы к HH
+const USE_LLM           = flag(process.env.RECS_USE_LLM, '1');    // подключать ИИ для усиления
+const LLM_COMPLEX       = flag(process.env.RECS_LLM_COMPLEX, '0');
+const DEBUG_LOGS        = flag(process.env.RECS_DEBUG, '0');
+const MAX_ROLES         = Math.max(1, Number(process.env.RECS_MAX_ROLES || 4));
+const SAMPLE_PAGES      = Math.max(1, Number(process.env.RECS_SAMPLE_PAGES || 2));
+const PER_PAGE          = Math.max(1, Number(process.env.RECS_PER_PAGE || 50));
 const VACANCY_SAMPLE_PER_ROLE = Math.max(1, Number(process.env.RECS_VACANCY_SAMPLE_PER_ROLE || 30));
-const CACHE_TTL_MS     = Number(process.env.RECS_CACHE_TTL_MS || 180000);
-const DETAIL_CONCURRENCY = Math.max(2, Number(process.env.RECS_DETAIL_CONCURRENCY || 6));
-const FETCH_TIMEOUT_MS = Math.max(3000, Number(process.env.RECS_FETCH_TIMEOUT_MS || 15000));
+const CACHE_TTL_MS      = Number(process.env.RECS_CACHE_TTL_MS || 180000);
+const DETAIL_CONCURRENCY= Math.max(2, Number(process.env.RECS_DETAIL_CONCURRENCY || 6));
+const FETCH_TIMEOUT_MS  = Math.max(3000, Number(process.env.RECS_FETCH_TIMEOUT_MS || 15000));
 
 const dbg = (...args) => { if (DEBUG_LOGS) console.log('[recs]', ...args); };
 
@@ -228,7 +236,7 @@ const ROLE_PATTERNS = [
   { title: 'Fullstack Developer',  rx: /(full[\s-]*stack|фулл[\s-]*стек)/i },
   { title: 'DevOps Engineer',      rx: /(devops|дейвопс|ci\/cd\s*инженер|platform\s*engineer)/i },
   { title: 'Marketing Specialist', rx: /(marketing|маркетолог|smm|digital)/i },
-];
+};
 
 const ADVANCED_BY_ROLE = {
   'Frontend Developer': ['Accessibility', 'Performance', 'GraphQL', 'Testing'],
@@ -358,9 +366,9 @@ const hhSearchUrl = (role, areaId) => {
 const courseLinks = (skill) => {
   const q = encodeURIComponent(skill);
   return [
-    { provider: 'Coursera', title: `${capital(skill)} — специализации`,    duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
-    { provider: 'Udemy',    title: `${capital(skill)} — практические курсы`,duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
-    { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,    duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
+    { provider: 'Coursera', title: `${capital(skill)} — специализации`,     duration: '1–3 мес', url: `https://www.coursera.org/search?query=${q}` },
+    { provider: 'Udemy',    title: `${capital(skill)} — практические курсы`, duration: '1–2 мес', url: `https://www.udemy.com/courses/search/?q=${q}` },
+    { provider: 'Stepik',   title: `${capital(skill)} — русские курсы`,     duration: '2–8 нед', url: `https://stepik.org/search?query=${q}` },
   ];
 };
 
@@ -458,6 +466,7 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
   const mySet = new Set(mySkills);
   let gaps = topDemand.filter(s => !mySet.has(s.name)).slice(0, 8);
 
+  // если рынок не дал чистых гэпов — подложим дорожку развития по первой роли
   if (!gaps.length && rolesAgg.length) {
     const r0 = rolesAgg[0].title;
     const adv = (ADVANCED_BY_ROLE[r0] || ['Communication','Presentation'])
@@ -466,6 +475,7 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
     gaps = adv.map(n => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
   }
 
+  // Не дублируем seeded
   for (const seeded of seedSkills) {
     const n = lower(CANON[lower(seeded)] || seeded);
     if (!mySet.has(n) && !gaps.some(g => g.name === n)) gaps.push({ name: n, freq: 1, seed: true });
@@ -516,6 +526,90 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
       host: HH_HOST,
       timingsMs: { total: t1 - t0 }
     }
+  };
+}
+
+/* ================================ LLM ENRICHMENT / MERGE ================================ */
+
+function normalizeProfTitle(t) {
+  const s = String(t || '').trim();
+  if (!s) return '';
+  // лёгкая нормализация для объединения
+  return s.replace(/\s+/g, ' ').replace(/engineer/i,'Engineer').replace(/developer/i,'Developer');
+}
+
+function mergeRecs({ market, llm, areaId }) {
+  if (!market && !llm) return null;
+  if (market && !llm)  return market;
+  if (!market && llm) {
+    // привести LLM-ответ к единому формату фронта
+    const profs = (llm.professions || []).map((p) => ({
+      title: normalizeProfTitle(p),
+      vacancies: 0,
+      hhQuery: p,
+      topSkills: [],
+      url: hhSearchUrl(p, areaId),
+    }));
+    return {
+      marketFitScore: clamp(Number(llm.matchScore || 40), 10, 95),
+      marketScore: clamp(Number(llm.matchScore || 40), 10, 95),
+      roles: profs,
+      professions: profs,
+      growSkills: (llm.skillsToLearn || []).map(n => ({ name: lower(n), demand: 1, gap: true })),
+      skillsToGrow: (llm.skillsToLearn || []).map(capital),
+      courses: llm.courses || [],
+      debug: { source: 'llm-only' },
+    };
+  }
+
+  // blend: объединяем без дубликатов
+  const rolesMap = new Map();
+  for (const r of market.roles || []) rolesMap.set(normalizeProfTitle(r.title), { ...r });
+  for (const p of llm.professions || []) {
+    const key = normalizeProfTitle(p);
+    if (!key) continue;
+    if (!rolesMap.has(key)) {
+      rolesMap.set(key, { title: key, vacancies: 0, hhQuery: key, topSkills: [], url: hhSearchUrl(key, areaId) });
+    }
+  }
+  const roles = Array.from(rolesMap.values()).slice(0, MAX_ROLES);
+
+  const mySet = new Set((market.debug?.skillsDetected || []).map(lower));
+  const growMarket = (market.growSkills || []).map(x => lower(x.name));
+  const growLLM    = (llm.skillsToLearn || []).map(lower);
+
+  // убираем «эхо» навыков пользователя
+  const mergedGrow = uniqBy(
+    [...growMarket, ...growLLM].filter((s) => s && !mySet.has(s)),
+    (s) => s
+  ).slice(0, 8);
+
+  const courses = uniqBy(
+    [...(market.courses || []), ...(llm.courses || [])],
+    (c) => `${lower(c.provider || '')}|${lower(c.title || c.name || '')}|${c.url || ''}`
+  ).slice(0, 12).map((c) => ({
+    provider: c.provider || 'Course',
+    title: c.title || c.name || 'Курс',
+    duration: c.duration || '',
+    url: c.url || '',
+  }));
+
+  const score = clamp(Math.round(((market.marketFitScore || 40) * 0.65) + ((llm.matchScore || 40) * 0.35)), 10, 95);
+
+  return {
+    marketFitScore: score,
+    marketScore: score,
+    roles,
+    professions: roles,
+    growSkills: mergedGrow.map((n) => ({ name: n, demand: 1, gap: true })),
+    skillsToGrow: mergedGrow.map(capital),
+    courses,
+    debug: {
+      source: 'blend',
+      marketScore: market.marketFitScore,
+      llmScore: llm.matchScore,
+      llmUsed: true,
+    },
   };
 }
 
@@ -589,27 +683,49 @@ function fallbackImprove(profile = {}) {
 router.post('/generate', async (req, res) => {
   const t0 = Date.now();
   try {
-    const profile   = req.body?.profile || {};
-    const areaId    = req.body?.areaId ?? null;
-    const focusRole = req.body?.focusRole || null;
+    const profile    = req.body?.profile || {};
+    const areaId     = req.body?.areaId ?? null;
+    const focusRole  = req.body?.focusRole || null;
     const seedSkills = Array.isArray(req.body?.seedSkills) ? req.body.seedSkills : [];
 
-    // 0) Если есть внешний LLM — используем его
+    // 0) Если есть внешний LLM — используем его (приоритет)
     if (typeof buildRecommendationsExt === 'function') {
       dbg('using external recommender (LLM)');
       const data = await buildRecommendationsExt(profile, { areaId, focusRole, seedSkills });
       return res.json({ ok: true, data, llm: true, timingsMs: { total: Date.now() - t0 } });
     }
 
-    // 1) Наш «умный» двигатель + рынок HH
-    let data;
+    // 1) Рыночный двигатель
+    let market = null;
     try {
-      data = await buildRecommendationsSmart(profile, { areaId, focusRole, seedSkills });
+      market = await buildRecommendationsSmart(profile, { areaId, focusRole, seedSkills });
     } catch (e) {
-      console.error('[rec/generate smart failed]', e);
+      console.error('[rec/generate smart failed]', e?.message || e);
+    }
+
+    // 2) LLM-усиление (если подключено и сервис доступен)
+    let llm = null;
+    if (USE_LLM && ai && typeof ai.recommendFromProfile === 'function') {
+      try {
+        llm = await ai.recommendFromProfile(profile, { complex: LLM_COMPLEX });
+      } catch (e) {
+        console.warn('[rec/llm] recommendFromProfile failed:', e?.message || e);
+      }
+    }
+
+    // 3) Слияние
+    let data = mergeRecs({ market, llm, areaId });
+    if (!data) {
+      // вообще ничего не получилось — жёсткий фолбэк
       data = await fallbackRecommendations(profile, { focusRole, seedSkills });
     }
-    return res.json({ ok: true, data, timingsMs: { total: Date.now() - t0 } });
+
+    return res.json({
+      ok: true,
+      data,
+      timingsMs: { total: Date.now() - t0 },
+      used: { market: !!market, llm: !!llm }
+    });
   } catch (e) {
     console.error('[rec/generate]', e);
     const data = await fallbackRecommendations(req.body?.profile || {}, {
@@ -622,14 +738,31 @@ router.post('/generate', async (req, res) => {
 
 router.post('/analyze', async (req, res) => {
   try {
-    const profile   = req.body?.profile || {};
-    const areaId    = req.body?.areaId ?? null;
-    const focusRole = req.body?.focusRole || null;
+    const profile    = req.body?.profile || {};
+    const areaId     = req.body?.areaId ?? null;
+    const focusRole  = req.body?.focusRole || null;
     const seedSkills = Array.isArray(req.body?.seedSkills) ? req.body.seedSkills : [];
 
     const data = await buildRecommendationsSmart(profile, { areaId, focusRole, seedSkills });
     const { marketFitScore, roles, growSkills, courses, debug } = data;
-    return res.json({ marketFitScore, roles, growSkills, courses, debug });
+
+    // при анализе можно добавить ИИ-подсказки по навыкам (не меняя скор)
+    let llm = null;
+    if (USE_LLM && ai && typeof ai.recommendFromProfile === 'function') {
+      try { llm = await ai.recommendFromProfile(profile, { complex: false }); } catch {}
+    }
+    const llmSkills = Array.isArray(llm?.skillsToLearn) ? llm.skillsToLearn.slice(0, 6) : [];
+
+    return res.json({
+      marketFitScore,
+      roles,
+      growSkills: uniqBy(
+        [...growSkills, ...llmSkills.map((n) => ({ name: lower(n), demand: 1, gap: true }))],
+        (x) => x.name
+      ),
+      courses,
+      debug: { ...(debug || {}), llmUsed: !!llm }
+    });
   } catch (e) {
     console.error('[rec/analyze]', e);
     const data = await fallbackRecommendations(req.body?.profile || {}, {
