@@ -4,6 +4,7 @@ import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import "../pdf/fonts";
 import { DEFAULT_PDF_FONT } from "../pdf/fonts";
 import TEMPLATES from "../pdf/templates";
+import { useTranslation } from "../hooks/useTranslation";
 
 /* ---------- utils ---------- */
 const safe = (v) => (v === undefined || v === null ? "" : String(v));
@@ -72,7 +73,7 @@ const THEMES = {
 };
 
 /** Нормализация профиля под шаблоны */
-function normalizeProfile(input) {
+function normalizeProfile(input, { currentLabel = "настоящее время" } = {}) {
   const p = input || {};
 
   // Базовые поля
@@ -114,7 +115,7 @@ function normalizeProfile(input) {
           if (!anyVal) return null;
 
           const start = fmtMonth(e.startDate || e.start);
-          const end = e.currentlyWorking ? "настоящее время" : fmtMonth(e.endDate || e.end);
+          const end = e.currentlyWorking ? currentLabel : fmtMonth(e.endDate || e.end);
           const period = trim(e.period) || (!start && !end ? "" : `${start || "—"} — ${end || "—"}`);
 
           const responsibilities = normalizeMultiline(e.responsibilities || e.description);
@@ -302,14 +303,37 @@ const Footer = () => (
 
 /* ---------- PDF оболочка ---------- */
 export default function ResumePDF({ profile = {}, template: templateProp = "minimal" }) {
+  const { t, lang } = useTranslation();
+
+  // Локализованные метки разделов для шаблонов
+  const labels = {
+    personal:      t("pdf.sections.personal"),
+    contacts:      t("pdf.sections.contacts"),
+    summary:       t("pdf.sections.summary"),
+    experience:    t("pdf.sections.experience"),
+    education:     t("pdf.sections.education"),
+    skills:        t("pdf.sections.skills"),
+    projects:      t("pdf.sections.projects"),
+    certificates:  t("pdf.sections.certificates"),
+    courses:       t("pdf.sections.courses"),
+    languages:     t("pdf.sections.languages"),
+    links:         t("pdf.sections.links"),
+    achievements:  t("pdf.sections.achievements"),
+  };
+
+  const currentLabel = t("builder.experience.current") || "настоящее время";
+
   const tplKey = typeof templateProp === "string" ? templateProp : "minimal";
   const TemplateComp =
     (TEMPLATES && TEMPLATES[tplKey]) || (TEMPLATES && TEMPLATES.minimal) || null;
   const theme = THEMES[tplKey] || THEMES.minimal;
 
-  const normalized = normalizeProfile(profile);
+  const normalized = normalizeProfile(profile, { currentLabel });
   const fullName = normalized.fullName;
-  const docTitle = fullName ? `${fullName} — резюме` : "Резюме";
+
+  const subjectI18n = lang === "kk" ? "Түйіндеме" : lang === "en" ? "Resume" : "Резюме";
+  const titleSuffix = lang === "kk" ? " — түйіндеме" : lang === "en" ? " — resume" : " — резюме";
+  const docTitle = fullName ? `${fullName}${titleSuffix}` : subjectI18n;
 
   // Динамические поля страницы под шапку/футер
   const showHeader = !!theme.header;
@@ -321,8 +345,8 @@ export default function ResumePDF({ profile = {}, template: templateProp = "mini
   // В метаданных — только строки
   const meta = {
     title: docTitle,
-    author: fullName || "Кандидат",
-    subject: "Резюме",
+    author: fullName || "Candidate",
+    subject: subjectI18n,
     keywords: (normalized.skills || []).join(", "),
     producer: "AI Resume Builder",
     creator: "AI Resume Builder",
@@ -345,6 +369,9 @@ export default function ResumePDF({ profile = {}, template: templateProp = "mini
             <TemplateComp
               profile={normalized}
               theme={theme}
+              labels={labels}
+              t={t}
+              lang={lang}
               studentMode={normalized.flags?.studentMode}
               flags={normalized.flags}
               hints={normalized.hints}

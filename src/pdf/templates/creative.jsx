@@ -3,8 +3,12 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
 /**
- * props: { profile, theme }
- * Рендерит ТОЛЬКО внутренность страницы (без <Document>/<Page>).
+ * Creative PDF template (i18n-ready).
+ * Props:
+ *  - profile  : normalized profile object (from ResumePDF)
+ *  - theme    : { accent, header, footer }
+ *  - labels   : i18n labels from ResumePDF.getPdfLabels(lang)
+ *  - t, lang  : optional (not required here, but passed by ResumePDF)
  */
 
 /* ---------- helpers ---------- */
@@ -32,10 +36,10 @@ const bullets = (text) => {
   });
 };
 
-const fmtPeriod = (start, end, current, fallback) => {
+const fmtPeriod = (start, end, current, fallback, presentWord = 'Present') => {
   if (has(fallback)) return t(fallback);
   const st = t(start);
-  const en = current ? 'настоящее время' : t(end);
+  const en = current ? presentWord : t(end);
   if (!st && !en) return '';
   return `${st || '—'} — ${en || '—'}`;
 };
@@ -126,7 +130,7 @@ const styles = StyleSheet.create({
   paragraph: { fontSize: 10, lineHeight: 1.35, color: '#111827' },
 
   twoCol: { flexDirection: 'row', gap: 12, marginBottom: 10 },
-  colTime: { width: 70, color: '#6B7280', fontSize: 9, paddingTop: 2 },
+  colTime: { width: 78, color: '#6B7280', fontSize: 9, paddingTop: 2 },
   colBody: { flex: 1 },
 
   em: { fontSize: 10, fontWeight: 700, color: '#111827' },
@@ -147,7 +151,7 @@ const styles = StyleSheet.create({
   },
 });
 
-/* ---------- маленькие элементы ---------- */
+/* ---------- small UI atoms ---------- */
 const SideTitle = ({ children }) => (
   <View style={styles.sideTitleRow}>
     <Text style={styles.sideTitle}>{children}</Text>
@@ -163,23 +167,32 @@ const SideRow = ({ primary, secondary }) =>
     </View>
   );
 
-/* ---------- основной компонент ---------- */
-export default function CreativeTemplate({ profile, theme }) {
+/* ---------- main component ---------- */
+export default function CreativeTemplate(props) {
+  const { profile, theme, labels: L = {}, lang } = props;
   const accent = (theme && theme.accent) || '#8b5cf6';
 
-  // базовые поля
-  const fullName = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
-  const title = t(profile?.position || profile?.title || profile?.professionalTitle);
+  // i18n labels (fallbacks included)
+  const S = L.sections || {};
+  const F = L.fields || {};
+  const PFX = has(L.bulletsPrefix) ? L.bulletsPrefix : '•';
+  const PRESENT = has(L.present) ? L.present : (lang === 'kk' ? 'Қазір' : lang === 'en' ? 'Present' : 'настоящее время');
+
+  // base fields
+  const fullName = t(profile?.fullName) || (lang === 'kk' ? 'АТЫ ЖӨНІ' : lang === 'en' ? 'NAME SURNAME' : 'ИМЯ ФАМИЛИЯ');
+  const title =
+    t(profile?.position || profile?.title || profile?.professionalTitle);
   const email = t(profile?.email);
   const phone = t(profile?.phone);
   const location = t(profile?.location);
 
-  // новые поля личного блока
+  // new personal fields (both keys supported)
   const age = t(profile?.age);
   const maritalStatus = t(profile?.maritalStatus);
   const children = t(profile?.children);
-  const driverLicense = t(profile?.driverLicense);
+  const driversLicense = t(profile?.driversLicense || profile?.driverLicense);
 
+  // collections
   const skills = Array.isArray(profile?.skills) ? profile.skills.filter(has) : [];
   const languages = Array.isArray(profile?.languages) ? profile.languages : [];
   const education = Array.isArray(profile?.education) ? profile.education : [];
@@ -199,31 +212,35 @@ export default function CreativeTemplate({ profile, theme }) {
           {has(title) ? <Text style={styles.subTitle}>{title}</Text> : null}
         </View>
 
-        {/* Личная информация */}
-        {(has(age) || has(maritalStatus) || has(children) || has(driverLicense)) && (
+        {/* Personal info */}
+        {(has(age) || has(maritalStatus) || has(children) || has(driversLicense)) && (
           <View style={styles.sideSection}>
-            <SideTitle>Личная информация</SideTitle>
-            {has(age) && <SideRow primary={`Возраст: ${age}`} />}
-            {has(maritalStatus) && <SideRow primary={`Семейное положение: ${maritalStatus}`} />}
-            {has(children) && <SideRow primary={`Дети: ${children}`} />}
-            {has(driverLicense) && <SideRow primary={`Водительские права: ${driverLicense}`} />}
+            <SideTitle>{S.profile || (lang === 'kk' ? 'Жеке ақпарат' : lang === 'en' ? 'Personal Info' : 'Личная информация')}</SideTitle>
+            {has(age) && <SideRow primary={`${F.age || (lang === 'kk' ? 'Жасы' : lang === 'en' ? 'Age' : 'Возраст')}: ${age}`} />}
+            {has(maritalStatus) && (
+              <SideRow primary={`${F.maritalStatus || (lang === 'kk' ? 'Отбасылық жағдайы' : lang === 'en' ? 'Marital status' : 'Семейное положение')}: ${maritalStatus}`} />
+            )}
+            {has(children) && <SideRow primary={`${F.children || (lang === 'kk' ? 'Балалар' : lang === 'en' ? 'Children' : 'Дети')}: ${children}`} />}
+            {has(driversLicense) && (
+              <SideRow primary={`${F.driversLicense || (lang === 'kk' ? 'Жүргізуші куәлігі' : lang === 'en' ? 'Driver’s license' : 'Водительские права')}: ${driversLicense}`} />
+            )}
           </View>
         )}
 
-        {/* Контакты */}
+        {/* Contacts */}
         {(has(location) || has(phone) || has(email)) && (
           <View style={styles.sideSection}>
-            <SideTitle>Контакты</SideTitle>
+            <SideTitle>{S.contacts || (lang === 'kk' ? 'Байланыс' : lang === 'en' ? 'Contacts' : 'Контакты')}</SideTitle>
             {has(location) ? <SideRow primary={location} /> : null}
             {has(email) ? <SideRow primary={email} /> : null}
             {has(phone) ? <SideRow primary={phone} /> : null}
           </View>
         )}
 
-        {/* Навыки */}
+        {/* Skills (left meter-style) */}
         {skills.length ? (
           <View style={styles.sideSection}>
-            <SideTitle>Навыки</SideTitle>
+            <SideTitle>{S.skills || (lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}</SideTitle>
             {skills.map((sk, i) => (
               <View key={`${sk}_${i}`} style={styles.skillRow}>
                 <Text style={styles.skillName}>{t(sk)}</Text>
@@ -233,16 +250,16 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Языки */}
+        {/* Languages */}
         {languages.length ? (
           <View style={styles.sideSection}>
-            <SideTitle>Языки</SideTitle>
+            <SideTitle>{S.languages || (lang === 'kk' ? 'Тілдер' : lang === 'en' ? 'Languages' : 'Языки')}</SideTitle>
             {languages.map((l, i) => {
-              const lang = t(l?.language || l?.name);
+              const langName = t(l?.language || l?.name);
               const lvl = t(l?.level);
               return (
-                <View key={l.id || i} style={styles.langRow}>
-                  <Text style={styles.sideText}>{lang}</Text>
+                <View key={l?.id || i} style={styles.langRow}>
+                  <Text style={styles.sideText}>{langName}</Text>
                   {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
                 </View>
               );
@@ -253,10 +270,10 @@ export default function CreativeTemplate({ profile, theme }) {
 
       {/* ===== RIGHT COLUMN ===== */}
       <View style={styles.right}>
-        {/* Образование */}
+        {/* Education */}
         {education.length ? (
           <View style={styles.block}>
-            <Text style={styles.h2}>Образование</Text>
+            <Text style={styles.h2}>{S.education || (lang === 'kk' ? 'Білім' : lang === 'en' ? 'Education' : 'Образование')}</Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -282,10 +299,10 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Опыт работы */}
+        {/* Experience */}
         {experience.length ? (
           <View style={styles.block}>
-            <Text style={styles.h2}>Опыт работы</Text>
+            <Text style={styles.h2}>{S.experience || (lang === 'kk' ? 'Жұмыс тәжірибесі' : lang === 'en' ? 'Work Experience' : 'Опыт работы')}</Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -296,7 +313,8 @@ export default function CreativeTemplate({ profile, theme }) {
                 ex.startDate || ex.start,
                 ex.endDate || ex.end,
                 ex.currentlyWorking,
-                ex.period
+                ex.period,
+                PRESENT
               );
               const pos = t(ex.position);
               const comp = t(ex.company);
@@ -308,17 +326,19 @@ export default function CreativeTemplate({ profile, theme }) {
                   <Text style={styles.colTime}>{left}</Text>
                   <View style={styles.colBody}>
                     {has(pos) ? <Text style={styles.em}>{pos}</Text> : null}
-                    <Text style={styles.muted}>
-                      {has(comp) ? comp : ''}
-                      {has(comp) && has(loc) ? ' • ' : ''}
-                      {has(loc) ? loc : ''}
-                    </Text>
+                    {(has(comp) || has(loc)) && (
+                      <Text style={styles.muted}>
+                        {has(comp) ? comp : ''}
+                        {has(comp) && has(loc) ? ' • ' : ''}
+                        {has(loc) ? loc : ''}
+                      </Text>
+                    )}
 
                     {lines.length ? (
                       <View style={{ marginTop: 4 }}>
                         {lines.map((line, j) => (
                           <View key={j} style={styles.bulletRow}>
-                            <Text style={styles.bulletDot}>•</Text>
+                            <Text style={styles.bulletDot}>{PFX}</Text>
                             <Text style={styles.bulletText}>{line}</Text>
                           </View>
                         ))}
@@ -331,10 +351,10 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Профиль / О себе */}
+        {/* Summary */}
         {has(summary) ? (
           <View style={styles.block}>
-            <Text style={styles.h2}>О себе</Text>
+            <Text style={styles.h2}>{S.summary || (lang === 'kk' ? 'Өзім туралы' : lang === 'en' ? 'Summary' : 'О себе')}</Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />
@@ -343,10 +363,10 @@ export default function CreativeTemplate({ profile, theme }) {
           </View>
         ) : null}
 
-        {/* Навыки (теги справа, если нужно продублировать) */}
+        {/* Skills tags on right (optional duplicate) */}
         {skills.length ? (
           <View style={[styles.block, { marginTop: 4 }]}>
-            <Text style={styles.h2}>Навыки</Text>
+            <Text style={styles.h2}>{S.skills || (lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки')}</Text>
             <View style={styles.hRuleWrap}>
               <View style={styles.hRule} />
               <View style={[styles.hDot, { backgroundColor: accent }]} />

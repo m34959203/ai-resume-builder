@@ -277,6 +277,24 @@ export const translations = {
       back: 'Назад',
       select: 'Выберите',
       notAvailable: 'Недоступно'
+    },
+
+    // ---------- PDF (заголовки разделов) ----------
+    pdf: {
+      sections: {
+        personal: 'Личная информация',
+        contacts: 'Контакты',
+        summary: 'О себе',
+        experience: 'Опыт работы',
+        education: 'Образование',
+        skills: 'Навыки',
+        projects: 'Проекты',
+        certificates: 'Сертификаты',
+        courses: 'Курсы',
+        languages: 'Языки',
+        links: 'Ссылки',
+        achievements: 'Достижения'
+      }
     }
   },
 
@@ -551,6 +569,24 @@ export const translations = {
       back: 'Артқа',
       select: 'Таңдаңыз',
       notAvailable: 'Қолжетімсіз'
+    },
+
+    // ---------- PDF ----------
+    pdf: {
+      sections: {
+        personal: 'Жеке мәліметтер',
+        contacts: 'Байланыс',
+        summary: 'Өзім туралы',
+        experience: 'Жұмыс тәжірибесі',
+        education: 'Білім',
+        skills: 'Дағдылар',
+        projects: 'Жобалар',
+        certificates: 'Сертификаттар',
+        courses: 'Курстар',
+        languages: 'Тілдер',
+        links: 'Сілтемелер',
+        achievements: 'Жетістіктер'
+      }
     }
   },
 
@@ -825,6 +861,24 @@ export const translations = {
       back: 'Back',
       select: 'Select',
       notAvailable: 'Not available'
+    },
+
+    // ---------- PDF ----------
+    pdf: {
+      sections: {
+        personal: 'Personal info',
+        contacts: 'Contacts',
+        summary: 'Summary',
+        experience: 'Experience',
+        education: 'Education',
+        skills: 'Skills',
+        projects: 'Projects',
+        certificates: 'Certificates',
+        courses: 'Courses',
+        languages: 'Languages',
+        links: 'Links',
+        achievements: 'Achievements'
+      }
     }
   }
 };
