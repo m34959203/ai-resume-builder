@@ -139,13 +139,12 @@ app.get('/version', (_req, res) => {
   res.json({ version, commit });
 });
 
-// (4) Опционально: быстрый health HH с измерением RPS/ping
+// Быстрый health HH с пингом и таймаутом
 app.get('/api/health/hh', async (_req, res) => {
   const t0 = Date.now();
   try {
     const r = await fetch('https://api.hh.ru/status', {
       headers: { 'User-Agent': config.hhUserAgent, 'Accept': 'text/plain' },
-      // таймаут на случай подвисаний
       signal: AbortSignal.timeout(config.hhTimeoutMs),
     });
     const txt = await r.text().catch(() => '');
@@ -303,6 +302,25 @@ function clamp(n, lo, hi) {
   if (!Number.isFinite(x)) return lo;
   return Math.max(lo, Math.min(hi, x));
 }
+
+// 🔧 КЛЮЧЕВОЕ: маппинг «наш опыт» → коды HH (или опустить фильтр)
+function mapExperienceToHH(val) {
+  if (!val) return undefined;
+  const s = String(val).trim();
+  // Если уже HH-код — пропускаем как есть
+  if (['noExperience','between1And3','between3And6','moreThan6'].includes(s)) return s;
+
+  // Наши обозначения → HH
+  if (s === '1-3') return 'between1And3';
+  if (s === '3-6') return 'between3And6';
+  if (s === '6+')  return 'moreThan6';
+
+  // 'none' и '0-1' у HH нет → безопаснее не отправлять параметр
+  if (s === 'none' || s === '0-1') return undefined;
+
+  return undefined;
+}
+
 function buildVacanciesUrl(params = {}) {
   const {
     text = '',
@@ -330,7 +348,11 @@ function buildVacanciesUrl(params = {}) {
   if (area) q.set('area', String(area));
   if (specialization) q.set('specialization', String(specialization));
   if (professional_role) q.set('professional_role', String(professional_role));
-  if (experience) q.set('experience', String(experience));
+
+  // ✅ корректируем опыт под HH
+  const expHH = mapExperienceToHH(experience);
+  if (expHH) q.set('experience', expHH);
+
   if (employment) q.set('employment', String(employment));
   if (schedule) q.set('schedule', String(schedule));
 
@@ -362,7 +384,6 @@ hhInline.get('/jobs/search', async (req, res) => {
     const headers = {
       'User-Agent': config.hhUserAgent,
       'Accept': 'application/json',
-      // Немного помогает локализации текстов HH
       'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
     };
     // Если фронт прислал "X-No-Cache: 1", пробиваем no-cache до HH.

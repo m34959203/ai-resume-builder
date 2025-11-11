@@ -14,6 +14,7 @@
  *  - детальная диагностика запросов /hh/jobs/search
  *  - X-No-Cache для обхода возможного SW/PWA-кэша
  *  - устойчивые переводчики (batch + graceful fallback)
+ *  - ✅ experience: никогда не отправляем "none"/"0-1", только валидные HH-коды
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -264,14 +265,35 @@ export async function safeFetchJSON(url, options = {}) {
 
 /* -------------------- Нормализация опыта -------------------- */
 
-const EXP_MAP = {
-  none: 'none', '0-1': '0-1', '1-3': '1-3', '3-6': '3-6', '6+': '6+',
-  noExperience: 'none', between1And3: '1-3', between3And6: '3-6', moreThan6: '6+',
-};
+/**
+ * Приводим пользовательские значения к валидным HH-кодам:
+ *  - '1-3'  → 'between1And3'
+ *  - '3-6'  → 'between3And6'
+ *  - '6+'   → 'moreThan6'
+ *  - '0-1' и 'none' → НЕ отправляем (undefined), чтобы не ловить 400
+ *  - уже валидные коды HH возвращаем как есть
+ */
+const EXP_HH_CODES = new Set(['noExperience', 'between1And3', 'between3And6', 'moreThan6']);
+
 export function normalizeExperience(v) {
-  if (!v) return undefined;
-  const key = String(v).trim();
-  return EXP_MAP[key] || undefined;
+  if (v == null) return undefined;
+  const raw = String(v).trim();
+
+  // Уже HH-код
+  if (EXP_HH_CODES.has(raw)) return raw;
+
+  // Унификация тире
+  const s = raw.replace(/[–—−]/g, '-').toLowerCase();
+
+  if (s === '1-3') return 'between1And3';
+  if (s === '3-6') return 'between3And6';
+  if (s === '6+' || /^6\+/.test(s)) return 'moreThan6';
+
+  // 'none' / '0-1' / «до года» и т.п. — не отправляем параметр вообще
+  const noneish = new Set(['none', '0-1', '0', '<1', 'less1', 'до года', 'до 1', 'менее года', 'junior-0-1']);
+  if (noneish.has(s)) return undefined;
+
+  return undefined;
 }
 
 const stripCurrency = (v) => (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
@@ -516,7 +538,7 @@ function buildJobsQuery(params = {}) {
   // Город в bff не требуется; оставляем для совместимости (может использоваться внешним роутом)
   if (params.city) q.set('city', String(params.city));
 
-  // Опыт
+  // Опыт → HH-код, или не отправляем
   const exp = normalizeExperience(params.experience);
   if (exp) q.set('experience', exp);
 
@@ -537,10 +559,13 @@ function buildJobsQuery(params = {}) {
   const host = (params.host || HOST_DEFAULT || 'hh.kz').toLowerCase();
   if (host) q.set('host', host);
 
-  // ВАЖНО: не передаём date_from по умолчанию (чтобы не попасть в «завтра» по таймзоне)
+  // Не трогаем date_from по умолчанию (таймзоны)
   if (typeof params.date_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date_from)) {
     q.set('date_from', params.date_from);
   }
+
+  // Порядок выдачи (опционально)
+  if (params.order_by) q.set('order_by', String(params.order_by)); // 'relevance' | 'publication_time'
 
   return q;
 }
@@ -597,7 +622,11 @@ export async function searchVacanciesRaw(params = {}) {
   const q = new URLSearchParams();
   if (params.text) q.set('text', params.text);
   if (params.area) q.set('area', params.area);
-  if (params.experience) q.set('experience', normalizeExperience(params.experience));
+
+  // 🔧 важно: сначала нормализуем, потом ставим, если получилось
+  const ex = normalizeExperience(params.experience);
+  if (ex) q.set('experience', ex);
+
   if (params.page != null) q.set('page', String(params.page));
   if (params.per_page != null) q.set('per_page', String(params.per_page));
   if (params.salary != null) q.set('salary', stripCurrency(params.salary) || '');
