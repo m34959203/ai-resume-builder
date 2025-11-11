@@ -5,6 +5,7 @@ import {
   Briefcase, BookOpen, Upload, Globe, RefreshCw
 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
+import { translateProfileForLang } from '../services/bff'; // ✅ авто-перевод профиля перед PDF
 
 /* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
@@ -403,7 +404,8 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  const { t } = useTranslation();
+  // ✅ ВАЖНО: получаем нормализованный язык через language (не lang!)
+  const { t, language: lang } = useTranslation();
 
   const steps = useMemo(() => ([
     t('builder.steps.personal'),
@@ -574,8 +576,27 @@ function BuilderPage({
   }, []);
 
   /* --- Языки --- */
-  const blankLanguage = { language: '', level: 'B1 — Средний' };
+  const LANG_LEVELS = useMemo(() => ([
+    t('builder.languages.levels.a1'),
+    t('builder.languages.levels.a2'),
+    t('builder.languages.levels.b1'),
+    t('builder.languages.levels.b2'),
+    t('builder.languages.levels.c1'),
+    t('builder.languages.levels.c2'),
+  ]), [t]);
+
+  const blankLanguage = useMemo(
+    () => ({ language: '', level: t('builder.languages.levels.b1') }),
+    [t]
+  );
   const [newLanguage, setNewLanguage] = useState(blankLanguage);
+
+  // если сменили язык интерфейса и поле не заполнено — синхронизируем дефолт уровня
+  useEffect(() => {
+    if (!newLanguage.language && newLanguage.level !== blankLanguage.level) {
+      setNewLanguage(blankLanguage);
+    }
+  }, [blankLanguage, newLanguage.language, newLanguage.level]);
 
   const isLanguageDraftFilled = useCallback((l) => !!l && !isBlank(l.language), []);
   const commitLanguageDraft = useCallback(() => {
@@ -585,7 +606,7 @@ function BuilderPage({
       return true;
     }
     return false;
-  }, [newLanguage, isLanguageDraftFilled]);
+  }, [newLanguage, blankLanguage, isLanguageDraftFilled]);
 
   const addLanguage = useCallback(() => { commitLanguageDraft(); }, [commitLanguageDraft]);
 
@@ -655,7 +676,7 @@ function BuilderPage({
     newLanguage, isLanguageDraftFilled,
   ]);
 
-  /* --- Генерация PDF --- */
+  /* --- Генерация PDF (с авто-переводом на язык интерфейса) --- */
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
@@ -673,12 +694,30 @@ function BuilderPage({
     try {
       const exportProfile = buildExportProfile();
 
+      // ✅ Автоматический перевод контента профиля в выбранный язык интерфейса
+      // Если перевод недоступен — вернём исходный профиль (фолбэк внутри try/catch)
+      let profileForPdf = exportProfile;
+      try {
+        const targetLang = String(lang || 'ru');
+        profileForPdf = await translateProfileForLang(exportProfile, targetLang);
+      } catch (e) {
+        console.warn('translateProfileForLang failed, fallback to original profile', e);
+      }
+
       const [{ pdf }, { default: ResumePDF }] = await Promise.all([
         import('@react-pdf/renderer'),
         import('./ResumePDF'),
       ]);
 
-      const blob = await pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} />).toBlob();
+      // ✅ Прокидываем язык в PDF, чтобы шаблон выводил нужные лейблы/метки
+      const blob = await pdf(
+        <ResumePDF
+          profile={profileForPdf}
+          template={selectedTemplate}
+          lang={lang}  // ✅ lang уже 'ru' | 'kk' | 'en'
+        />
+      ).toBlob();
+
       if (!blob || blob.size === 0) throw new Error('Empty PDF blob');
 
       const url = URL.createObjectURL(blob);
@@ -697,21 +736,12 @@ function BuilderPage({
       setDownloading(false);
     }
   }, [
-    t, canDownload, downloading, currentStep,
+    t, lang, canDownload, downloading, currentStep,
     commitExperienceDraft, commitEducationDraft, commitLanguageDraft,
     buildExportProfile, selectedTemplate, fileName,
   ]);
 
   /* --- RENDER --- */
-  const LANG_LEVELS = useMemo(() => ([
-    t('builder.languages.levels.a1'),
-    t('builder.languages.levels.a2'),
-    t('builder.languages.levels.b1'),
-    t('builder.languages.levels.b2'),
-    t('builder.languages.levels.c1'),
-    t('builder.languages.levels.c2'),
-  ]), [t]);
-
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-5xl mx-auto px-4">

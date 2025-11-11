@@ -1,46 +1,42 @@
 // server/services/ai.js
-// Node ESM. Требуется Node 18+ (в Node 22 есть встроенный fetch).
-// Работает через OpenRouter: https://openrouter.ai
-//
-// ENV:
-//   OPENROUTER_API_KEY=<ключ OpenRouter>
-//   OPENROUTER_MODEL_PRIMARY=google/gemma-3-12b-it:free     (опц. переопределение primary)
-//   OPENROUTER_MODEL_COMPLEX=deepseek/deepseek-r1:free      (опц. переопределение complex)
-//   ORIGIN_HEADER=<https://ваш-домен>                       (опционально — попадёт в HTTP-Referer)
-//   APP_TITLE=AI Resume Builder                              (опционально — попадёт в X-Title)
-//   OR_TIMEOUT_MS=30000                                      (опционально — таймаут, мс)
-//
-// Модели по умолчанию:
-//   - Быстрая/дешевая:  google/gemma-3-12b-it:free
-//   - «Сложная»/рассуждения: deepseek/deepseek-r1:free
-//
-// Экспортирует:
-//   MODELS, chatLLM, summarizeProfile, recommendFromProfile,
-//   generateCoverLetter, suggestSkills,
-//   polishText, polishMany,
-//   inferSearch  ← НОВОЕ: извлечение "должность • город (KZ) • навыки • опыт" из резюме
+/* eslint-disable no-console */
+/*
+  CommonJS (require) версия — совместима с текущими роутами.
+  Требуется Node 18+ (в Node 18+ есть глобальный fetch).
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+  ENV:
+    OPENROUTER_API_KEY=...
+    OPENROUTER_MODEL_PRIMARY=google/gemma-3-12b-it:free
+    OPENROUTER_MODEL_COMPLEX=deepseek/deepseek-r1:free
+    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1           (опц.)
+    OPENROUTER_REFERER=http://localhost:5173                   (опц.)
+    OPENROUTER_TITLE=AI Resume Builder                         (опц.)
 
-export const MODELS = {
+    ORIGIN_HEADER=<https://ваш-домен>  // альтернативное имя для Referer
+    APP_TITLE=AI Resume Builder         // альтернативное имя для X-Title
+    OR_TIMEOUT_MS=30000
+*/
+
+'use strict';
+
+const BASE_URL =
+  (process.env.OPENROUTER_BASE_URL && process.env.OPENROUTER_BASE_URL.trim()) ||
+  'https://openrouter.ai/api/v1';
+
+const OPENROUTER_URL = `${BASE_URL.replace(/\/+$/, '')}/chat/completions`;
+
+const MODELS = {
   primary: process.env.OPENROUTER_MODEL_PRIMARY || 'google/gemma-3-12b-it:free',
   complex: process.env.OPENROUTER_MODEL_COMPLEX || 'deepseek/deepseek-r1:free',
 };
 
-const DEFAULT_TIMEOUT = Math.max(
-  5_000,
-  Number(process.env.OR_TIMEOUT_MS || 30_000) || 30_000
-);
+const DEFAULT_TIMEOUT = Math.max(5_000, Number(process.env.OR_TIMEOUT_MS || 30_000) || 30_000);
 
-// ------------------------- Вспомогательные утилиты ----------------------------
+/* ----------------------- helpers ----------------------- */
 
 function ensureApiKey() {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) {
-    throw new Error(
-      'OPENROUTER_API_KEY is not set. Create .env with your key (OPENROUTER_API_KEY=...).'
-    );
-  }
+  if (!key) throw new Error('OPENROUTER_API_KEY is not set');
   return key;
 }
 
@@ -53,9 +49,11 @@ function baseHeaders() {
     Authorization: `Bearer ${ensureApiKey()}`,
     'Content-Type': 'application/json',
   };
-  // Рекомендации OpenRouter для аналитики/квот:
-  if (process.env.ORIGIN_HEADER) headers['HTTP-Referer'] = process.env.ORIGIN_HEADER;
-  if (process.env.APP_TITLE) headers['X-Title'] = process.env.APP_TITLE;
+  // Имена переменных поддерживаем оба варианта
+  const referer = process.env.OPENROUTER_REFERER || process.env.ORIGIN_HEADER;
+  const title = process.env.OPENROUTER_TITLE || process.env.APP_TITLE;
+  if (referer) headers['HTTP-Referer'] = referer;
+  if (title) headers['X-Title'] = title;
   return headers;
 }
 
@@ -63,53 +61,42 @@ function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function withTimeout(fetchFactory, ms = DEFAULT_TIMEOUT) {
+async function withTimeout(factory, ms = DEFAULT_TIMEOUT) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error('Timeout')), ms);
   try {
-    const res = await fetchFactory(ctrl.signal);
-    return res;
+    return await factory(ctrl.signal);
   } finally {
     clearTimeout(t);
   }
 }
 
-// Попытка распарсить JSON даже из «зашумленного» ответа
+// Попробовать распарсить JSON даже если вокруг «шум»
 function tryParseJSON(text) {
   if (!text) return null;
-
-  // как есть
   try {
     return JSON.parse(text);
   } catch {}
-
-  // ```json ... ```
   const fence = /```json([\s\S]*?)```/i.exec(text);
   if (fence?.[1]) {
     try {
       return JSON.parse(fence[1].trim());
     } catch {}
   }
-
-  // первый { .. последняя }
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
+  const s = text.indexOf('{');
+  const e = text.lastIndexOf('}');
+  if (s !== -1 && e !== -1 && e > s) {
     try {
-      return JSON.parse(text.slice(start, end + 1));
+      return JSON.parse(text.slice(s, e + 1));
     } catch {}
   }
   return null;
 }
 
-// ------------------------- Низкоуровневый вызов OpenRouter --------------------
+/* ------------------ OpenRouter low-level ------------------ */
 
-/**
- * Внутренний запрос к OpenRouter с ретраями на 429/5xx и поддержкой response_format.
- */
 async function requestOpenRouter({ body, timeoutMs = DEFAULT_TIMEOUT }, { retries = 2 } = {}) {
   let attempt = 0;
-
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const resp = await withTimeout(
@@ -123,16 +110,14 @@ async function requestOpenRouter({ body, timeoutMs = DEFAULT_TIMEOUT }, { retrie
       timeoutMs
     );
 
-    if (resp.ok) {
-      return resp;
-    }
+    if (resp.ok) return resp;
 
     const status = resp.status;
     const retryAfter = Number(resp.headers?.get?.('Retry-After') || 0);
-    const isRetriable = status === 429 || (status >= 500 && status < 600);
+    const retriable = status === 429 || (status >= 500 && status < 600);
 
-    if (attempt < retries && isRetriable) {
-      const backoff = retryAfter > 0 ? retryAfter * 1000 : Math.min(400 * 2 ** attempt, 3000);
+    if (attempt < retries && retriable) {
+      const backoff = retryAfter > 0 ? retryAfter * 1000 : Math.min(3000, 400 * 2 ** attempt);
       await delay(backoff);
       attempt += 1;
       continue;
@@ -143,19 +128,14 @@ async function requestOpenRouter({ body, timeoutMs = DEFAULT_TIMEOUT }, { retrie
   }
 }
 
-/**
- * Низкоуровневый вызов OpenRouter (без стрима).
- * Если передан response_format и модель его не поддерживает (или вернула 400),
- * openrouterChatSafe() ниже отретраит без него.
- */
 async function openrouterChat({
   messages,
   model,
   temperature = 0.2,
   max_tokens = 900,
   top_p = 0.9,
-  reasoning = undefined, // напр. { effort: 'medium' }
-  response_format = undefined, // напр. { type: 'json_object' }
+  reasoning = undefined,
+  response_format = undefined,
   timeoutMs = DEFAULT_TIMEOUT,
 }) {
   const body = {
@@ -170,12 +150,12 @@ async function openrouterChat({
   if (response_format) body.response_format = response_format;
 
   const resp = await requestOpenRouter({ body, timeoutMs });
-  const data = await resp.json();
+  const data = await resp.json().catch(() => ({}));
   const content = data?.choices?.[0]?.message?.content ?? '';
   return typeof content === 'string' ? content : JSON.stringify(content);
 }
 
-/** Безопасный вызов: пробуем JSON-формат, при ошибке ретраим без него */
+// Сначала просим JSON-ответ, при ошибке — повтор без response_format
 async function openrouterChatSafe(args) {
   try {
     return await openrouterChat({
@@ -187,15 +167,9 @@ async function openrouterChatSafe(args) {
   }
 }
 
-// ----------------------- Универсальная прокси-функция -------------------------
+/* ------------------ High-level universal proxy ------------------ */
 
-export async function chatLLM({
-  messages,
-  complex = false,
-  overrideModel,
-  temperature,
-  max_tokens,
-}) {
+async function chatLLM({ messages, complex = false, overrideModel, temperature, max_tokens }) {
   const model = pickModel({ complex, override: overrideModel });
   return openrouterChat({
     messages,
@@ -206,9 +180,9 @@ export async function chatLLM({
   });
 }
 
-// ---------------------------- Специализированные ИИ ---------------------------
+/* ------------------ Domain helpers ------------------ */
 
-export async function summarizeProfile(profile, opts = {}) {
+async function summarizeProfile(profile, opts = {}) {
   const model = pickModel({ complex: false, override: opts.overrideModel });
   const sys =
     'Ты помощник карьерного консультанта. Пиши кратко, по-деловому, на русском. Максимум 3–4 предложения.';
@@ -229,31 +203,26 @@ ${JSON.stringify(profile, null, 2)}
 }
 
 /**
- * Возвращает объект:
- * { professions: string[], skillsToLearn: string[], courses: { name, duration }[], matchScore: number }
+ * Возвращает:
+ * { professions: string[], skillsToLearn: string[], courses: [{name,duration}], matchScore: number }
  */
-export async function recommendFromProfile(profile, opts = {}) {
+async function recommendFromProfile(profile, opts = {}) {
   const complex = !!opts.complex;
   const model = pickModel({ complex, override: opts.overrideModel });
 
   const sys =
-    'Ты эксперт по трудоустройству. Всегда возвращай ТОЛЬКО минифицированный JSON, без комментариев и пояснений.';
-  const usr = `Вот профиль кандидата:
+    'Ты эксперт по трудоустройству. Всегда возвращай ТОЛЬКО минифицированный JSON, без пояснений.';
+  const usr = `Профиль:
 ${JSON.stringify(profile, null, 2)}
 
-Сформируй объект JSON строго такого вида:
+Верни JSON ровно вида:
 {
   "professions": ["string", ...],
   "skillsToLearn": ["string", ...],
   "courses": [{"name":"string","duration":"string"}, ...],
   "matchScore": 0
 }
-Где:
-- "professions" — 3–5 подходящих ролей.
-- "skillsToLearn" — 4–8 ключевых навыков для роста.
-- "courses" — 2–4 курса ({"name","duration"}, без ссылок).
-- "matchScore" — целое 0–100 о соответствии рынку.
-Ответ — ТОЛЬКО JSON, БЕЗ текста.`;
+Без текста вне JSON.`;
 
   try {
     const text = await openrouterChatSafe({
@@ -266,12 +235,10 @@ ${JSON.stringify(profile, null, 2)}
       max_tokens: 600,
       reasoning: complex ? { effort: 'medium' } : undefined,
     });
-
     const json = tryParseJSON(text);
     if (json) return json;
   } catch {}
 
-  // fallback
   return {
     professions: ['Frontend Developer', 'Full Stack Developer', 'Software Engineer'],
     skillsToLearn: ['TypeScript', 'Node.js', 'Docker', 'GraphQL'],
@@ -280,27 +247,23 @@ ${JSON.stringify(profile, null, 2)}
       { name: 'Udemy — Complete Web Development', duration: '2 месяца' },
     ],
     matchScore: 70,
-    _note: 'fallback: model error or non-JSON',
+    _note: 'fallback',
   };
 }
 
-export async function generateCoverLetter({ vacancy, profile }, opts = {}) {
+async function generateCoverLetter({ vacancy, profile }, opts = {}) {
   const complex = !!opts.complex;
   const model = pickModel({ complex, override: opts.overrideModel });
 
   const sys =
     'Ты карьерный ассистент. Пиши на русском, деловым стилем, 150–220 слов, без воды, с примерами достижений.';
-  const usr = `Данные кандидата:
+  const usr = `Кандидат:
 ${JSON.stringify(profile, null, 2)}
 
-Вакансия (кратко):
+Вакансия:
 ${JSON.stringify(vacancy, null, 2)}
 
-Задача: сделай персонализированное сопроводительное письмо.
-Требования к формату:
-- Обращение без "Здравствуйте, меня зовут".
-- 2–3 абзаца: релевантный опыт → стек и достижения → мотивация/fit.
-- В конце 1 предложение про готовность к собеседованию.`;
+Задача: персонализированное сопроводительное письмо (2–3 абзаца).`;
 
   try {
     const content = await openrouterChat({
@@ -313,18 +276,16 @@ ${JSON.stringify(vacancy, null, 2)}
       max_tokens: 380,
       reasoning: complex ? { effort: 'low' } : undefined,
     });
-
     return String(content).replace(/```[\s\S]*?```/g, '').trim();
   } catch {
-    // короткий фолбэк
-    return 'Готов обсудить детали вакансии и буду рад рассказать больше о релевантных проектах на собеседовании.';
+    return 'Готов обсудить детали вакансии и рассказать больше о релевантных проектах на собеседовании.';
   }
 }
 
-export async function suggestSkills(profile, opts = {}) {
+async function suggestSkills(profile, opts = {}) {
   const model = pickModel({ complex: false, override: opts.overrideModel });
   const sys =
-    'Ты лаконичный ассистент по развитию навыков. Отвечай только списком, через запятую, без пояснений.';
+    'Ты ассистент по развитию навыков. Отвечай только списком через запятую, без пояснений.';
   const usr = `Профиль:
 ${JSON.stringify(profile, null, 2)}
 Дай 6–8 навыков для развития (одно-двухсловные названия), без пояснений.`;
@@ -340,7 +301,7 @@ ${JSON.stringify(profile, null, 2)}
       max_tokens: 120,
     });
 
-    return text
+    return String(text)
       .replace(/\n/g, ' ')
       .split(',')
       .map((s) => s.trim())
@@ -351,25 +312,13 @@ ${JSON.stringify(profile, null, 2)}
   }
 }
 
-// --------------------- Полировка текста (DeepSeek/Gemma через OpenRouter) -----
+/* --------------------- Полировка текста --------------------- */
 
-/**
- * Полировка текста: аккуратная орфография/пунктуация + опциональная раскладка в буллеты.
- * Возвращает { corrected: string, bullets: string[] }.
- *
- * @param {string} text
- * @param {object} opts
- *  - lang: 'ru' | 'en' (по умолчанию 'ru')
- *  - mode: 'auto' | 'paragraph' | 'bullets'
- *  - complex: boolean (форсировать complex-модель)
- *  - overrideModel: string (любой openrouter id)
- *  - maxBullets: number (ограничение длины массива bullets)
- */
-export async function polishText(text, opts = {}) {
+async function polishText(text, opts = {}) {
   const {
     lang = 'ru',
     mode = 'auto',
-    complex = (mode === 'bullets') || String(text || '').length > 600,
+    complex = mode === 'bullets' || String(text || '').length > 600,
     overrideModel,
     maxBullets = 16,
   } = opts;
@@ -379,18 +328,11 @@ export async function polishText(text, opts = {}) {
   const system = [
     'Ты — строгий редактор на русском языке.',
     'Исправляй орфографию и пунктуацию, не меняя смысл.',
-    'Следи за пробелами вокруг тире и запятых, единообразие кавычек.',
-    'Возвращай ТОЛЬКО JSON без лишнего текста.',
-    'Схема: {"corrected": string, "bullets": string[]}.',
+    'Возвращай ТОЛЬКО JSON {"corrected": string, "bullets": string[]}.',
     'Режимы: "paragraph" — цельный текст; "bullets" — короткие пункты; "auto" — сохранить формат автора.',
   ].join(' ');
 
-  const user = JSON.stringify({
-    lang,
-    mode,
-    maxBullets,
-    text: String(text || ''),
-  });
+  const user = JSON.stringify({ lang, mode, maxBullets, text: String(text || '') });
 
   let content;
   try {
@@ -405,20 +347,14 @@ export async function polishText(text, opts = {}) {
       reasoning: complex ? { effort: 'low' } : undefined,
     });
   } catch {
-    // если совсем нет ответа — вернём исходный текст
     return { corrected: String(text || ''), bullets: [] };
   }
 
   const json = tryParseJSON(content);
-  const corrected =
-    json && typeof json.corrected === 'string' ? json.corrected : String(text || '');
+  const corrected = json && typeof json.corrected === 'string' ? json.corrected : String(text || '');
   let bullets = Array.isArray(json?.bullets) ? json.bullets.filter(Boolean) : [];
+  if (maxBullets && bullets.length > maxBullets) bullets = bullets.slice(0, maxBullets);
 
-  if (maxBullets && bullets.length > maxBullets) {
-    bullets = bullets.slice(0, maxBullets);
-  }
-
-  // локальная нормализация пробелов/тире
   const norm = (s) =>
     String(s ?? '')
       .replace(/\u00A0/g, ' ')
@@ -437,12 +373,7 @@ export async function polishText(text, opts = {}) {
   return { corrected: norm(corrected), bullets: bullets.map(norm) };
 }
 
-/**
- * Пакетная полировка. Принимает массив строк, возвращает массив объектов
- * [{ corrected, bullets }, ...] (с сохранением порядка).
- * В free-тарифе лучше не распараллеливать.
- */
-export async function polishMany(texts, opts = {}) {
+async function polishMany(texts, opts = {}) {
   const arr = Array.isArray(texts) ? texts : [];
   const out = [];
   for (const t of arr) {
@@ -452,9 +383,8 @@ export async function polishMany(texts, opts = {}) {
   return out;
 }
 
-// -------------------- Инференс поискового запроса из резюме (KZ only) --------
+/* -------------------- Инференс подсказки поиска (KZ) -------------------- */
 
-// Базовый список городов РК. Используем как whitelist (исключаем РФ и др.)
 const KZ_CITIES = [
   'Алматы', 'Астана', 'Шымкент', 'Караганда', 'Актобе', 'Тараз', 'Павлодар',
   'Усть-Каменогорск', 'Семей', 'Костанай', 'Кызылорда', 'Атырау', 'Актау',
@@ -467,19 +397,13 @@ function yearsFromProfile(profile = {}) {
   if (!arr.length) return 0;
   let ms = 0;
   for (const it of arr) {
-    const s =
-      it?.start || it?.from || it?.dateStart || it?.date_from || it?.date_start;
+    const s = it?.start || it?.from || it?.dateStart || it?.date_from || it?.date_start;
     const e =
-      it?.end ||
-      it?.to ||
-      it?.dateEnd ||
-      it?.date_to ||
-      it?.date_end ||
-      new Date().toISOString().slice(0, 10);
+      it?.end || it?.to || it?.dateEnd || it?.date_to || it?.date_end || new Date().toISOString().slice(0, 10);
     const ds = s ? new Date(s) : null;
     const de = e ? new Date(e) : null;
-    if (ds && de && !isNaN(+ds) && !isNaN(+de) && de > ds) ms += +de - +ds;
-    else ms += 365 * 24 * 3600 * 1000; // 1 год по умолчанию
+    if (ds && de && !Number.isNaN(+ds) && !Number.isNaN(+de) && de > ds) ms += +de - +ds;
+    else ms += 365 * 24 * 3600 * 1000; // default 1y
   }
   return ms / (365 * 24 * 3600 * 1000);
 }
@@ -505,18 +429,12 @@ function fallbackInfer(profile = {}) {
     'Специалист';
 
   const rawCity = String(profile.location || '').trim();
-  let city =
-    KZ_CITIES.find((c) => new RegExp(c, 'i').test(rawCity)) || 'Алматы';
+  let city = KZ_CITIES.find((c) => new RegExp(c, 'i').test(rawCity)) || 'Алматы';
 
   const skills =
     (Array.isArray(profile.skills) && profile.skills.length
       ? profile.skills
-      : String(
-          latest.description ||
-            latest.responsibilities ||
-            profile.summary ||
-            ''
-        )
+      : String(latest.description || latest.responsibilities || profile.summary || '')
           .split(/[,\n;•\-]/)
           .map((s) => s.trim())
           .filter(Boolean)
@@ -525,29 +443,23 @@ function fallbackInfer(profile = {}) {
   return { role, city, skills, experience };
 }
 
-/**
- * inferSearch(profile) → { role, city, skills[], experience }
- * city — всегда из Казахстана (если исходный город не из KZ, выбираем ближайший крупный).
- */
-export async function inferSearch(profile = {}, { lang = 'ru', overrideModel } = {}) {
-  // Если нет ключа — сразу вернём эвристику
+async function inferSearch(profile = {}, { lang = 'ru', overrideModel } = {}) {
   if (!process.env.OPENROUTER_API_KEY) return fallbackInfer(profile);
 
-  const complex = false; // здесь хватает "быстрой" модели
-  const model = pickModel({ complex, override: overrideModel });
+  const model = pickModel({ complex: false, override: overrideModel });
 
   const sys =
 `Ты карьерный ассистент. По JSON резюме верни ТОЛЬКО валидный JSON-объект подсказки для поиска вакансий в Казахстане.
 experience ∈ {"noExperience","between1And3","between3And6","moreThan6"}.
 city — только один город Казахстана (если в профиле другой — выбери подходящий из списка крупных городов РК).
-skills — 3–8 основных навыков (одно-двухсловные, без лишних слов).`;
+skills — 3–8 основных навыков.`;
 
   const usr =
 `Язык интерфейса: ${lang}
 Профиль пользователя (JSON):
 ${JSON.stringify(profile, null, 2)}
 
-Формат ответа:
+Формат:
 {
   "role": "string",
   "city": "string (KZ only)",
@@ -590,9 +502,9 @@ ${JSON.stringify(profile, null, 2)}
   }
 }
 
-// ---------------------------- Экспорт по умолчанию ----------------------------
+/* ------------------ exports ------------------ */
 
-export default {
+module.exports = {
   MODELS,
   chatLLM,
   summarizeProfile,
@@ -601,5 +513,5 @@ export default {
   suggestSkills,
   polishText,
   polishMany,
-  inferSearch, // ← не забудь экспортировать
+  inferSearch,
 };

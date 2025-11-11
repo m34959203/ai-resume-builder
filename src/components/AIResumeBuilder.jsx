@@ -396,7 +396,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t, lang } = useTranslation(); // ⬅️ язык и перевод берём один раз
+  const { t, language: lang } = useTranslation(); // ⬅️ унифицируем с LanguageProvider
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
@@ -820,7 +820,7 @@ function RecommendationsPage({
   setSearchQuery,
   profile
 }) {
-  const { t, lang } = useTranslation();
+  const { t, language: lang } = useTranslation();
 
   // Достаточно ли данных резюме для советов
   const profileOk = hasProfileForRecs(profile);
@@ -1100,7 +1100,7 @@ function VacanciesPage({
   mockVacancies,
   profile,
 }) {
-  const { t, lang } = useTranslation();
+  const { t, language: lang } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
 

@@ -4,6 +4,49 @@ import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import "../pdf/fonts";
 import { DEFAULT_PDF_FONT } from "../pdf/fonts";
 import TEMPLATES from "../pdf/templates";
+// ⚠️ Для PDF используем прямой доступ к словарю, без React-хуков
+import { translations } from "../locales/translations";
+
+/* ---------- language normalize ---------- */
+const SUPPORTED_LANGS = ["ru", "kk", "en"];
+const NORM_MAP = {
+  kz: "kk",
+  "kk-kz": "kk",
+  "ru-ru": "ru",
+  "en-us": "en",
+};
+function normLang(input) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "ru";
+  const mapped = NORM_MAP[raw] || raw.split(/[-_]/)[0];
+  return SUPPORTED_LANGS.includes(mapped) ? mapped : "ru";
+}
+
+/* ---------- i18n helpers (без react hooks) ---------- */
+const getByPath = (obj, path) =>
+  String(path || "")
+    .split(".")
+    .reduce((acc, k) => (acc && Object.prototype.hasOwnProperty.call(acc, k) ? acc[k] : undefined), obj);
+
+const format = (str, params) =>
+  !params || typeof str !== "string"
+    ? str
+    : str.replace(/\{(\w+)\}/g, (_, k) =>
+        Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : `{${k}}`
+      );
+
+function makeT(lang = "ru") {
+  const l = normLang(lang);
+  const dict = translations?.[l] || translations?.ru || {};
+  return (key, params) => {
+    if (!key) return "";
+    let val = getByPath(dict, key);
+    if (val == null && translations?.ru) val = getByPath(translations.ru, key);
+    if (val == null && translations?.en) val = getByPath(translations.en, key);
+    if (typeof val === "string") return format(val, params);
+    return key;
+  };
+}
 
 /* ---------- utils ---------- */
 const safe = (v) => (v === undefined || v === null ? "" : String(v));
@@ -65,14 +108,12 @@ function fmtMonth(val) {
 
 /** Темы: цвет + включение общей шапки/футера оболочки */
 const THEMES = {
-  minimal:      { accent: "#16a34a", header: false, footer: false },
-  modern:       { accent: "#1E90FF", header: false, footer: true  },
-  creative:     { accent: "#8b5cf6", header: false, footer: true  },
-  professional: { accent: "#38BDF8", header: true,  footer: true  },
+  minimal: { accent: "#16a34a", header: false, footer: false },
+  modern: { accent: "#1E90FF", header: false, footer: true },
 };
 
 /** Нормализация профиля под шаблоны */
-function normalizeProfile(input) {
+function normalizeProfile(input, { currentLabel = "настоящее время" } = {}) {
   const p = input || {};
 
   // Базовые поля
@@ -81,6 +122,12 @@ function normalizeProfile(input) {
   const email = trim(p.email);
   const phone = trim(p.phone);
   const location = trim(p.location);
+
+  // Доп.личные поля
+  const age = trim(p.age);
+  const maritalStatus = trim(p.maritalStatus);
+  const children = trim(p.children);
+  const driversLicense = trim(p.driversLicense || p.driverLicense);
 
   // Саммари
   const summaryRaw = normalizeMultiline(p.summary);
@@ -113,8 +160,8 @@ function normalizeProfile(input) {
             hasText(e.period);
           if (!anyVal) return null;
 
-          const start = fmtMonth(e.startDate || e.start);
-          const end = e.currentlyWorking ? "настоящее время" : fmtMonth(e.endDate || e.end);
+          const start = fmtMonth(e.startDate || e.start || e.dateStart);
+          const end = e.currentlyWorking ? currentLabel : fmtMonth(e.endDate || e.end || e.dateEnd);
           const period = trim(e.period) || (!start && !end ? "" : `${start || "—"} — ${end || "—"}`);
 
           const responsibilities = normalizeMultiline(e.responsibilities || e.description);
@@ -123,14 +170,14 @@ function normalizeProfile(input) {
 
           return {
             id: e.id || undefined,
-            position: trim(e.position),
-            company: trim(e.company),
-            location: trim(e.location),
+            position: trim(e.position || e.title || e.role),
+            company: trim(e.company || e.employer || e.org),
+            location: trim(e.location || e.city),
             responsibilities,
             description,
             bullets,
-            startDate: safe(e.startDate || e.start),
-            endDate: safe(e.endDate || e.end),
+            startDate: safe(e.startDate || e.start || e.dateStart),
+            endDate: safe(e.endDate || e.end || e.dateEnd),
             currentlyWorking: !!e.currentlyWorking,
             period,
           };
@@ -144,18 +191,18 @@ function normalizeProfile(input) {
         .map((ed) => {
           if (!ed || typeof ed !== "object") return null;
           const anyVal =
-            hasText(ed.institution || ed.university) ||
+            hasText(ed.institution || ed.university || ed.school) ||
             hasText(ed.level || ed.degree) ||
             hasText(ed.year) ||
-            hasText(ed.specialization) ||
+            hasText(ed.specialization || ed.major) ||
             hasText(ed.startDate) ||
             hasText(ed.endDate) ||
             hasText(ed.period);
           if (!anyVal) return null;
 
           const degree = trim(ed.level || ed.degree);
-          const institution = trim(ed.institution || ed.university);
-          const specialization = trim(ed.specialization || ed.major);
+          const institution = trim(ed.institution || ed.university || ed.school);
+          const specialization = trim(ed.specialization || ed.major || ed.faculty || ed.program);
           const period =
             trim(ed.year) ||
             trim(ed.period) ||
@@ -182,7 +229,7 @@ function normalizeProfile(input) {
     .map((l) =>
       typeof l === "string"
         ? { language: trim(l), level: "" }
-        : { language: trim(l?.language || l?.name), level: trim(l?.level) }
+        : { language: trim(l?.language || l?.name || l?.lang), level: trim(l?.level || l?.proficiency) }
     )
     .filter((l) => {
       const key = `${l.language}__${l.level}`.toLowerCase();
@@ -204,6 +251,10 @@ function normalizeProfile(input) {
     email,
     phone,
     location,
+    age,
+    maritalStatus,
+    children,
+    driversLicense,
     summary: summaryRaw,
     summaryBullets,
     photoUrl,
@@ -224,9 +275,9 @@ const COLORS = {
   blueLightText: "#EAF2FF",
   white: "#FFFFFF",
 };
-const INSET_X = 26;     // горизонтальные поля
-const HEADER_H = 84;    // высота общей шапки
-const FOOTER_H = 24;    // высота общего футера
+const INSET_X = 26; // горизонтальные поля
+const HEADER_H = 84; // высота общей шапки
+const FOOTER_H = 24; // высота общего футера
 
 /* ---------- стили оболочки ---------- */
 const styles = StyleSheet.create({
@@ -301,15 +352,51 @@ const Footer = () => (
 );
 
 /* ---------- PDF оболочка ---------- */
-export default function ResumePDF({ profile = {}, template: templateProp = "minimal" }) {
+/**
+ * Многоязычный PDF. ВАЖНО: передавайте lang из UI:
+ *   pdf(<ResumePDF profile={exportProfile} template={selectedTemplate} lang={lang} />)
+ */
+export default function ResumePDF({
+  profile = {},
+  template: templateProp = "minimal",
+  lang: langProp = "ru",
+}) {
+  // ✅ сначала нормализуем, затем строим t()
+  const lang = normLang(langProp);
+  const t = makeT(lang);
+
+  // Локализованные метки разделов для шаблонов
+  const labels = {
+    personal: t("pdf.sections.personal"),
+    contacts: t("pdf.sections.contacts"),
+    summary: t("pdf.sections.summary"),
+    experience: t("pdf.sections.experience"),
+    education: t("pdf.sections.education"),
+    skills: t("pdf.sections.skills"),
+    projects: t("pdf.sections.projects"),
+    certificates: t("pdf.sections.certificates"),
+    courses: t("pdf.sections.courses"),
+    languages: t("pdf.sections.languages"),
+    links: t("pdf.sections.links"),
+    achievements: t("pdf.sections.achievements"),
+  };
+
+  const currentLabel =
+    t("pdf.meta.present") ||
+    t("builder.experience.current") ||
+    (lang === "kk" ? "қазіргі уақыт" : lang === "en" ? "Present" : "настоящее время");
+
   const tplKey = typeof templateProp === "string" ? templateProp : "minimal";
   const TemplateComp =
     (TEMPLATES && TEMPLATES[tplKey]) || (TEMPLATES && TEMPLATES.minimal) || null;
   const theme = THEMES[tplKey] || THEMES.minimal;
 
-  const normalized = normalizeProfile(profile);
+  const normalized = normalizeProfile(profile, { currentLabel });
   const fullName = normalized.fullName;
-  const docTitle = fullName ? `${fullName} — резюме` : "Резюме";
+
+  const subjectI18n = lang === "kk" ? "Түйіндеме" : lang === "en" ? "Resume" : "Резюме";
+  const titleSuffix = lang === "kk" ? " — түйіндеме" : lang === "en" ? " — resume" : " — резюме";
+  const docTitle = fullName ? `${fullName}${titleSuffix}` : subjectI18n;
 
   // Динамические поля страницы под шапку/футер
   const showHeader = !!theme.header;
@@ -318,11 +405,11 @@ export default function ResumePDF({ profile = {}, template: templateProp = "mini
   const padBottom = showFooter ? FOOTER_H + 12 : 26;
   const pageInsets = { header: padTop, footer: padBottom, horizontal: INSET_X };
 
-  // В метаданных — только строки
+  // Метаданные документа
   const meta = {
     title: docTitle,
-    author: fullName || "Кандидат",
-    subject: "Резюме",
+    author: fullName || "Candidate",
+    subject: subjectI18n,
     keywords: (normalized.skills || []).join(", "),
     producer: "AI Resume Builder",
     creator: "AI Resume Builder",
@@ -330,21 +417,21 @@ export default function ResumePDF({ profile = {}, template: templateProp = "mini
 
   return (
     <Document {...meta}>
-      <Page
-        size="A4"
-        style={{ ...styles.page, paddingTop: padTop, paddingBottom: padBottom }}
-        wrap
-      >
+      <Page size="A4" style={{ ...styles.page, paddingTop: padTop, paddingBottom: padBottom }} wrap>
         {/* Фиксированные колонтитулы (включаем по теме) */}
         {showHeader && <Header profile={normalized} accent={theme.accent} />}
         {showFooter && <Footer />}
 
-        {/* Контент — строго без фрагментов и строковых узлов */}
+        {/* Контент */}
         <View style={styles.root}>
           {TemplateComp ? (
             <TemplateComp
               profile={normalized}
               theme={theme}
+              labels={labels}
+              // передаём t/lang, если шаблон их использует
+              t={t}
+              lang={lang}
               studentMode={normalized.flags?.studentMode}
               flags={normalized.flags}
               hints={normalized.hints}
@@ -353,7 +440,7 @@ export default function ResumePDF({ profile = {}, template: templateProp = "mini
           ) : null}
         </View>
 
-        {/* Dev-подпись активного шаблона (только в режиме разработки) */}
+        {/* Dev-подпись активного шаблона (только в dev) */}
         {process.env.NODE_ENV !== "production" ? (
           <Text
             style={{
