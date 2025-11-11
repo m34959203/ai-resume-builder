@@ -5,6 +5,7 @@ import {
   Briefcase, BookOpen, Upload, Globe, RefreshCw
 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
+import { translateProfileForLang } from '../services/bff'; // ✅ авто-перевод профиля перед PDF
 
 /* ---------- Константы ---------- */
 const DEFAULT_PROFILE = {
@@ -403,7 +404,7 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  // ВАЖНО: прокидываем текущий язык для PDF-шаблонов
+  // ВАЖНО: прокидываем текущий язык для PDF-шаблонов и авто-перевода
   const { t, lang } = useTranslation();
 
   const steps = useMemo(() => ([
@@ -675,7 +676,7 @@ function BuilderPage({
     newLanguage, isLanguageDraftFilled,
   ]);
 
-  /* --- Генерация PDF --- */
+  /* --- Генерация PDF (с авто-переводом на язык интерфейса) --- */
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
@@ -693,15 +694,25 @@ function BuilderPage({
     try {
       const exportProfile = buildExportProfile();
 
+      // ✅ Автоматический перевод контента профиля в выбранный язык интерфейса
+      // Если перевод недоступен — вернём исходный профиль (фолбэк внутри try/catch)
+      let profileForPdf = exportProfile;
+      try {
+        const targetLang = String(lang || 'ru');
+        profileForPdf = await translateProfileForLang(exportProfile, targetLang);
+      } catch (e) {
+        console.warn('translateProfileForLang failed, fallback to original profile', e);
+      }
+
       const [{ pdf }, { default: ResumePDF }] = await Promise.all([
         import('@react-pdf/renderer'),
         import('./ResumePDF'),
       ]);
 
-      // ВАЖНО: прокидываем язык в PDF, чтобы шаблон выводил нужные переводы
+      // Прокидываем язык в PDF, чтобы шаблон выводил нужные лейблы/метки
       const blob = await pdf(
         <ResumePDF
-          profile={exportProfile}
+          profile={profileForPdf}
           template={selectedTemplate}
           lang={lang}
         />

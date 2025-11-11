@@ -6,8 +6,11 @@
  * - OAuth HH, поиск вакансий, справочники
  * - AI-инференс (подсказка поиска)
  * - AI-рекомендации (роли, skills gap, курсы)
+ * - Перевод текстов/профиля под язык интерфейса
  *
- * Важно: функции и экспортные имена совместимы с текущим кодом.
+ * Совместим с текущим кодом. Добавлено:
+ *  - translateText / translateTextBatch
+ *  - translateProfileForLang(profile, targetLang)
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -46,7 +49,11 @@ function computeApiBase() {
   const isRenderFrontend =
     typeof host === 'string' &&
     host.includes('onrender.com') &&
-    (host.includes('ai-resume-frontend') || host.includes('-frontend'));
+    // допускаем разные имена фронтов на Render
+    (host.includes('ai-resume-frontend') ||
+      host.includes('-frontend') ||
+      host.includes('resume') ||
+      host.includes('airesume'));
 
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
@@ -1029,4 +1036,180 @@ export async function ping(options = {}) {
 
 export async function getServerVersion(options = {}) {
   return safeFetchJSON('/debug', options).catch(() => null);
+}
+
+/* -------------------- ПЕРЕВОД ТЕКСТОВ / ПРОФИЛЯ -------------------- */
+
+/**
+ * Нормализация кода языка интерфейса.
+ * Разрешённые: ru, kk, en. По умолчанию — ru.
+ */
+function normalizeLangCode(lang) {
+  const s = String(lang || '').trim().toLowerCase();
+  if (['ru', 'kk', 'kz'].includes(s)) return s === 'kz' ? 'kk' : s;
+  if (s.startsWith('ru')) return 'ru';
+  if (s.startsWith('kk') || s.startsWith('kz')) return 'kk';
+  if (s.startsWith('en')) return 'en';
+  return 'ru';
+}
+
+/**
+ * Перевод одной строки через /translate (bff).
+ * Payload допускает { text, to, from? }.
+ */
+export async function translateText(text, { to = 'ru', from } = {}) {
+  const t = String(text ?? '');
+  if (!t) return '';
+  try {
+    const resp = await safeFetchJSON('/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { text: t, to: normalizeLangCode(to), from: from ? normalizeLangCode(from) : undefined },
+      noDedupe: true,
+    });
+    if (!resp) return t;
+    // гибкий формат: { ok, text } или { translation } или { data: { text } }
+    const out = resp.text ?? resp.translation ?? resp?.data?.text;
+    return typeof out === 'string' && out.trim() ? out : t;
+  } catch (e) {
+    console.warn('[BFF translateText] fallback on error:', e?.message || e);
+    return t;
+  }
+}
+
+/**
+ * Батч-перевод. Сначала пробуем пакетно (texts[]), иначе — по одному.
+ * Возвращает массив переведённых строк той же длины.
+ */
+export async function translateTextBatch(texts = [], { to = 'ru', from } = {}) {
+  const arr = Array.isArray(texts) ? texts.map((v) => String(v ?? '')) : [];
+  if (!arr.length) return [];
+
+  const toLang = normalizeLangCode(to);
+  const fromLang = from ? normalizeLangCode(from) : undefined;
+
+  // Пытаемся пакетно
+  try {
+    const resp = await safeFetchJSON('/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { texts: arr, to: toLang, from: fromLang },
+      noDedupe: true,
+    });
+    if (resp && Array.isArray(resp.texts)) return resp.texts;
+    if (resp && Array.isArray(resp.translations)) return resp.translations;
+    if (resp && Array.isArray(resp.data)) return resp.data;
+    // Если формат не распознан — упадём в per-item
+  } catch (e) {
+    // игнор, пойдём по одному
+  }
+
+  // По одному, с кешом уникальных строк
+  const uniq = [];
+  const idx = [];
+  const map = new Map();
+  arr.forEach((s, i) => {
+    if (!map.has(s)) { map.set(s, uniq.length); uniq.push(s); }
+    idx.push(map.get(s));
+  });
+
+  const translatedUniq = await Promise.all(
+    uniq.map((s) => translateText(s, { to: toLang, from: fromLang }))
+  );
+
+  return idx.map((k) => translatedUniq[k] ?? arr[k] ?? '');
+}
+
+/**
+ * Собрать переводимые поля из профиля в плоский список,
+ * чтобы потом применить batched-перевод.
+ * Возвращает [{ path, text }]
+ */
+function collectTranslatables(profile = {}) {
+  const items = [];
+
+  const push = (path, v) => {
+    const s = String(v ?? '').trim();
+    if (s) items.push({ path, text: s });
+  };
+
+  // Блок "О себе" и заголовки
+  push('position', profile.position);
+  push('summary', profile.summary);
+  // Локацию переводим (например, "Астана, Казахстан" → "Astana, Kazakhstan" при en)
+  push('location', profile.location);
+
+  // Опыт: переводим должность и обязанности (company/brand не трогаем)
+  (Array.isArray(profile.experience) ? profile.experience : []).forEach((e, i) => {
+    push(`experience.${i}.position`, e?.position ?? e?.title);
+    push(`experience.${i}.responsibilities`, e?.responsibilities ?? e?.description ?? e?.achievements);
+    // Город/локация опыта
+    if (e?.location || e?.city) push(`experience.${i}.location`, e?.location ?? e?.city);
+  });
+
+  // Образование: уровень/специальность (institution оставим)
+  (Array.isArray(profile.education) ? profile.education : []).forEach((ed, i) => {
+    push(`education.${i}.level`, ed?.level ?? ed?.degree);
+    push(`education.${i}.specialization`, ed?.specialization ?? ed?.major ?? ed?.program);
+  });
+
+  // Навыки *обычно* не переводим (React, CI/CD, Power BI и т.п.). Оставим как есть.
+
+  // Прочие личные (опционально — семейное положение/дети/права не трогаем)
+
+  return items;
+}
+
+/**
+ * Применить переводы к профилю, сохраняя оригиналы (не мутируем исходный объект).
+ * pairs — [{ path, text }], translations — массив строк той же длины.
+ */
+function applyTranslations(profile, pairs, translations) {
+  const clone = JSON.parse(JSON.stringify(profile));
+  const setByPath = (obj, path, value) => {
+    const keys = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < keys.length - 1; i++) {
+      const k = keys[i];
+      if (!(k in cur) || typeof cur[k] !== 'object' || cur[k] === null) {
+        // создаём массив или объект в зависимости от следующего ключа
+        const nextIsIndex = /^\d+$/.test(keys[i + 1]);
+        cur[k] = nextIsIndex ? [] : {};
+      }
+      cur = cur[k];
+    }
+    cur[keys[keys.length - 1]] = value;
+  };
+
+  pairs.forEach((p, i) => {
+    const v = translations[i];
+    if (typeof v === 'string' && v.trim()) {
+      setByPath(clone, p.path, v);
+    }
+  });
+  return clone;
+}
+
+/**
+ * Высокоуровневая функция: перевести все текстовые поля профиля
+ * под выбранный язык интерфейса. Если targetLang === 'ru' — возвращает исходный профиль
+ * (для скорости и во избежание артефактов). Для 'kk'/'en' — переводит.
+ *
+ * Важно: имена собственные (company, institution) не трогаем.
+ */
+export async function translateProfileForLang(profile, targetLang = 'ru') {
+  const to = normalizeLangCode(targetLang);
+
+  // Для русского перевода не выполняем (лейблы PDF уже локализуются i18n).
+  if (to === 'ru') return profile;
+
+  const pairs = collectTranslatables(profile);
+  if (!pairs.length) return profile;
+
+  // Собираем тексты и переводим пакетно (с graceful fallback внутри)
+  const texts = pairs.map((p) => p.text);
+  const translated = await translateTextBatch(texts, { to });
+
+  // Применяем переводы и возвращаем новый профиль
+  return applyTranslations(profile, pairs, translated);
 }
