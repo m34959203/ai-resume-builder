@@ -1,4 +1,3 @@
-// src/services/bff.js
 /* eslint-disable no-console */
 
 /**
@@ -8,9 +7,13 @@
  * - AI-рекомендации (роли, skills gap, курсы)
  * - Перевод текстов/профиля под язык интерфейса
  *
- * Совместим с текущим кодом. Добавлено:
- *  - translateText / translateTextBatch
- *  - translateProfileForLang(profile, targetLang)
+ * Улучшения:
+ *  - надёжное определение API_BASE (Render/локалка/ENV/window)
+ *  - безопасная сборка query (без undefined/пустых)
+ *  - корректные параметры поиска HH (currency=KZT, salary, experience)
+ *  - детальная диагностика запросов /hh/jobs/search
+ *  - X-No-Cache для обхода возможного SW/PWA-кэша
+ *  - устойчивые переводчики (batch + graceful fallback)
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -24,19 +27,20 @@ function env(key, def = '') {
 
 /**
  * Абсолютный BASE:
- * 1) VITE_API_URL или window.__API_URL__
- * 2) Render фронт → фиксированный BFF (или VITE_RENDER_BFF_URL)
+ * 1) VITE_API_URL или window.__API_URL__  (+ VITE_API_PREFIX, по умолчанию /api)
+ * 2) Render-фронт → VITE_RENDER_BFF_URL или дефолтный bff-хост
  * 3) Локалка → http://localhost:8000
- * 4) Фолбэк → текущий origin
+ * 4) Фолбэк → текущий origin + /api
  */
 function computeApiBase() {
   const prefixRaw = env('VITE_API_PREFIX', '/api').trim();
   const prefix = prefixRaw.startsWith('/') ? prefixRaw : `/${prefixRaw}`;
 
-  // 1) Явный URL
+  // 1) Явный URL (ENV/глобальное окно)
   const fromEnv = env('VITE_API_URL', '').trim();
-  const fromWindow =
-    typeof window !== 'undefined' && window.__API_URL__ ? String(window.__API_URL__).trim() : '';
+  const fromWindow = typeof window !== 'undefined' && window.__API_URL__
+    ? String(window.__API_URL__).trim()
+    : '';
   const chosen = fromEnv || fromWindow;
   if (chosen) {
     const url = `${chosen.replace(/\/+$/, '')}${prefix}`;
@@ -46,18 +50,11 @@ function computeApiBase() {
 
   // 2) Render: фронт на onrender.com
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isRenderFrontend =
-    typeof host === 'string' &&
-    host.includes('onrender.com') &&
-    // допускаем разные имена фронтов на Render
-    (host.includes('ai-resume-frontend') ||
-      host.includes('-frontend') ||
-      host.includes('resume') ||
-      host.includes('airesume'));
-
+  const isRenderFrontend = typeof host === 'string' && host.includes('onrender.com');
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
-    const base = bffCustom || 'https://ai-resume-bff.onrender.com';
+    // дефолт — ваш продовый BFF на Render
+    const base = bffCustom || 'https://ai-resume-bff-nepa.onrender.com';
     const bffUrl = `${base.replace(/\/+$/, '')}${prefix}`;
     console.log('[BFF] Render detected, using BFF URL:', bffUrl);
     return bffUrl;
@@ -72,8 +69,7 @@ function computeApiBase() {
   }
 
   // 4) Фолбэк: текущий origin
-  const origin =
-    (typeof window !== 'undefined' && window.location && window.location.origin) || '';
+  const origin = (typeof window !== 'undefined' && window.location && window.location.origin) || '';
   const url = `${String(origin).replace(/\/+$/, '')}${prefix}`;
   console.log('[BFF] Default origin-based URL:', url);
   return url;
@@ -81,7 +77,7 @@ function computeApiBase() {
 
 export const API_BASE = computeApiBase();
 
-/* -------------------- Константы -------------------- */
+/* -------------------- Константы/утилиты -------------------- */
 
 const USE_MOCKS      = ['1', 'true', 'yes', 'on'].includes(env('VITE_USE_MOCKS', '').toLowerCase());
 const API_TIMEOUT_MS = Number(env('VITE_API_TIMEOUT_MS', '12000')) || 12000;
@@ -93,8 +89,6 @@ const FORCE_KZ       = ['1', 'true', 'yes', 'on'].includes(env('VITE_FORCE_KZ', 
 console.log('[BFF] API_BASE =', API_BASE);
 console.log('[BFF] HOST_DEFAULT =', HOST_DEFAULT);
 
-/* -------------------- Склейка URL -------------------- */
-
 const join = (...parts) =>
   parts
     .map((p) => String(p || '').trim())
@@ -103,7 +97,6 @@ const join = (...parts) =>
     .replace(/\/{2,}/g, '/')
     .replace(':/', '://');
 
-/** Делает абсолютный URL к BFF (не допускает удвоения /api) */
 function makeApiUrl(u) {
   if (!u) return API_BASE;
   const s = String(u);
@@ -117,7 +110,7 @@ function makeApiUrl(u) {
   return tail ? `${base}/${tail}` : base;
 }
 
-/* -------------------- Ошибки и утилиты -------------------- */
+/* -------------------- Ошибки и fetch обёртки -------------------- */
 
 export class BFFHttpError extends Error {
   constructor(message, { status, url, method, body }) {
@@ -131,10 +124,8 @@ export class BFFHttpError extends Error {
 }
 export const isHttpError = (e) => e && typeof e === 'object' && e.name === 'BFFHttpError';
 
-// In-flight dedupe для GET-запросов
-const IN_FLIGHT = new Map(); // key: normalizedUrl -> Promise<any>
+const IN_FLIGHT = new Map(); // GET-дедупликация
 
-/** внутренняя обёртка fetch с таймаутом */
 function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const normalizedUrl = makeApiUrl(url);
   if (options.signal) {
@@ -161,21 +152,33 @@ async function parsePayload(res) {
 }
 
 /**
- * Безопасная обёртка над fetch.
  * options:
  *  - method?: string
  *  - headers?: Record<string,string>
- *  - body?: any (автосериализация для JSON)
+ *  - body?: any (автосериализация при JSON)
  *  - signal?: AbortSignal
  *  - timeoutMs?: number
- *  - noDedupe?: boolean (по умолчанию false; dedupe только для GET)
+ *  - noDedupe?: boolean (для GET)
  *  - cache?: RequestCache (по умолчанию 'no-store')
+ *  - noCacheHeader?: boolean (не добавлять X-No-Cache)
  */
 export async function safeFetchJSON(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
 
-  const headers = { Accept: 'application/json', ...(options.headers || {}) };
+  const headers = {
+    Accept: 'application/json',
+    ...(options.headers || {}),
+  };
+
+  // Для запросов к вакансиям принудительно пробиваем no-cache,
+  // чтобы исключить влияние SW/PWA runtime cache
+  const normalizedUrl = makeApiUrl(url);
+  const isJobsSearch = normalizedUrl.includes('/hh/jobs/search');
+  if (isJobsSearch && !options.noCacheHeader) {
+    headers['X-No-Cache'] = '1';
+    headers['Cache-Control'] = 'no-cache';
+  }
 
   let body = options.body;
   const hasJsonHeader =
@@ -186,13 +189,8 @@ export async function safeFetchJSON(url, options = {}) {
     body = JSON.stringify(body);
   }
 
-  const normalizedUrl = makeApiUrl(url);
-
-  // Диагностика HH-поиска
-  if (normalizedUrl.includes('/hh/jobs/search')) {
+  if (isJobsSearch) {
     console.log('[BFF Client] Fetching jobs:', normalizedUrl);
-    console.log('[BFF Client] Method:', method);
-    console.log('[BFF Client] Headers:', headers);
   }
 
   const doFetch = async () => {
@@ -208,17 +206,13 @@ export async function safeFetchJSON(url, options = {}) {
       timeoutMs
     );
 
-    if (normalizedUrl.includes('/hh/jobs/search')) {
+    if (isJobsSearch) {
       console.log('[BFF Client] Response status:', res.status);
       try {
-        console.log(
-          '[BFF Client] Response headers:',
-          Object.fromEntries([...res.headers.entries()])
-        );
+        console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()]));
       } catch {}
     }
 
-    // Прозрачные редиректы 3xx — бросаем BFFHttpError
     if (res.status >= 300 && res.status < 400) {
       const payload = await parsePayload(res);
       throw new BFFHttpError(`Redirected ${res.status}`, {
@@ -281,6 +275,11 @@ export function normalizeExperience(v) {
 }
 
 const stripCurrency = (v) => (v == null || v === '' ? undefined : String(v).replace(/[^\d]/g, '') || undefined);
+
+const toIntOrUndef = (v, min = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min ? Math.floor(n) : undefined;
+};
 
 /* -------------------- HOST/COUNTRY helpers -------------------- */
 
@@ -418,7 +417,7 @@ export async function resolveAreaId(cityName, host = normalizeHost()) {
     const kz = await getCountryRoot(h, /казахстан/i);
     if (!kz) return null;
 
-    // ищем actual узел Казахстана
+    // ищем актуальный узел Казахстана
     const stackFind = [...tree];
     let kzNode = null;
     while (stackFind.length && !kzNode) {
@@ -505,6 +504,47 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 
 /* -------------------- ВАКАНСИИ -------------------- */
 
+function buildJobsQuery(params = {}) {
+  const q = new URLSearchParams();
+
+  const text = String(params.text || '').trim();
+  if (text) q.set('text', text);
+
+  // HH: area — ключевой фильтр; если его нет, для hh.kz подставляем id страны Казахстан
+  if (params.area) q.set('area', String(params.area));
+
+  // Город в bff не требуется; оставляем для совместимости (может использоваться внешним роутом)
+  if (params.city) q.set('city', String(params.city));
+
+  // Опыт
+  const exp = normalizeExperience(params.experience);
+  if (exp) q.set('experience', exp);
+
+  // Зарплата/валюта (HH понимает salary + currency)
+  const salaryClean = stripCurrency(params.salary);
+  if (salaryClean != null) q.set('salary', salaryClean);
+  q.set('currency', String(params.currency || 'KZT'));
+
+  if (params.only_with_salary) q.set('only_with_salary', 'true');
+
+  const page = toIntOrUndef(params.page, 0);
+  if (page !== undefined) q.set('page', String(page));
+
+  const perPage = toIntOrUndef(params.per_page, 1);
+  if (perPage !== undefined) q.set('per_page', String(perPage));
+
+  // host прокидываем для совместимости со старыми bff-роутерами
+  const host = (params.host || HOST_DEFAULT || 'hh.kz').toLowerCase();
+  if (host) q.set('host', host);
+
+  // ВАЖНО: не передаём date_from по умолчанию (чтобы не попасть в «завтра» по таймзоне)
+  if (typeof params.date_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date_from)) {
+    q.set('date_from', params.date_from);
+  }
+
+  return q;
+}
+
 export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
 
@@ -514,22 +554,7 @@ export async function searchJobs(params = {}) {
     if (kz?.id) area = String(kz.id);
   }
 
-  const q = new URLSearchParams();
-  if (params.text) q.set('text', params.text);
-  if (params.city) q.set('city', params.city);
-  if (area) q.set('area', area);
-  q.set('host', host);
-
-  const salaryClean = stripCurrency(params.salary);
-  if (salaryClean != null) q.set('salary', salaryClean);
-
-  if (params.only_with_salary) q.set('only_with_salary', 'true');
-  if (params.page != null) q.set('page', String(params.page));
-  if (params.per_page != null) q.set('per_page', String(params.per_page));
-
-  const exp = normalizeExperience(params.experience);
-  if (exp) q.set('experience', exp);
-
+  const q = buildJobsQuery({ ...params, host, area });
   const url = `/hh/jobs/search?${q.toString()}`;
   const data = await safeFetchJSON(url, {
     method: 'GET',
@@ -553,7 +578,17 @@ export async function searchJobsSmart(params = {}) {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
     if (kz?.id) area = String(kz.id);
   }
-  return searchJobs({ ...params, area, host });
+
+  // дефолтные page/per_page, валюта и отключённый date_from
+  const merged = {
+    per_page: params.per_page ?? 20,
+    page: params.page ?? 0,
+    currency: params.currency || 'KZT',
+    ...params,
+    area,
+    host,
+  };
+  return searchJobs(merged);
 }
 
 // Сырые вакансии (оставлено на случай отладок)
@@ -562,10 +597,11 @@ export async function searchVacanciesRaw(params = {}) {
   const q = new URLSearchParams();
   if (params.text) q.set('text', params.text);
   if (params.area) q.set('area', params.area);
-  if (params.experience) q.set('experience', params.experience);
+  if (params.experience) q.set('experience', normalizeExperience(params.experience));
   if (params.page != null) q.set('page', String(params.page));
   if (params.per_page != null) q.set('per_page', String(params.per_page));
   if (params.salary != null) q.set('salary', stripCurrency(params.salary) || '');
+  q.set('currency', String(params.currency || 'KZT'));
   if (params.only_with_salary) q.set('only_with_salary', 'true');
   q.set('host', host);
   const url = `/hh/vacancies?${q.toString()}`;
@@ -649,7 +685,7 @@ export async function polishBatch(texts = [], { lang = 'ru', mode = 'auto' } = {
   });
 }
 
-/* -------------------- ЛОКАЛЬНЫЕ GAP/РОЛИ/КУРСЫ (клиентский фолбэк) -------------------- */
+/* -------------------- ЛОКАЛЬНЫЕ GAP/РОЛИ/КУРСЫ (фолбэк) -------------------- */
 
 const CANON = (s) => {
   const k = String(s || '').toLowerCase().trim();
@@ -863,7 +899,6 @@ function marketFit(profile = {}) {
 
 /** Универсальный нормализатор ответа рекомендаций для UI */
 function normalizeRecPayload(payload, profile) {
-  // расплющиваем {ok,data} → data, иначе payload
   const raw =
     payload && typeof payload === 'object'
       ? (payload.data && payload.ok !== undefined ? payload.data : payload)
@@ -877,7 +912,7 @@ function normalizeRecPayload(payload, profile) {
     .map(r => (typeof r === 'string' ? { title: r } : r))
     .filter(Boolean);
 
-  // навыки для развития (допускаем разные ключи и типы)
+  // навыки для развития
   const growArr =
     (Array.isArray(raw.growSkills) ? raw.growSkills : null) ??
     (Array.isArray(raw.skillsToGrow) ? raw.skillsToGrow.map(n => ({ name: n })) : null) ??
@@ -981,7 +1016,6 @@ export async function fetchRecommendations(profile, opts = {}) {
 }
 
 export async function generateRecommendations(profile, opts = {}) {
-  // совместимость
   return fetchRecommendations(profile, opts);
 }
 
@@ -1035,15 +1069,12 @@ export async function ping(options = {}) {
 }
 
 export async function getServerVersion(options = {}) {
-  return safeFetchJSON('/debug', options).catch(() => null);
+  // унифицируем с /version
+  return safeFetchJSON('/version', options).catch(() => null);
 }
 
 /* -------------------- ПЕРЕВОД ТЕКСТОВ / ПРОФИЛЯ -------------------- */
 
-/**
- * Нормализация кода языка интерфейса.
- * Разрешённые: ru, kk, en. По умолчанию — ru.
- */
 function normalizeLangCode(lang) {
   const s = String(lang || '').trim().toLowerCase();
   if (['ru', 'kk', 'kz'].includes(s)) return s === 'kz' ? 'kk' : s;
@@ -1053,10 +1084,7 @@ function normalizeLangCode(lang) {
   return 'ru';
 }
 
-/**
- * Перевод одной строки через /translate (bff).
- * Payload допускает { text, to, from? }.
- */
+/** Перевод одной строки через /translate (bff). */
 export async function translateText(text, { to = 'ru', from } = {}) {
   const t = String(text ?? '');
   if (!t) return '';
@@ -1068,7 +1096,6 @@ export async function translateText(text, { to = 'ru', from } = {}) {
       noDedupe: true,
     });
     if (!resp) return t;
-    // гибкий формат: { ok, text } или { translation } или { data: { text } }
     const out = resp.text ?? resp.translation ?? resp?.data?.text;
     return typeof out === 'string' && out.trim() ? out : t;
   } catch (e) {
@@ -1077,10 +1104,7 @@ export async function translateText(text, { to = 'ru', from } = {}) {
   }
 }
 
-/**
- * Батч-перевод. Сначала пробуем пакетно (texts[]), иначе — по одному.
- * Возвращает массив переведённых строк той же длины.
- */
+/** Батч-перевод. */
 export async function translateTextBatch(texts = [], { to = 'ru', from } = {}) {
   const arr = Array.isArray(texts) ? texts.map((v) => String(v ?? '')) : [];
   if (!arr.length) return [];
@@ -1099,9 +1123,8 @@ export async function translateTextBatch(texts = [], { to = 'ru', from } = {}) {
     if (resp && Array.isArray(resp.texts)) return resp.texts;
     if (resp && Array.isArray(resp.translations)) return resp.translations;
     if (resp && Array.isArray(resp.data)) return resp.data;
-    // Если формат не распознан — упадём в per-item
-  } catch (e) {
-    // игнор, пойдём по одному
+  } catch {
+    // игнор — пойдём по одному
   }
 
   // По одному, с кешом уникальных строк
@@ -1120,14 +1143,9 @@ export async function translateTextBatch(texts = [], { to = 'ru', from } = {}) {
   return idx.map((k) => translatedUniq[k] ?? arr[k] ?? '');
 }
 
-/**
- * Собрать переводимые поля из профиля в плоский список,
- * чтобы потом применить batched-перевод.
- * Возвращает [{ path, text }]
- */
+/** Собираем переводимые поля из профиля → [{ path, text }] */
 function collectTranslatables(profile = {}) {
   const items = [];
-
   const push = (path, v) => {
     const s = String(v ?? '').trim();
     if (s) items.push({ path, text: s });
@@ -1136,34 +1154,25 @@ function collectTranslatables(profile = {}) {
   // Блок "О себе" и заголовки
   push('position', profile.position);
   push('summary', profile.summary);
-  // Локацию переводим (например, "Астана, Казахстан" → "Astana, Kazakhstan" при en)
   push('location', profile.location);
 
-  // Опыт: переводим должность и обязанности (company/brand не трогаем)
+  // Опыт: должность/обязанности/локация
   (Array.isArray(profile.experience) ? profile.experience : []).forEach((e, i) => {
     push(`experience.${i}.position`, e?.position ?? e?.title);
     push(`experience.${i}.responsibilities`, e?.responsibilities ?? e?.description ?? e?.achievements);
-    // Город/локация опыта
     if (e?.location || e?.city) push(`experience.${i}.location`, e?.location ?? e?.city);
   });
 
-  // Образование: уровень/специальность (institution оставим)
+  // Образование
   (Array.isArray(profile.education) ? profile.education : []).forEach((ed, i) => {
     push(`education.${i}.level`, ed?.level ?? ed?.degree);
     push(`education.${i}.specialization`, ed?.specialization ?? ed?.major ?? ed?.program);
   });
 
-  // Навыки *обычно* не переводим (React, CI/CD, Power BI и т.п.). Оставим как есть.
-
-  // Прочие личные (опционально — семейное положение/дети/права не трогаем)
-
   return items;
 }
 
-/**
- * Применить переводы к профилю, сохраняя оригиналы (не мутируем исходный объект).
- * pairs — [{ path, text }], translations — массив строк той же длины.
- */
+/** Применяем переводы к профилю (не мутируем исходник) */
 function applyTranslations(profile, pairs, translations) {
   const clone = JSON.parse(JSON.stringify(profile));
   const setByPath = (obj, path, value) => {
@@ -1172,7 +1181,6 @@ function applyTranslations(profile, pairs, translations) {
     for (let i = 0; i < keys.length - 1; i++) {
       const k = keys[i];
       if (!(k in cur) || typeof cur[k] !== 'object' || cur[k] === null) {
-        // создаём массив или объект в зависимости от следующего ключа
         const nextIsIndex = /^\d+$/.test(keys[i + 1]);
         cur[k] = nextIsIndex ? [] : {};
       }
@@ -1191,25 +1199,18 @@ function applyTranslations(profile, pairs, translations) {
 }
 
 /**
- * Высокоуровневая функция: перевести все текстовые поля профиля
- * под выбранный язык интерфейса. Если targetLang === 'ru' — возвращает исходный профиль
- * (для скорости и во избежание артефактов). Для 'kk'/'en' — переводит.
- *
- * Важно: имена собственные (company, institution) не трогаем.
+ * Перевести все текстовые поля профиля под выбранный язык интерфейса.
+ * Если targetLang === 'ru' — возвращаем исходный профиль (быстро и без артефактов).
  */
 export async function translateProfileForLang(profile, targetLang = 'ru') {
   const to = normalizeLangCode(targetLang);
-
-  // Для русского перевода не выполняем (лейблы PDF уже локализуются i18n).
   if (to === 'ru') return profile;
 
   const pairs = collectTranslatables(profile);
   if (!pairs.length) return profile;
 
-  // Собираем тексты и переводим пакетно (с graceful fallback внутри)
   const texts = pairs.map((p) => p.text);
   const translated = await translateTextBatch(texts, { to });
 
-  // Применяем переводы и возвращаем новый профиль
   return applyTranslations(profile, pairs, translated);
 }

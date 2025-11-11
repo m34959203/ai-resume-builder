@@ -8,13 +8,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = 'ai-resume-builder'; // имя репозитория на GitHub
 
-// Хелпер: базовый путь должен заканчиваться "/"
+// ────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────
 function normalizeBase(b) {
   if (!b) return '/';
   try {
-    // Абсолютный URL — не трогаем, только закрывающий слэш
-    // eslint-disable-next-line no-new
-    new URL(b);
+    new URL(b); // абсолютный URL — не трогаем
     return b.endsWith('/') ? b : `${b}/`;
   } catch {
     const s = String(b).trim();
@@ -24,7 +24,6 @@ function normalizeBase(b) {
   }
 }
 
-// Хелпер: пытаемся найти локальные dev-сертификаты (mkcert и т.п.)
 function findLocalHttpsConfig(rootDir) {
   const candidates = [
     ['certs/localhost-key.pem', 'certs/localhost.pem'],
@@ -36,22 +35,20 @@ function findLocalHttpsConfig(rootDir) {
     const keyPath = path.resolve(rootDir, keyRel);
     const certPath = path.resolve(rootDir, certRel);
     if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-      return {
-        key: fs.readFileSync(keyPath),
-        cert: fs.readFileSync(certPath),
-      };
+      return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
     }
   }
   return null;
 }
 
+const escRe = (s) => String(s).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+
+// ────────────────────────────────────────────────────────────
 export default defineConfig(async ({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), ''); // читаем все переменные
+  const env = loadEnv(mode, process.cwd(), '');
   const isProd = mode === 'production';
 
   // ===== Base (важно для GitHub Pages/подкаталогов) =====
-  // Локально: VITE_BASE (например, "/") или дефолт "/"
-  // На GitHub Actions: принудительно "/ai-resume-builder/"
   const base =
     process.env.GITHUB_ACTIONS === 'true'
       ? `/${REPO}/`
@@ -86,66 +83,64 @@ export default defineConfig(async ({ mode }) => {
       try {
         const { VitePWA } = await import('vite-plugin-pwa');
 
-        // Собираем список доменов, которые нельзя отдавать SW (API)
+        // Детектируем origin BFF (если задан абсолютным URL)
         const bffOrigin = (() => {
           try {
             const u = new URL(apiUrl);
-            return u.origin.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            return u.origin; // напр., https://ai-resume-bff-nepa.onrender.com
           } catch {
             return null;
           }
         })();
 
-        const denylist = [
-          /^\/api\//i,              // локальный прокси
+        // Для navigateFallback запретим SW перехватывать навигацию на API/служебные пути
+        const navigateDenylist = [
+          /^\/api\//i,
           /^\/admin\//i,
           /^\/socket\.io\//i,
           /^\/vite\//i,
           /\/assets\/.*\.map$/i,
         ];
 
-        // Если API не за /api, добавим origin BFF (Render/локалка)
-        if (bffOrigin) {
-          // Workbox denylist работает только по path, поэтому ниже ещё runtimeCaching с прямым urlPattern
-          // Здесь оставляем denylist как есть.
-        }
+        // Для runtimeCaching нам нужны паттерны полного URL (а не path!)
+        // 1) Любой /api/** на текущем домене: https?://<host>/api/...
+        const apiPrefixEsc = escRe(apiPrefix);
+        const sameOriginApiRe = new RegExp(`^https?:\\/\\/[^/]+${apiPrefixEsc}\\/?.*`, 'i');
+
+        // 2) Внешний BFF-ориджин (если определён): отключаем кеш полностью
+        const bffOriginRe = bffOrigin
+          ? new RegExp(`^${escRe(bffOrigin)}\\/?.*`, 'i')
+          : null;
 
         plugins.push(
           VitePWA({
-            // Ключевые флаги, чтобы пользователи не "залипали" на старом SW
             registerType: 'autoUpdate',
             injectRegister: 'auto',
             workbox: {
+              navigationPreload: true,
               cleanupOutdatedCaches: true,
               skipWaiting: true,
               clientsClaim: true,
               navigateFallback: 'index.html',
-              navigateFallbackDenylist: denylist,
+              navigateFallbackDenylist: navigateDenylist,
               globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+
+              // ВАЖНО: полностью отключаем кеширование API-запросов (NetworkOnly)
               runtimeCaching: [
-                // HH публичное API — сетка сперва, с коротким кешем
+                // 1) Локальный /api/**
                 {
-                  urlPattern: /^https:\/\/api\.hh\.ru\/.*/i,
-                  handler: 'NetworkFirst',
-                  options: {
-                    cacheName: 'hh-api-cache',
-                    expiration: { maxEntries: 60, maxAgeSeconds: 300 },
-                    networkTimeoutSeconds: 5,
-                  },
+                  urlPattern: sameOriginApiRe,
+                  handler: 'NetworkOnly',
                 },
-                // Ваш BFF (Render/локалка) — тоже NetworkFirst
-                ...(bffOrigin
+                // 2) Внешний BFF (Render) — тоже нет кеша
+                ...(bffOriginRe
                   ? [{
-                      urlPattern: new RegExp(`^${bffOrigin.replace(/\./g, '\\.')}\\/.*`, 'i'),
-                      handler: 'NetworkFirst',
-                      options: {
-                        cacheName: 'bff-api-cache',
-                        expiration: { maxEntries: 60, maxAgeSeconds: 300 },
-                        networkTimeoutSeconds: 5,
-                      },
+                      urlPattern: bffOriginRe,
+                      handler: 'NetworkOnly',
                     }]
                   : []),
-                // Популярные CDN — CacheFirst
+
+                // 3) Популярные CDN — можно кешировать
                 {
                   urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
                   handler: 'CacheFirst',
@@ -211,7 +206,6 @@ export default defineConfig(async ({ mode }) => {
   // «Умный» выбор минификатора
   let minifier = 'terser';
   try {
-    // eslint-disable-next-line n/no-missing-import
     await import('terser');
   } catch {
     minifier = 'esbuild';
@@ -252,9 +246,9 @@ export default defineConfig(async ({ mode }) => {
           ws: true,
           secure: !insecure,
           ...(shouldStripPrefix
-            ? { rewrite: (p) => p.replace(new RegExp(`^${apiPrefix}`), '') }
+            ? { rewrite: (p) => p.replace(new RegExp(`^${escRe(apiPrefix)}`), '') }
             : {}),
-          configure: (proxy /*, options */) => {
+          configure: (proxy) => {
             proxy.on('error', (err, req, res) => {
               console.error('[proxy:error]', err?.message || err);
               if (!res.headersSent) res.setHeader('x-proxy-error', '1');
@@ -264,9 +258,7 @@ export default defineConfig(async ({ mode }) => {
               const retryAfter = proxyRes.headers?.['retry-after'];
               if (code >= 400) {
                 console.warn(
-                  `[proxy:res] ${req.method} ${req.url} → ${code}${
-                    retryAfter ? ` (Retry-After: ${retryAfter})` : ''
-                  }`
+                  `[proxy:res] ${req.method} ${req.url} → ${code}${retryAfter ? ` (Retry-After: ${retryAfter})` : ''}`
                 );
               }
             });
