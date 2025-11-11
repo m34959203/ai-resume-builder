@@ -3,35 +3,29 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from '@react-pdf/renderer';
 
 /*
-  props: { profile, theme }
+  props: { profile, theme, labels, t, lang, pageInsets, flags, hints }
 
-  Этот шаблон:
-  - двухколоночный: слева тёмный сайдбар с контактами и личными данными,
-    справа контент: имя, "О себе", "Опыт", "Образование", "Навыки".
-  - аккуратно рендерит новые поля (возраст, семейное положение, дети, права).
-  - чистит многострочные bullets в опыте.
+  Шаблон "modern":
+  - двухколоночный макет: слева тёмный сайдбар (контакты/личное/краткое образование/языки),
+    справа — имя, "О себе", "Опыт", "Навыки", "Образование".
+  - никакого хардкода строк: все заголовки и подписи — через labels/t/lang.
 */
 
-/* ===== helpers ===== */
+/* ===== helpers (без перезаписи переводчика t) ===== */
 const s = (v) => (v == null ? '' : String(v));
-const t = (v) => s(v).trim();
-const has = (v) => !!t(v);
+const tr = (v) => s(v).trim();                 // trim only
+const has = (v) => !!tr(v);
 
-// приводим textarea к предсказуемому виду
+// Нормализация многострочных текстов (CRLF → LF, обрезка хвостов)
 const normalizeMultiline = (v) =>
   s(v)
-    .replace(/\r\n?/g, '\n')        // \r\n -> \n
+    .replace(/\r\n?/g, '\n')
     .split('\n')
-    .map((line) => line.replace(/\s+$/g, '')) // убрать пробелы в конце строки
+    .map((line) => line.replace(/\s+$/g, ''))
     .join('\n')
     .trim();
 
-/**
- * bulletsPlus:
- * - режем текст на строки
- * - если строка начинается с маркера (•, -, *, 1.), создаём новый пункт
- * - если НЕ начинается, но уже есть активный пункт, то это продолжение предыдущего: склеиваем
- */
+/** Развёрнутый парсер буллетов — маркеры (•, -, *, 1.) → пункты, переносы склеиваются */
 function bulletsPlus(text) {
   const lines = normalizeMultiline(text)
     .split('\n')
@@ -45,21 +39,12 @@ function bulletsPlus(text) {
 
   for (const line of lines) {
     if (isMarker(line)) {
-      // пушим предыдущий пункт
       if (current.trim()) out.push(current.trim());
-      // срезаем маркер
-      const cleaned = line.replace(/^([•\-\*\u2022]|\d+[.)])\s+/, '');
-      // иногда люди пишут "• – Текст"; уберём ведущие тире/длинное тире
-      const cleaned2 = cleaned.replace(/^[-–—]\s*/, '');
-      current = cleaned2;
+      const cleaned = line.replace(/^([•\-\*\u2022]|\d+[.)])\s+/, '').replace(/^[-–—]\s*/, '');
+      current = cleaned;
     } else {
-      // просто продолжение предыдущего буллета
-      if (current) {
-        current += ' ' + line;
-      } else {
-        // не было маркера до этого — значит новая "сырая" строка, создаём пункт
-        current = line.replace(/^[-–—]\s*/, '');
-      }
+      if (current) current += ' ' + line;
+      else current = line.replace(/^[-–—]\s*/, '');
     }
   }
   if (current.trim()) out.push(current.trim());
@@ -67,11 +52,11 @@ function bulletsPlus(text) {
   return out;
 }
 
-// формат "Май.2021 — Настоящее время"
-const fmtPeriod = (start, end, current, fallback) => {
-  if (has(fallback)) return t(fallback);
-  const st = t(start);
-  const en = current ? 'настоящее время' : t(end);
+/** Формат периода: используем уже собранный ex.period, иначе собираем start—end с учётом "Present" */
+const buildPeriod = (start, end, currentlyWorking, fallback, presentWord) => {
+  if (has(fallback)) return tr(fallback);
+  const st = tr(start);
+  const en = currentlyWorking ? presentWord : tr(end);
   if (!st && !en) return '';
   return `${st || '—'} — ${en || '—'}`;
 };
@@ -80,42 +65,29 @@ const fmtPeriod = (start, end, current, fallback) => {
 const LEFT_W = 170;
 
 const styles = StyleSheet.create({
-  layout: {
-    flexDirection: 'row',
-    gap: 18,
-  },
+  layout: { flexDirection: 'row', gap: 18 },
   left: {
     width: LEFT_W,
-    backgroundColor: '#243447', // тёмная боковая колонка
+    backgroundColor: '#243447',
     color: '#FFFFFF',
     borderRadius: 8,
     padding: 14,
     paddingTop: 16,
   },
-  right: {
-    flex: 1,
-    paddingTop: 4,
-  },
+  right: { flex: 1, paddingTop: 4 },
 
   /* фото */
   avatarWrap: { alignItems: 'center', marginBottom: 14 },
   avatar: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    objectFit: 'cover',
-    borderWidth: 2,
-    borderColor: '#ffffff44',
+    width: 86, height: 86, borderRadius: 43, objectFit: 'cover',
+    borderWidth: 2, borderColor: '#ffffff44',
   },
 
   /* заголовки секций в левой колонке */
   sideBlock: { marginBottom: 14 },
   sideTitle: {
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-    color: '#E5E7EB',
+    fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase',
+    marginBottom: 6, color: '#E5E7EB',
   },
   sideLine: { height: 1, backgroundColor: '#ffffff33', marginBottom: 8 },
 
@@ -125,28 +97,14 @@ const styles = StyleSheet.create({
   sideSmall: { fontSize: 9, color: '#E5E7EB' },
 
   /* правая часть — шапка */
-  name: {
-    fontSize: 22,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    color: '#111827',
-  },
-  position: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 3,
-    marginBottom: 12,
-  },
+  name: { fontSize: 22, fontWeight: 700, textTransform: 'uppercase', color: '#111827' },
+  position: { fontSize: 11, color: '#6B7280', marginTop: 3, marginBottom: 12 },
   topRule: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 10 },
 
   /* заголовки секций справа */
   h2: {
-    fontSize: 12,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    color: '#111827',
+    fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: 0.6, marginBottom: 8, color: '#111827',
   },
   accentRule: { height: 2, width: 36, marginBottom: 10 },
 
@@ -154,37 +112,39 @@ const styles = StyleSheet.create({
 
   /* опыт */
   xpItem: { marginBottom: 12 },
-  xpRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
+  xpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   xpTitle: { fontSize: 11, fontWeight: 700, color: '#111827' },
   xpCompany: { fontSize: 10, color: '#6B7280' },
   xpPeriod: { fontSize: 9, color: '#6B7280' },
   xpBullets: { marginTop: 4 },
   bulletRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
   bulletDot: { fontSize: 10, lineHeight: 1.35, color: '#111827' },
-  bulletText: {
-    fontSize: 10,
-    lineHeight: 1.35,
-    color: '#111827',
-    flex: 1,
-  },
+  bulletText: { fontSize: 10, lineHeight: 1.35, color: '#111827', flex: 1 },
 
   /* навыки */
   skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   skill: {
-    fontSize: 9,
-    color: '#1F2937',
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderRadius: 4,
+    fontSize: 9, color: '#1F2937', backgroundColor: '#F3F4F6',
+    paddingVertical: 3, paddingHorizontal: 6, borderRadius: 4,
   },
 });
 
-/* маленькие блоки для левой колонки */
+/* Унифицированный аксесс к заголовкам секций: labels.sections.* → t('pdf.sections.*') */
+const secTitle = (key, labels, t, lang) => {
+  const L = labels || {};
+  return (
+    L[key] || L.sections?.[key] ||
+    (t && t(`pdf.sections.${key}`)) ||
+    // безопасные короткие фолбэки
+    (key === 'summary' ? (lang === 'kk' ? 'Өзім туралы' : lang === 'en' ? 'Summary' : 'О себе') : '') ||
+    (key === 'experience' ? (lang === 'kk' ? 'Жұмыс тәжірибесі' : lang === 'en' ? 'Experience' : 'Опыт работы') : '') ||
+    (key === 'education' ? (lang === 'kk' ? 'Білім' : lang === 'en' ? 'Education' : 'Образование') : '') ||
+    (key === 'skills' ? (lang === 'kk' ? 'Дағдылар' : lang === 'en' ? 'Skills' : 'Навыки') : '') ||
+    (key === 'personal' ? (lang === 'kk' ? 'Жеке мәліметтер' : lang === 'en' ? 'Personal info' : 'Личная информация') : '') ||
+    (key === 'contacts' ? (lang === 'kk' ? 'Байланыс' : lang === 'en' ? 'Contacts' : 'Контакты') : '')
+  );
+};
+
 const SideSection = ({ title, children }) =>
   !children ? null : (
     <View style={styles.sideBlock}>
@@ -198,40 +158,78 @@ const Row = ({ label, text, small }) =>
   !has(text) ? null : (
     <View style={styles.sideRow}>
       {has(label) ? <Text style={styles.sideLabel}>{label}</Text> : null}
-      <Text style={small ? styles.sideSmall : styles.sideText}>{t(text)}</Text>
+      <Text style={small ? styles.sideSmall : styles.sideText}>{tr(text)}</Text>
     </View>
   );
 
 /* ===== основной компонент ===== */
-export default function ModernTemplate({ profile, theme }) {
+export default function ModernTemplate({ profile = {}, theme, labels, t, lang, pageInsets }) {
   const accent = (theme && theme.accent) || '#1E90FF';
 
-  const name = t(profile?.fullName) || 'ИМЯ ФАМИЛИЯ';
-  const position = t(profile?.position || profile?.title || profile?.professionalTitle);
+  // Слово для "Present"
+  const presentWord =
+    (labels && labels.present) ||
+    (t && t('builder.experience.current')) ||
+    (lang === 'kk' ? 'қазіргі уақыт' : lang === 'en' ? 'Present' : 'настоящее время');
 
-  const email = t(profile?.email);
-  const phone = t(profile?.phone);
-  const location = t(profile?.location);
+  // Заголовки секций
+  const TITLE = {
+    contacts: secTitle('contacts', labels, t, lang),
+    personal: secTitle('personal', labels, t, lang),
+    summary: secTitle('summary', labels, t, lang),
+    experience: secTitle('experience', labels, t, lang),
+    skills: secTitle('skills', labels, t, lang),
+    education: secTitle('education', labels, t, lang),
+    languages: secTitle('languages', labels, t, lang),
+  };
 
-  const age = t(profile?.age);
-  const maritalStatus = t(profile?.maritalStatus);
-  const children = t(profile?.children);
-  const driversLicense = t(profile?.driversLicense);
+  // Поля профиля
+  const name = tr(profile.fullName) || (lang === 'en' ? 'NAME SURNAME' : lang === 'kk' ? 'АТЫ ЖӨНІ' : 'ИМЯ ФАМИЛИЯ');
+  const position = tr(profile.position || profile.title || profile.professionalTitle);
 
-  const summary = normalizeMultiline(profile?.summary);
-  const experience = Array.isArray(profile?.experience) ? profile.experience : [];
-  const education = Array.isArray(profile?.education) ? profile.education : [];
-  const languages = Array.isArray(profile?.languages) ? profile.languages : [];
-  const skills = Array.isArray(profile?.skills)
-    ? profile.skills.filter((x) => has(x)).slice(0, 20)
-    : [];
+  const email = tr(profile.email);
+  const phone = tr(profile.phone);
+  const location = tr(profile.location);
+
+  const age = tr(profile.age);
+  const maritalStatus = tr(profile.maritalStatus);
+  const children = tr(profile.children);
+  const driversLicense = tr(profile.driversLicense);
+
+  const summary = normalizeMultiline(profile.summary);
+  const experience = Array.isArray(profile.experience) ? profile.experience : [];
+  const education = Array.isArray(profile.education) ? profile.education : [];
+  const languagesArr = Array.isArray(profile.languages) ? profile.languages : [];
+  const skills = Array.isArray(profile.skills) ? profile.skills.filter(has).slice(0, 20) : [];
+
+  // Локализованные подписи полей сайдбара
+  const LBL = {
+    city: (t && t('builder.personal.location')) || (lang === 'kk' ? 'Қала' : lang === 'en' ? 'Location' : 'Город'),
+    phone: (t && t('builder.personal.phone')) || (lang === 'kk' ? 'Телефон' : lang === 'en' ? 'Phone' : 'Телефон'),
+    email: 'Email',
+    age: (t && (t('pdf.age') || t('builder.personal.age'))) || (lang === 'kk' ? 'Жасы' : lang === 'en' ? 'Age' : 'Возраст'),
+    marital:
+      (t && (t('pdf.marital') || t('builder.personal.maritalStatus'))) ||
+      (lang === 'kk' ? 'Отбасылық жағдайы' : lang === 'en' ? 'Marital status' : 'Семейное положение'),
+    children:
+      (t && (t('pdf.children') || t('builder.personal.children'))) ||
+      (lang === 'kk' ? 'Балалар' : lang === 'en' ? 'Children' : 'Дети'),
+    license:
+      (t && (t('pdf.license') || t('builder.personal.driversLicense'))) ||
+      (lang === 'kk' ? 'Жүргізуші куәлігі' : lang === 'en' ? "Driver's license" : 'Водительские права'),
+  };
 
   return (
-    <View style={styles.layout}>
+    <View
+      style={[
+        styles.layout,
+        { paddingTop: pageInsets?.header || 0, paddingBottom: pageInsets?.footer || 0 },
+      ]}
+    >
       {/* LEFT SIDEBAR */}
       <View style={styles.left}>
         {/* Фото */}
-        {has(profile?.photoUrl || profile?.photo) ? (
+        {has(profile.photoUrl || profile.photo) ? (
           <View style={styles.avatarWrap}>
             <Image src={profile.photoUrl || profile.photo} style={styles.avatar} />
           </View>
@@ -239,31 +237,31 @@ export default function ModernTemplate({ profile, theme }) {
 
         {/* Контакты */}
         {(has(location) || has(phone) || has(email)) && (
-          <SideSection title="Контакты">
-            <Row label="Город" text={location} />
-            <Row label="Телефон" text={phone} />
-            <Row label="Email" text={email} />
+          <SideSection title={TITLE.contacts}>
+            <Row label={LBL.city} text={location} />
+            <Row label={LBL.phone} text={phone} />
+            <Row label={LBL.email} text={email} />
           </SideSection>
         )}
 
         {/* Личная информация */}
         {(has(age) || has(maritalStatus) || has(children) || has(driversLicense)) && (
-          <SideSection title="Личная информация">
-            <Row label="Возраст" text={age} />
-            <Row label="Семейное положение" text={maritalStatus} />
-            <Row label="Дети" text={children} />
-            <Row label="Права" text={driversLicense} />
+          <SideSection title={TITLE.personal}>
+            <Row label={LBL.age} text={age} />
+            <Row label={LBL.marital} text={maritalStatus} />
+            <Row label={LBL.children} text={children} />
+            <Row label={LBL.license} text={driversLicense} />
           </SideSection>
         )}
 
-        {/* Образование (кратко, год + вуз + спец) */}
+        {/* Образование (кратко) */}
         {education.length ? (
-          <SideSection title="Образование">
+          <SideSection title={TITLE.education}>
             {education.map((ed, i) => {
-              const degree = t(ed.level || ed.degree);
-              const inst = t(ed.institution || ed.university);
-              const spec = t(ed.specialization || ed.major);
-              const year = t(ed.year || ed.period);
+              const degree = tr(ed.level || ed.degree);
+              const inst = tr(ed.institution || ed.university);
+              const spec = tr(ed.specialization || ed.major);
+              const year = tr(ed.year || ed.period);
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
                   {has(degree) ? <Text style={styles.sideText}>{degree}</Text> : null}
@@ -277,15 +275,15 @@ export default function ModernTemplate({ profile, theme }) {
         ) : null}
 
         {/* Языки */}
-        {languages.length ? (
-          <SideSection title="Языки">
-            {languages.map((l, i) => {
-              const lang = t(l?.language || l?.name);
-              const lvl = t(l?.level);
+        {languagesArr.length ? (
+          <SideSection title={TITLE.languages}>
+            {languagesArr.map((l, i) => {
+              const langName = tr(l?.language || l?.name);
+              const lvl = tr(l?.level);
               return (
                 <View key={l.id || i} style={{ marginBottom: 6 }}>
-                  {has(lang) ? <Text style={styles.sideText}>{lang}</Text> : null}
-                  {has(lvl) ? <Text style={styles.sideSmall}>{lvl}</Text> : null}
+                  {has(langName) ? <Text style={styles.sideText}>{langName}</Text> : null}
+                  {has(lvl) ? <Text style={styles.sideSmall}>— {lvl}</Text> : null}
                 </View>
               );
             })}
@@ -303,26 +301,27 @@ export default function ModernTemplate({ profile, theme }) {
         {/* О себе */}
         {has(summary) ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>О себе</Text>
+            <Text style={styles.h2}>{TITLE.summary}</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <Text style={styles.paragraph}>{summary}</Text>
           </View>
         ) : null}
 
-        {/* Опыт работы */}
+        {/* Опыт */}
         {experience.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>Опыт работы</Text>
+            <Text style={styles.h2}>{TITLE.experience}</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {experience.map((ex, i) => {
-              const pos = t(ex.position);
-              const comp = t(ex.company);
-              const locTxt = t(ex.location);
-              const periodText = fmtPeriod(
+              const pos = tr(ex.position);
+              const comp = tr(ex.company);
+              const locTxt = tr(ex.location);
+              const periodText = buildPeriod(
                 ex.startDate || ex.start,
                 ex.endDate || ex.end,
                 ex.currentlyWorking,
-                ex.period
+                ex.period,
+                presentWord
               );
 
               const pts = bulletsPlus(ex.responsibilities || ex.description);
@@ -338,9 +337,7 @@ export default function ModernTemplate({ profile, theme }) {
                         {has(locTxt) ? locTxt : ''}
                       </Text>
                     </View>
-                    {has(periodText) ? (
-                      <Text style={styles.xpPeriod}>{periodText}</Text>
-                    ) : null}
+                    {has(periodText) ? <Text style={styles.xpPeriod}>{periodText}</Text> : null}
                   </View>
 
                   {pts.length ? (
@@ -362,43 +359,38 @@ export default function ModernTemplate({ profile, theme }) {
         {/* Навыки */}
         {skills.length ? (
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.h2}>Навыки</Text>
+            <Text style={styles.h2}>{TITLE.skills}</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             <View style={styles.skillsWrap}>
               {skills.map((sk, i) => (
                 <Text key={`${sk}_${i}`} style={styles.skill}>
-                  {t(sk)}
+                  {tr(sk)}
                 </Text>
               ))}
             </View>
           </View>
         ) : null}
 
-        {/* Образование (расширенный блок дублируем справа только если хотим подробно).
-            Если не нужно дублировать, эту секцию можно убрать. */}
+        {/* Образование (подробно справа, по желанию) */}
         {education.length ? (
           <View style={{ marginBottom: 6 }}>
-            <Text style={styles.h2}>Образование</Text>
+            <Text style={styles.h2}>{TITLE.education}</Text>
             <View style={[styles.accentRule, { backgroundColor: accent }]} />
             {education.map((ed, i) => {
-              const degree = t(ed.level || ed.degree);
-              const inst = t(ed.institution || ed.university);
-              const spec = t(ed.specialization || ed.major);
-              const year = t(ed.year || ed.period);
+              const degree = tr(ed.level || ed.degree);
+              const inst = tr(ed.institution || ed.university);
+              const spec = tr(ed.specialization || ed.major);
+              const year = tr(ed.year || ed.period);
 
               return (
                 <View key={ed.id || i} style={{ marginBottom: 8 }}>
-                  {has(degree) ? (
-                    <Text style={styles.xpTitle}>{degree}</Text>
-                  ) : null}
+                  {has(degree) ? <Text style={styles.xpTitle}>{degree}</Text> : null}
                   <Text style={styles.xpCompany}>
                     {has(inst) ? inst : ''}
                     {has(inst) && has(year) ? ' • ' : ''}
                     {has(year) ? year : ''}
                   </Text>
-                  {has(spec) ? (
-                    <Text style={styles.paragraph}>{spec}</Text>
-                  ) : null}
+                  {has(spec) ? <Text style={styles.paragraph}>{spec}</Text> : null}
                 </View>
               );
             })}
