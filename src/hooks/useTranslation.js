@@ -16,5 +16,5 @@ export function useTranslation() {
     };
   }, [dict]);
 
-  return { t, language, changeLanguage, supportedLanguages };
+  return { t, language, changeLanguage, supportedLanguages, lang: language, setLang: changeLanguage };
 }

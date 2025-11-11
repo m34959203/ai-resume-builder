@@ -405,7 +405,7 @@ function BuilderPage({
   setCurrentPage,
 }) {
   // ВАЖНО: прокидываем текущий язык для PDF-шаблонов и авто-перевода
-  const { t, lang } = useTranslation();
+  const { t, language: lang } = useTranslation();
 
   const steps = useMemo(() => ([
     t('builder.steps.personal'),

@@ -396,7 +396,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t, lang } = useTranslation(); // ⬅️ язык и перевод берём один раз
+  const { t, language: lang } = useTranslation(); // ⬅️ язык и перевод берём один раз
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
