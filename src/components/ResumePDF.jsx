@@ -7,20 +7,44 @@ import TEMPLATES from "../pdf/templates";
 // ⚠️ Для PDF используем прямой доступ к словарю, без React-хуков
 import { translations } from "../locales/translations";
 
+/* ---------- language normalize ---------- */
+const SUPPORTED_LANGS = ["ru", "kk", "en"];
+const NORM_MAP = {
+  kz: "kk",
+  "kk-kz": "kk",
+  "ru-ru": "ru",
+  "en-us": "en",
+};
+function normLang(input) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "ru";
+  const mapped = NORM_MAP[raw] || raw.split(/[-_]/)[0];
+  return SUPPORTED_LANGS.includes(mapped) ? mapped : "ru";
+}
+
 /* ---------- i18n helpers (без react hooks) ---------- */
 const getByPath = (obj, path) =>
-  path.split(".").reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), obj);
+  String(path || "")
+    .split(".")
+    .reduce((acc, k) => (acc && Object.prototype.hasOwnProperty.call(acc, k) ? acc[k] : undefined), obj);
 
 const format = (str, params) =>
-  !params ? str : String(str).replace(/\{(\w+)\}/g, (_, k) => (k in params ? params[k] : `{${k}}`));
+  !params || typeof str !== "string"
+    ? str
+    : str.replace(/\{(\w+)\}/g, (_, k) =>
+        Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : `{${k}}`
+      );
 
 function makeT(lang = "ru") {
-  const dict = translations[lang] || translations.ru;
+  const l = normLang(lang);
+  const dict = translations?.[l] || translations?.ru || {};
   return (key, params) => {
+    if (!key) return "";
     let val = getByPath(dict, key);
-    if (val == null) val = getByPath(translations.ru, key);
-    if (val == null) return key;
-    return typeof val === "string" ? format(val, params) : key;
+    if (val == null && translations?.ru) val = getByPath(translations.ru, key);
+    if (val == null && translations?.en) val = getByPath(translations.en, key);
+    if (typeof val === "string") return format(val, params);
+    return key;
   };
 }
 
@@ -337,8 +361,9 @@ export default function ResumePDF({
   template: templateProp = "minimal",
   lang: langProp = "ru",
 }) {
-  const t = makeT(langProp);
-  const lang = ["ru", "kk", "en"].includes(langProp) ? langProp : "ru";
+  // ✅ сначала нормализуем, затем строим t()
+  const lang = normLang(langProp);
+  const t = makeT(lang);
 
   // Локализованные метки разделов для шаблонов
   const labels = {
@@ -357,6 +382,7 @@ export default function ResumePDF({
   };
 
   const currentLabel =
+    t("pdf.meta.present") ||
     t("builder.experience.current") ||
     (lang === "kk" ? "қазіргі уақыт" : lang === "en" ? "Present" : "настоящее время");
 
