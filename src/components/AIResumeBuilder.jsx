@@ -1,10 +1,9 @@
-// src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   FileText, Briefcase, TrendingUp, Search, MapPin,
-  Award, BookOpen, Sparkles, ExternalLink, Filter,
+  Award, Sparkles, ExternalLink, Filter,
   ChevronLeft, ChevronRight, RefreshCw, X,
-  Phone, Mail
+  Phone, Mail,
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -23,6 +22,7 @@ import zhezuLogo from '../assets/zhezu-logo.png';
 
 const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies']);
 const HOST = getDefaultHost();
+const HH_WEB_HOST = /hh\.ru/i.test(HOST) ? 'hh.ru' : 'hh.kz';
 const BRAND_NAME = 'ZhezU AI Resume';
 
 /* ========================== Вспомогательные хелперы ========================== */
@@ -218,7 +218,7 @@ function profileSignature(p = {}) {
   return JSON.stringify({ role, summary, location, skills, exp, edu });
 }
 
-// --- целевая роль (чисто как локальный фолбэк для UI, без треков/пресетов) ---
+// --- целевая роль (фолбэк для UI) ---
 function deriveDesiredRole(profile) {
   const explicit =
     profile?.position ||
@@ -396,7 +396,7 @@ function CitySelect({ value, onChange }) {
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
-  const { t, language: lang } = useTranslation(); // ⬅️ унифицируем с LanguageProvider
+  const { t, lang } = useTranslation(); // ⬅️ корректно берём lang из хука
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
@@ -441,7 +441,9 @@ function AIResumeBuilder() {
       location: t('vacancies.cities.almaty'),
       experience: 'Junior',
       description: t('vacancies.mockDescription1'),
-      skills: ['React', 'JavaScript', 'TypeScript', 'CSS']
+      skills: ['React', 'JavaScript', 'TypeScript', 'CSS'],
+      alternate_url: `https://${HH_WEB_HOST}/vacancy/0`,
+      respond_url: `https://${HH_WEB_HOST}/vacancy/0?from=resume_builder`,
     },
     {
       id: 'm2',
@@ -451,7 +453,9 @@ function AIResumeBuilder() {
       location: t('vacancies.cities.astana'),
       experience: 'Junior',
       description: t('vacancies.mockDescription2'),
-      skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping']
+      skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping'],
+      alternate_url: `https://${HH_WEB_HOST}/vacancy/0`,
+      respond_url: `https://${HH_WEB_HOST}/vacancy/0?from=resume_builder`,
     },
     {
       id: 'm3',
@@ -461,7 +465,9 @@ function AIResumeBuilder() {
       location: t('vacancies.cities.almaty'),
       experience: 'Junior',
       description: t('vacancies.mockDescription3'),
-      skills: ['Python', 'SQL', 'Excel', 'Power BI']
+      skills: ['Python', 'SQL', 'Excel', 'Power BI'],
+      alternate_url: `https://${HH_WEB_HOST}/vacancy/0`,
+      respond_url: `https://${HH_WEB_HOST}/vacancy/0?from=resume_builder`,
     }
   ]), [t]);
 
@@ -820,7 +826,7 @@ function RecommendationsPage({
   setSearchQuery,
   profile
 }) {
-  const { t, language: lang } = useTranslation();
+  const { t, lang } = useTranslation();
 
   // Достаточно ли данных резюме для советов
   const profileOk = hasProfileForRecs(profile);
@@ -1048,7 +1054,7 @@ function RecommendationsPage({
                       <a
                         href={c.url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 inline-flex items-center gap-1"
                       >
                         <ExternalLink size={14} />
@@ -1100,7 +1106,7 @@ function VacanciesPage({
   mockVacancies,
   profile,
 }) {
-  const { t, language: lang } = useTranslation();
+  const { t, lang } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -1249,41 +1255,55 @@ function VacanciesPage({
   );
   const debouncedFiltersKey = useDebouncedLocal(filtersKey, 650);
 
-  // единая функция маппинга
+  // единая функция маппинга (важно: корректные ссылки HH)
   const mapResponse = useCallback((data) => {
     const items = Array.isArray(data?.items) ? data.items : [];
     const stripHtml = (t) =>
       String(t || '').replace(/<\/?highlighttext[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
 
-    const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
-    const goodSkills = (arr) =>
-      (Array.isArray(arr) ? arr : [])
-        .map((s) => String(s || '').trim())
-        .filter((t) => t && !ban.has(t.toLowerCase()) && (t.length > 2 || /[A-Za-z]/.test(t)))
+    const toWebUrl = (id, alt) => {
+      if (alt && /^https?:\/\//i.test(alt)) return alt; // правильный веб-линк от HH
+      if (!id) return '';
+      return `https://${HH_WEB_HOST}/vacancy/${id}`;
+    };
+
+    const extractSkills = (v) => {
+      const fromKeySkills = Array.isArray(v.key_skills) ? v.key_skills.map((k) => k?.name).filter(Boolean) : [];
+      const fromKeywords  = Array.isArray(v.keywords) ? v.keywords.filter(Boolean) : [];
+      const merged = uniqCI([...fromKeySkills, ...fromKeywords]);
+      const ban = new Set(['и', 'в', 'на', 'of', 'a', 'an']);
+      return merged
+        .filter((t) => t && !ban.has(String(t).toLowerCase()) && (String(t).length > 2 || /[A-Za-z]/.test(t)))
         .slice(0, 12);
+    };
 
     const mapped = items.map((v) => {
       let salaryText = t('vacancies.salaryNegotiable');
-      const raw = v.salary_raw || v.salary || {};
+      const raw = v.salary || {};
       if (typeof v.salary === 'string' && v.salary.trim()) {
         salaryText = v.salary.trim();
       } else if (raw && (raw.from || raw.to)) {
         const from = raw.from ? String(raw.from) : '';
         const to   = raw.to   ? String(raw.to)   : '';
-        const cur  = raw.currency || raw.cur || '';
+        const cur  = raw.currency || '';
         const range = [from, to].filter(Boolean).join(' – ');
         salaryText = `${range}${range ? ' ' : ''}${cur}`.trim() || t('vacancies.salaryNegotiable');
       }
+
+      const webUrl = toWebUrl(v.id, v.alternate_url);
+      const respondUrl = webUrl ? `${webUrl}?from=resume_builder` : '';
+
       return {
-        id: v.id,
+        id: String(v.id),
         title: v.title || v.name || t('vacancies.vacancyTitle'),
         company: typeof v.employer === 'string' ? v.employer : (v.employer?.name || ''),
         salary: salaryText,
         location: v.area?.name || v.area || '',
         experience: v.experience?.name || v.experience || '',
         description: stripHtml(v.description || v.snippet?.responsibility || v.snippet?.requirement || ''),
-        skills: goodSkills(v.keywords),
-        alternate_url: v.url || v.alternate_url || '',
+        skills: extractSkills(v),
+        alternate_url: webUrl,   // «Открыть на HH» — всегда веб-страница
+        respond_url: respondUrl, // «Откликнуться на HH» — ведём на ту же страницу с меткой
       };
     });
 
@@ -1712,13 +1732,29 @@ function VacanciesPage({
                   </div>
                 )}
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => vacancy.alternate_url && window.open(vacancy.alternate_url, '_blank')}
+                <div className="flex flex-wrap gap-3">
+                  <a
+                    href={vacancy.alternate_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 font-medium inline-flex items-center gap-2"
+                    aria-label={t('vacancies.openOnHH')}
+                    title={t('vacancies.openOnHH')}
+                  >
+                    <ExternalLink size={16} />
+                    {t('vacancies.openOnHH')}
+                  </a>
+
+                  <a
+                    href={vacancy.respond_url || vacancy.alternate_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    aria-label={t('vacancies.applyOnHH')}
+                    title={t('vacancies.applyOnHH')}
                   >
                     {t('vacancies.applyOnHH')}
-                  </button>
+                  </a>
                 </div>
               </div>
             ))}
