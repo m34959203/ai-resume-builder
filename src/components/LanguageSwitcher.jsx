@@ -6,39 +6,27 @@ import { Globe } from 'lucide-react';
 const LABELS = { ru: 'Русский', kk: 'Қазақша', en: 'English' };
 const FLAGS  = { ru: '🇷🇺',   kk: '🇰🇿',    en: '🇬🇧' };
 
-// на всякий случай нормализуем входящее значение (если где-то просочился 'kz')
-const norm = (s) => {
-  const v = String(s || '').toLowerCase();
-  if (v === 'kz') return 'kk';
-  return v.split(/[-_]/)[0] || 'ru';
-};
-
 const LanguageSwitcher = ({ className = '' }) => {
-  const { language, changeLanguage, supportedLanguages } = useTranslation();
-  const lang = norm(language);
-
+  // ✅ Используем единообразное API: language уже нормализован в хуке
+  const { language, changeLanguage } = useTranslation();
+  
   const [isOpen, setIsOpen] = useState(false);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
 
-  // финальный список опций — ровно ru/kk/en, в нужном порядке
-  const options = useMemo(() => {
-    const allowed = ['ru', 'kk', 'en'];
-    const set = new Set((supportedLanguages || []).map(norm));
-    return allowed.filter((l) => set.has(l)).map((value) => ({
-      value,
-      label: LABELS[value] || value.toUpperCase(),
-      flag: FLAGS[value] || '🌐',
-    }));
-  }, [supportedLanguages]);
+  // ✅ Опции только ru, kk, en в правильном порядке
+  const options = useMemo(() => [
+    { value: 'ru', label: LABELS.ru, flag: FLAGS.ru },
+    { value: 'kk', label: LABELS.kk, flag: FLAGS.kk },
+    { value: 'en', label: LABELS.en, flag: FLAGS.en },
+  ], []);
 
   const handleOpen = () => setIsOpen(true);
   const handleClose = () => setIsOpen(false);
 
   const handleLanguageChange = (code) => {
-    changeLanguage(norm(code)); // в контексте тоже нормализуется, но подстрахуемся
+    changeLanguage(code); // ✅ передаём без нормализации, она внутри хука
     handleClose();
-    // Вернём фокус на кнопку после выбора для доступности
     if (btnRef.current) btnRef.current.focus();
   };
 
@@ -47,12 +35,17 @@ const LanguageSwitcher = ({ className = '' }) => {
     if (!isOpen) return;
 
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') handleClose();
-      // простая навигация по пунктам ↑/↓
+      if (e.key === 'Escape') {
+        handleClose();
+        return;
+      }
+      
+      // Навигация по пунктам ↑/↓
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const items = menuRef.current?.querySelectorAll('button[data-lang]') || [];
         if (!items.length) return;
+        
         const current = document.activeElement;
         const idx = Array.from(items).findIndex((el) => el === current);
         const nextIdx =
@@ -64,7 +57,6 @@ const LanguageSwitcher = ({ className = '' }) => {
     };
 
     const onClick = (e) => {
-      // если клик вне меню и не по кнопке — закрыть
       if (
         menuRef.current &&
         !menuRef.current.contains(e.target) &&
@@ -83,12 +75,10 @@ const LanguageSwitcher = ({ className = '' }) => {
     };
   }, [isOpen]);
 
-  // Открытие по Enter/Space и фокус на первый элемент
   const onToggleKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       setIsOpen((v) => !v);
-      // фокус на первый пункт после открытия
       setTimeout(() => {
         const first = menuRef.current?.querySelector('button[data-lang]');
         first?.focus();
@@ -114,11 +104,11 @@ const LanguageSwitcher = ({ className = '' }) => {
         aria-haspopup="menu"
         aria-expanded={isOpen}
         type="button"
-        title={LABELS[lang] || lang.toUpperCase()}
+        title={LABELS[language] || language.toUpperCase()}
       >
         <Globe className="w-5 h-5 text-gray-600 dark:text-gray-300" />
         <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-          {(FLAGS[lang] || '🌐') + ' ' + (LABELS[lang] || lang.toUpperCase())}
+          {(FLAGS[language] || '🌐') + ' ' + (LABELS[language] || language.toUpperCase())}
         </span>
         <svg
           className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
@@ -144,15 +134,16 @@ const LanguageSwitcher = ({ className = '' }) => {
               data-lang={value}
               onClick={() => handleLanguageChange(value)}
               className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                lang === value
+                language === value
                   ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                   : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'
               }`}
               type="button"
+              role="menuitem"
             >
               <span className="text-xl">{flag}</span>
               <span className="text-sm font-medium">{label}</span>
-              {lang === value && (
+              {language === value && (
                 <svg
                   className="ml-auto w-5 h-5 text-indigo-600 dark:text-indigo-400"
                   fill="currentColor"

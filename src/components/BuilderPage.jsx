@@ -404,7 +404,7 @@ function BuilderPage({
   setSelectedTemplate,
   setCurrentPage,
 }) {
-  // ВАЖНО: прокидываем текущий язык для PDF-шаблонов и авто-перевода
+  // ✅ ВАЖНО: получаем нормализованный язык через language (не lang!)
   const { t, language: lang } = useTranslation();
 
   const steps = useMemo(() => ([
@@ -709,12 +709,12 @@ function BuilderPage({
         import('./ResumePDF'),
       ]);
 
-      // Прокидываем язык в PDF, чтобы шаблон выводил нужные лейблы/метки
+      // ✅ Прокидываем язык в PDF, чтобы шаблон выводил нужные лейблы/метки
       const blob = await pdf(
         <ResumePDF
           profile={profileForPdf}
           template={selectedTemplate}
-          lang={lang}
+          lang={lang}  // ✅ lang уже 'ru' | 'kk' | 'en'
         />
       ).toBlob();
 

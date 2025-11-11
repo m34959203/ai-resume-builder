@@ -1,3 +1,4 @@
+// src/locales/translations.js
 export const translations = {
   ru: {
     // Навигация
@@ -8,7 +9,7 @@ export const translations = {
       recommendations: 'Рекомендации'
     },
 
-    // Главная страница
+    // Главная
     home: {
       badge: 'AI-powered Resume Builder',
       titlePrefix: 'Создайте идеальное резюме',
@@ -122,7 +123,6 @@ export const translations = {
         template: 'Шаблон',
         preview: 'Предварительный просмотр'
       },
-
       personal: {
         fullName: 'Полное имя',
         fullNamePlaceholder: 'Фамилия Имя Отчество',
@@ -147,7 +147,6 @@ export const translations = {
         photoHint: 'Рекомендуется загрузить фото',
         hint: 'Укажите опыт, 1–2 достижения и стек / сферу, в которой сильны.'
       },
-
       experience: {
         label: 'Опыт',
         addExperience: 'Добавить опыт',
@@ -162,7 +161,6 @@ export const translations = {
         descriptionPlaceholder: 'Опишите ваши достижения и обязанности...',
         remove: 'Удалить'
       },
-
       education: {
         title: 'Добавленное образование',
         addEducation: 'Добавить образование',
@@ -176,7 +174,6 @@ export const translations = {
         endDate: 'Окончание',
         remove: 'Удалить'
       },
-
       skills: {
         title: 'Навыки',
         addSkill: 'Добавить навык',
@@ -188,7 +185,6 @@ export const translations = {
         aiEmpty: 'Пока нечего предложить — добавьте пару ключевых навыков или укажите должность.',
         refresh: 'Обновить рекомендации'
       },
-
       languages: {
         title: 'Знание языков',
         language: 'Язык',
@@ -205,7 +201,6 @@ export const translations = {
           c2: 'C2 — В совершенстве'
         }
       },
-
       preview: {
         title: 'Предпросмотр резюме',
         photoAlt: 'Фото',
@@ -214,7 +209,6 @@ export const translations = {
         educationCount: 'образование',
         languagesCount: 'языков'
       },
-
       templates: {
         title: 'Выберите шаблон резюме:',
         subtitle: 'Стильный и профессиональный дизайн',
@@ -223,7 +217,6 @@ export const translations = {
         selected: 'Выбрано',
         choose: 'Выбрать шаблон {name}'
       },
-
       buttons: {
         previous: 'Назад',
         next: 'Далее',
@@ -232,7 +225,6 @@ export const translations = {
         save: 'Сохранить',
         cancel: 'Отмена'
       },
-
       messages: {
         saving: 'Сохранение...',
         saved: 'Сохранено',
@@ -281,7 +273,6 @@ export const translations = {
 
     // ---------- PDF ----------
     pdf: {
-      // ключи для компонентов PDF
       resume: 'Резюме',
       present: 'настоящее время',
       contacts: 'Контакты',
@@ -298,7 +289,11 @@ export const translations = {
       license: 'Водительские права',
       duties: 'Обязанности и достижения',
 
-      // сохранены существующие разделы
+      // Доп.мета для PDF
+      meta: {
+        present: 'настоящее время'
+      },
+
       sections: {
         personal: 'Личная информация',
         contacts: 'Контакты',
@@ -434,7 +429,6 @@ export const translations = {
         template: 'Үлгі',
         preview: 'Алдын ала қарау'
       },
-
       personal: {
         fullName: 'Толық аты-жөні',
         fullNamePlaceholder: 'Тегі, аты, әкесінің аты.',
@@ -459,7 +453,6 @@ export const translations = {
         photoHint: 'Фото жүктеген жөн',
         hint: 'Тәжірибені, 1–2 жетістікті және мықты сала/стекті көрсетіңіз.'
       },
-
       experience: {
         label: 'Тәжірибе',
         addExperience: 'Тәжірибе қосу',
@@ -474,7 +467,6 @@ export const translations = {
         descriptionPlaceholder: 'Жетістіктеріңіз бен міндеттеріңізді сипаттаңыз...',
         remove: 'Жою'
       },
-
       education: {
         title: 'Қосылған білім',
         addEducation: 'Білім қосу',
@@ -488,7 +480,6 @@ export const translations = {
         endDate: 'Аяқталуы',
         remove: 'Жою'
       },
-
       skills: {
         title: 'Дағдылар',
         addSkill: 'Дағды қосу',
@@ -500,7 +491,6 @@ export const translations = {
         aiEmpty: 'Әзірге ұсыныс жоқ — бірнеше негізгі дағдыны қосыңыз немесе лауазымды көрсетіңіз.',
         refresh: 'Ұсыныстарды жаңарту'
       },
-
       languages: {
         title: 'Тіл білу деңгейі',
         language: 'Тіл',
@@ -517,7 +507,6 @@ export const translations = {
           c2: 'C2 — Еркін'
         }
       },
-
       preview: {
         title: 'Түйіндеме алдын ала қарау',
         photoAlt: 'Фото',
@@ -526,7 +515,6 @@ export const translations = {
         educationCount: 'білімі',
         languagesCount: 'тіл'
       },
-
       templates: {
         title: 'Түйіндеме үлгісін таңдаңыз:',
         subtitle: 'Стильді және кәсіби дизайн',
@@ -535,7 +523,6 @@ export const translations = {
         selected: 'Таңдалды',
         choose: '{name} үлгісін таңдау'
       },
-
       buttons: {
         previous: 'Артқа',
         next: 'Алға',
@@ -544,7 +531,6 @@ export const translations = {
         save: 'Сақтау',
         cancel: 'Болдырмау'
       },
-
       messages: {
         saving: 'Сақталуда...',
         saved: 'Сақталды',
@@ -594,7 +580,7 @@ export const translations = {
       resume: 'Түйіндеме',
       present: 'қазіргі уақыт',
       contacts: 'Байланыс',
-      profile: 'Профиль',            // жиі қолданылатын қарыз сөз
+      profile: 'Профиль',
       about: 'Өзім туралы',
       work: 'Тәжірибе',
       education: 'Білім',
@@ -606,6 +592,10 @@ export const translations = {
       children: 'Балалар',
       license: 'Жүргізуші куәлігі',
       duties: 'Міндеттер мен жетістіктер',
+
+      meta: {
+        present: 'қазіргі уақыт'
+      },
 
       sections: {
         personal: 'Жеке мәліметтер',
@@ -742,7 +732,6 @@ export const translations = {
         template: 'Template',
         preview: 'Preview'
       },
-
       personal: {
         fullName: 'Full Name',
         fullNamePlaceholder: 'John Smith',
@@ -767,7 +756,6 @@ export const translations = {
         photoHint: 'Uploading a photo is recommended',
         hint: 'Mention your experience, 1–2 achievements, and the stack/domain you are strong in.'
       },
-
       experience: {
         label: 'Experience',
         addExperience: 'Add Experience',
@@ -782,7 +770,6 @@ export const translations = {
         descriptionPlaceholder: 'Describe your achievements and responsibilities...',
         remove: 'Remove'
       },
-
       education: {
         title: 'Added education',
         addEducation: 'Add Education',
@@ -796,7 +783,6 @@ export const translations = {
         endDate: 'End Date',
         remove: 'Remove'
       },
-
       skills: {
         title: 'Skills',
         addSkill: 'Add Skill',
@@ -808,7 +794,6 @@ export const translations = {
         aiEmpty: 'Nothing to suggest yet — add a couple of key skills or specify the title.',
         refresh: 'Refresh suggestions'
       },
-
       languages: {
         title: 'Language proficiency',
         language: 'Language',
@@ -825,7 +810,6 @@ export const translations = {
           c2: 'C2 — Proficient'
         }
       },
-
       preview: {
         title: 'Resume preview',
         photoAlt: 'Photo',
@@ -834,7 +818,6 @@ export const translations = {
         educationCount: 'education',
         languagesCount: 'languages'
       },
-
       templates: {
         title: 'Choose a resume template:',
         subtitle: 'Sleek and professional design',
@@ -843,7 +826,6 @@ export const translations = {
         selected: 'Selected',
         choose: 'Choose template {name}'
       },
-
       buttons: {
         previous: 'Previous',
         next: 'Next',
@@ -852,7 +834,6 @@ export const translations = {
         save: 'Save',
         cancel: 'Cancel'
       },
-
       messages: {
         saving: 'Saving...',
         saved: 'Saved',
@@ -914,6 +895,10 @@ export const translations = {
       children: 'Children',
       license: "Driver's license",
       duties: 'Responsibilities & Achievements',
+
+      meta: {
+        present: 'present'
+      },
 
       sections: {
         personal: 'Personal info',
