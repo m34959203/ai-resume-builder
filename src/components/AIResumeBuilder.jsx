@@ -1,3 +1,4 @@
+// src/components/AIResumeBuilder.jsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   FileText, Briefcase, TrendingUp, Search, MapPin,
@@ -763,7 +764,7 @@ function HomePage({ onCreate, onFindJobs }) {
             <Sparkles size={16} />
             <span className="text-sm font-medium">{t('home.badge')}</span>
           </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+        <h1 className="text-5xl font-bold text-gray-900 mb-4">
             {t('home.titlePrefix')}{' '}
             <span className="text-blue-600">{t('home.titleAccent')}</span>
           </h1>
@@ -839,7 +840,7 @@ function RecommendationsPage({
   // выбранная (целевая) профессия — одно поле
   const [selectedProfession, setSelectedProfession] = React.useState(() => {
     const p = recommendations?.professions?.[0] || '';
-    return String(p || '').trim();
+       return String(p || '').trim();
   });
 
   React.useEffect(() => {
@@ -1732,19 +1733,8 @@ function VacanciesPage({
                   </div>
                 )}
 
+                {/* Оставляем только одну кнопку — Откликнуться на HH */}
                 <div className="flex flex-wrap gap-3">
-                  <a
-                    href={vacancy.alternate_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 font-medium inline-flex items-center gap-2"
-                    aria-label={t('vacancies.openOnHH')}
-                    title={t('vacancies.openOnHH')}
-                  >
-                    <ExternalLink size={16} />
-                    {t('vacancies.openOnHH')}
-                  </a>
-
                   <a
                     href={vacancy.respond_url || vacancy.alternate_url}
                     target="_blank"
