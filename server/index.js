@@ -7,8 +7,9 @@
  * - Встроенный /api/ai/infer-search для фронта
  * - ✅ Честная прокся /api/hh/jobs/search — не «глотает» ошибки HH
  * - ✅ Маппинг experience → HH-коды (none/0-1 не отправляем) — для старых фронтов
- * - ✅ Корректный CORS (Render/Vercel и ENV), проброс HH-User-Agent
- * - ✅ Явный лог флагов рекомендаций (RECS_*)
+ * - ✅ Корректный CORS (Render/Vercel/Netlify + ENV), универсальный preflight
+ * - ✅ Проброс HH-User-Agent, реферера; детальная диагностика
+ * - ✅ Лог флагов рекомендаций (RECS_*)
  */
 
 const express = require('express');
@@ -39,10 +40,11 @@ const config = {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  // Важно: HH блокирует запросы без честного UA; продублируем в HH-User-Agent
+  // HH требует «честный» UA; дублируем в HH-User-Agent
   hhUserAgent: process.env.HH_USER_AGENT
     || 'AI-Resume-Builder/1.0 (+https://ai-resume-frontend-nepa.onrender.com)',
   hhTimeoutMs: Number(process.env.HH_TIMEOUT_MS || 12000),
+  corsDebug: String(process.env.CORS_DEBUG || '0').toLowerCase() === '1',
 };
 
 const defaultOrigins = [
@@ -54,7 +56,7 @@ const defaultOrigins = [
 
 // Динамические origin'ы из окружения платформ
 const runtimeOrigins = [
-  process.env.RENDER_EXTERNAL_URL,                            // https://app.onrender.com
+  process.env.RENDER_EXTERNAL_URL,                            // https://<app>.onrender.com
   process.env.FRONTEND_URL,                                   // произвольный кастомный
   process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
   process.env.NETLIFY_URL && `https://${process.env.NETLIFY_URL}`,
@@ -96,34 +98,52 @@ app.use((req, res, next) => {
 /* ────────────────────────────────────────────────────────────
  * CORS
  * ──────────────────────────────────────────────────────────── */
+function originAllowed(origin) {
+  if (!origin) return true; // curl/SSR/health
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (allowedOrigins.includes(origin)) return true;
+    if (host.endsWith('onrender.com')) return true;
+    if (host.endsWith('vercel.app'))  return true;
+    if (host.endsWith('netlify.app')) return true;
+    if (!config.isProduction && (host === 'localhost' || host === '127.0.0.1')) return true;
+  } catch {}
+  return false;
+}
+
 const corsOptions = {
-  origin(origin, callback) {
-    if (!origin) return callback(null, true); // SSR/health/локальные curl
-    try {
-      const url = new URL(origin);
-      const host = url.hostname || '';
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Разрешаем все поддомены platform hosting
-      if (host.endsWith('onrender.com')) return callback(null, true);
-      if (host.endsWith('vercel.app'))  return callback(null, true);
-      if (host.endsWith('netlify.app')) return callback(null, true);
-      if (!config.isProduction && /^localhost$/.test(host)) return callback(null, true);
-    } catch {}
-    console.warn(`⚠️ CORS rejected: ${origin}`);
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  origin(origin, cb) {
+    const ok = originAllowed(origin);
+    if (config.corsDebug) console.log(`[CORS] ${ok ? 'ALLOW' : 'BLOCK'} ${origin || '(no-origin)'}`);
+    ok ? cb(null, true) : cb(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  // cors сам отражает Access-Control-Request-Headers
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
   exposedHeaders: ['X-Request-ID', 'X-Source-HH-URL'],
   maxAge: 86400,
 };
+
+// Ставим ДО любых роутов
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-/* Кэширование префлайтов и корректный Vary */
+// Универсальный preflight (подстраховка — даже если что-то бросит до cors())
 app.use((req, res, next) => {
   res.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
+  if (req.method === 'OPTIONS') {
+    const o = req.headers.origin;
+    if (originAllowed(o)) {
+      res.setHeader('Access-Control-Allow-Origin', o || '*');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        req.headers['access-control-request-headers'] || 'Content-Type, Authorization, X-Requested-With, X-Request-ID'
+      );
+      return res.status(204).end();
+    }
+  }
   next();
 });
 
@@ -202,7 +222,7 @@ app.get('/api/health/hh', async (_req, res) => {
 });
 
 /* ────────────────────────────────────────────────────────────
- * ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+ * ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И МОНТАЖ РОУТЕРОВ
  * ──────────────────────────────────────────────────────────── */
 function safeUseRouter(mountPath, localPath) {
   try {
@@ -416,10 +436,8 @@ hhInline.get('/jobs/search', async (req, res) => {
       'Accept': 'application/json',
       'Accept-Language': req.headers['accept-language'] || 'ru-RU,ru;q=0.9,en;q=0.8',
       'X-Request-ID': req.id,
-      // Проброс реферера может снижать антибот-подозрения
       ...(req.headers.referer ? { Referer: req.headers.referer } : {}),
     };
-    // Если фронт прислал "X-No-Cache: 1", пробиваем no-cache до HH.
     if (req.headers['x-no-cache']) headers['Cache-Control'] = 'no-cache';
 
     const r = await fetch(url, {
@@ -427,7 +445,6 @@ hhInline.get('/jobs/search', async (req, res) => {
       signal: AbortSignal.timeout(config.hhTimeoutMs),
     });
 
-    // Честно отдаём ошибку/тело HH наверх, чтобы фронт её увидел.
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
       return res.status(r.status).json({
@@ -439,7 +456,6 @@ hhInline.get('/jobs/search', async (req, res) => {
       });
     }
 
-    // Ответ — JSON vacancies
     const txt = await r.text();
     let data = null;
     try { data = JSON.parse(txt); } catch {
@@ -452,7 +468,6 @@ hhInline.get('/jobs/search', async (req, res) => {
       });
     }
 
-    // Анти-кэш браузера/прокси для поисковых выдач
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     return res.json(data);
   } catch (e) {
@@ -472,16 +487,6 @@ app.use('/api/hh', hhInline);
 /* ────────────────────────────────────────────────────────────
  * РОУТЫ HH и РЕКОМЕНДАЦИЙ (остальные точки, areas/me/…)
  * ──────────────────────────────────────────────────────────── */
-function safeUseRouterOnce(mountPath, localPath) {
-  // защита от двойного монтирования
-  let mounted = false;
-  return () => {
-    if (mounted) return;
-    safeUseRouter(mountPath, localPath);
-    mounted = true;
-  };
-}
-
 function mountRoutes() {
   // Основные
   safeUseRouter('/api/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
@@ -522,6 +527,8 @@ HeadHunter:
 
 Recommendations:
   POST /api/recommendations/generate
+  POST /api/recommendations/analyze
+  POST /api/recommendations/improve
 
 AI helpers:
   POST /api/ai/infer-search
@@ -529,14 +536,24 @@ AI helpers:
 });
 
 /* ────────────────────────────────────────────────────────────
- * ERRORS
+ * ERRORS — добавляем CORS даже при ошибках/404
  * ──────────────────────────────────────────────────────────── */
 app.use((req, res) => {
+  const o = req.headers.origin;
+  if (originAllowed(o)) {
+    res.setHeader('Access-Control-Allow-Origin', o || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   res.status(404).json({ ok: false, error: 'Not Found', path: req.originalUrl });
 });
 
 app.use((err, req, res, _next) => {
   console.error('💥 Unhandled error:', err);
+  const o = req.headers.origin;
+  if (originAllowed(o)) {
+    res.setHeader('Access-Control-Allow-Origin', o || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   const status = err?.statusCode || err?.status || 500;
   res.status(status).json({ ok: false, error: err?.message || 'Internal Server Error' });
 });
@@ -545,20 +562,17 @@ app.use((err, req, res, _next) => {
  * START + ENV LOGS
  * ──────────────────────────────────────────────────────────── */
 const server = app.listen(config.port, '0.0.0.0', () => {
-  // Логируем CORS
   console.log('═══════════════════════════════════════════════════════════');
   console.log('🚀 AI Resume Builder Server (CommonJS)');
   console.log('═══════════════════════════════════════════════════════════');
   console.log(`📍 Environment: ${config.nodeEnv}`);
   console.log(`🌐 Listening on: http://0.0.0.0:${config.port}`);
 
-  // Вытаскиваем/показываем активные Origins (уникальные)
   allowedOrigins = [...new Set(allowedOrigins)];
   console.log(`🔒 CORS Origins (${allowedOrigins.length}):`);
   for (const o of allowedOrigins) console.log(`   - ${o}`);
   console.log('───────────────────────────────────────────────────────────');
 
-  // Лог флагов рекомендаций
   const flag = (v, d='0') => ['1','true','yes','on'].includes(String(v ?? d).toLowerCase());
   const rec = {
     HH_HOST: process.env.HH_HOST || 'hh.kz',
@@ -574,7 +588,6 @@ const server = app.listen(config.port, '0.0.0.0', () => {
   Object.entries(rec).forEach(([k,v]) => console.log(`   ${k} = ${v}`));
   console.log('───────────────────────────────────────────────────────────');
 
-  // Лог UA для HH
   console.log(`🪪 HH User-Agent: ${config.hhUserAgent}`);
   console.log('═══════════════════════════════════════════════════════════');
   console.log('✅ Server ready');
