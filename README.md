@@ -1,408 +1,363 @@
-# 🚀 AI Resume Builder - Production Ready
+🚀 AI Resume Builder — Production-Ready (HH.kz/HH.ru + AI)
 
-[![Deploy Status](https://github.com/your-username/ai-resume-builder/workflows/Production%20Deploy/badge.svg)](https://github.com/your-username/ai-resume-builder/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
 
-**Production-ready AI-powered resume builder** with HeadHunter integration, PDF export, and personalized career recommendations.
 
-🌐 **Live Demo**: [https://your-username.github.io/ai-resume-builder](https://your-username.github.io/ai-resume-builder)
 
----
 
-## ✨ Features
 
-### 🤖 AI-Powered
-- **Smart Recommendations**: Personalized career advice using OpenRouter AI
-- **Auto-suggestions**: AI-powered skill recommendations
-- **Profile Analysis**: Intelligent profile scoring and feedback
+AI-конструктор резюме с интеграцией HeadHunter (hh.ru / hh.kz), экспортом PDF и персональными карьерными рекомендациями на базе LLM (DeepSeek / Gemma 3 12B через OpenRouter).
 
-### 📄 Resume Builder
-- **Step-by-step Wizard**: Intuitive 5-step resume creation
-- **Multiple Templates**: Modern, Creative, Professional, Minimal designs
-- **PDF Export**: High-quality PDF generation with @react-pdf/renderer
-- **Real-time Preview**: Live preview as you build
+✨ Возможности
+🤖 AI
 
-### 🔍 Job Search
-- **HeadHunter Integration**: Direct job search from hh.ru/hh.kz
-- **Smart Filters**: Filter by experience, salary, location
-- **One-click Apply**: Quick application with your resume
+Smart Recommendations — карьерные направления, топ-навыки к прокачке, список курсов.
 
-### 🔐 Security & Performance
-- **Rate Limiting**: Protection against abuse
-- **CSRF Protection**: Secure OAuth flow
-- **Optimized Bundle**: Code splitting, lazy loading
-- **PWA Support**: Offline capabilities
+Auto-suggestions — умные подсказки по навыкам и формулировкам.
 
----
+Profile Analysis — оценка профиля и короткая обратная связь.
 
-## 🏗️ Tech Stack
+📄 Резюме
 
-### Frontend
-- **React 18** - UI framework
-- **Vite** - Build tool
-- **Tailwind CSS** - Styling
-- **React Router** - Navigation
-- **@react-pdf/renderer** - PDF generation
-- **Lucide React** - Icons
+Мастер из 5 шагов и живой превью.
 
-### Backend (BFF)
-- **Node.js 18+** - Runtime
-- **Express** - Web framework
-- **Helmet** - Security headers
-- **express-rate-limit** - Rate limiting
-- **express-validator** - Input validation
+Шаблоны: Modern / Minimal / Creative / Professional.
 
-### AI & APIs
-- **OpenRouter** - AI recommendations (Gemma 3 12B, DeepSeek R1)
-- **HeadHunter API** - Job search and OAuth
+PDF-экспорт через @react-pdf/renderer.
 
----
+🔍 Вакансии (HeadHunter)
 
-## 📦 Installation
+Поиск по hh.ru/hh.kz, фильтры по опыту/зарплате/городу.
 
-### Prerequisites
-```bash
-node >= 18.0.0
-npm >= 9.0.0
-```
+Прозрачная «честная» прокся /api/hh/jobs/search (без «проглатывания» ошибок HH).
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/your-username/ai-resume-builder.git
+🔐 Безопасность и производительность
+
+Helmet-заголовки, rate-limit, валидация входа.
+
+CORS «по умолчанию» для dev и популярных облаков (Render/Vercel/Netlify).
+
+PWA (опционально), lazy-loading PDF-движка.
+
+🏗 Технологии
+
+Frontend
+
+React 18, Vite, Tailwind, React Router, @react-pdf/renderer, lucide-react.
+
+Backend (BFF)
+
+Node.js 18+, Express, Helmet, express-rate-limit, CORS, Morgan/логирование.
+
+AI & APIs
+
+OpenRouter (DeepSeek R1/V3, Gemma 3 12B — через модельную переменную).
+
+HeadHunter API (поиск / areas / OAuth — при необходимости).
+
+🧭 Архитектура короче
+Frontend (Vite, :5173 dev / :4173 preview)
+   └── REST → BFF (Express, :3001 локально или PORT в проде)
+         ├── /api/hh/*        → HH API (прокси, честные статусы/ошибки)
+         ├── /api/recommendations/*  → рекомендации (рынок + LLM)
+         └── /api/ai/infer-search    → простая эвристика запроса по профилю
+
+📦 Установка (локально)
+1) Требования
+node >= 18.18
+npm  >= 9
+
+2) Клонировать и установить
+git clone https://github.com/your-organization/ai-resume-builder.git
 cd ai-resume-builder
-```
-
-### 2. Install Dependencies
-```bash
 npm install
-```
 
-### 3. Environment Setup
-```bash
-cp .env.example .env.production
-```
+3) Настроить окружение
 
-Edit `.env.production` with your credentials:
-```env
-# OpenRouter API Key (required)
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
+Создайте .env (или используйте .env.example как основу):
 
-# HeadHunter OAuth (optional)
+Frontend (Vite)
+
+VITE_APP_NAME=AI Resume Builder
+VITE_API_URL=http://localhost:3001
+VITE_API_PREFIX=/api
+VITE_USE_MOCKS=false
+VITE_API_TIMEOUT_MS=12000
+VITE_AREAS_TTL_MS=21600000
+
+
+Server (BFF)
+
+NODE_ENV=development
+PORT=3001
+
+# Разрешенные фронты (через CORS)
+FRONT_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173
+
+# Куда возвращать после OAuth (если используете HH OAuth)
+FRONT_REDIRECT_URL=http://localhost:5173/?page=home&auth=ok
+
+# HeadHunter
+HH_HOST=hh.kz
+HH_OAUTH_HOST=https://hh.kz
 HH_CLIENT_ID=your-hh-client-id
 HH_CLIENT_SECRET=your-hh-client-secret
+HH_REDIRECT_URI=http://localhost:3001/api/auth/hh/callback
+HH_USER_AGENT=AI Resume Builder/1.0 (you@domain)
 
-# Public URL
-PUBLIC_URL=https://your-domain.com
-```
+# Cookies
+COOKIE_DOMAIN=
+COOKIE_SECURE=false
 
-### 4. Development Mode
-```bash
-# Start both frontend and backend
+# OpenRouter / LLM
+OPENROUTER_API_KEY=sk-or-v1-***
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=deepseek/deepseek-r1:free   # или google/gemma-3-12b-it:free
+OPENROUTER_REFERER=http://localhost:5173
+OPENROUTER_TITLE=AI Resume Builder
+
+# Рекомендации — флаги и параметры (опционально, разумные дефолты на сервере)
+RECS_USE_MARKET=1
+RECS_USE_LLM=1
+RECS_LLM_COMPLEX=0
+RECS_DEBUG=0
+RECS_MAX_ROLES=5
+RECS_SAMPLE_PAGES=2
+RECS_PER_PAGE=50
+RECS_VACANCY_SAMPLE_PER_ROLE=30
+RECS_CACHE_TTL_MS=180000
+RECS_DETAIL_CONCURRENCY=6
+RECS_FETCH_TIMEOUT_MS=15000
+
+4) Запуск в разработке
+# фронт + бэкенд вместе
 npm run dev:all
 
-# Or separately:
-npm run dev      # Frontend only (port 5173)
-npm run server   # Backend only (port 8787)
-```
+# или по отдельности
+npm run dev         # Vite (5173)
+npm run server:dev  # Express (3001)
 
-### 5. Production Build
-```bash
-npm run build
-npm start
-```
 
----
+Откройте http://localhost:5173.
 
-## 🚀 Deployment
+🔧 Скрипты
+// из package.json (верхний уровень)
+{
+  "scripts": {
+    "dev": "vite",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
+    "build": "vite build",
+    "preview": "vite preview",         // :4173
+    "start": "concurrently \"npm run server:start\" \"npm run preview\"",
+    "server:dev": "npm --prefix server run start:dev",
+    "server:start": "npm --prefix server run start"
+  }
+}
 
-### GitHub Pages (Recommended)
-1. **Enable GitHub Pages** in repository settings
-2. **Set base path** in `vite.config.js`:
-   ```js
-   base: '/ai-resume-builder/'
-   ```
-3. **Push to main branch** - automatic deployment via GitHub Actions
+🌐 Эндпойнты BFF (основные)
 
-### Docker
-```bash
-# Build image
+Здоровье/версия
+
+GET /health
+GET /healthz
+GET /alive
+GET /ready
+GET /version
+GET /api/health/hh
+
+
+Эвристика поиска
+
+POST /api/ai/infer-search
+body: { profile: {...} }
+
+
+HeadHunter (честная прокся поиска)
+
+GET /api/hh/jobs/search?text=developer&area=160&per_page=20&page=0
+# Заголовок X-Source-HH-URL возвращает исходный HH URL для дебага
+
+
+Рекомендации
+
+POST /api/recommendations/generate
+  body: { profile, areaId?, focusRole?, seedSkills?[] }
+  resp: { ok, data: { marketFitScore, roles[], growSkills[], courses[], debug }, used, timingsMs }
+
+POST /api/recommendations/analyze
+  body: { profile, areaId?, focusRole?, seedSkills?[] }
+  resp: { marketFitScore, roles[], growSkills[], courses[], debug }
+
+POST /api/recommendations/improve
+  body: { profile }
+  resp: { ok, updated, changes, llm? }
+
+🧠 Как используются модели DeepSeek и Gemma
+
+DeepSeek (R1/V3) — «тяжёлая» модель для сложных выводов:
+
+усиливает рыночный анализ (по HH) генеративными рекомендациями,
+
+формирует skillsToLearn, улучшенные формулировки и общую оценку соответствия.
+
+Gemma 3 12B — «лёгкая» модель для быстрых текстовых задач:
+
+переформулировка summary, короткие советы, подсказки в мастере.
+
+Выбор модели — через OPENROUTER_MODEL. Глубину и факт использования LLM регулируют RECS_USE_LLM, RECS_LLM_COMPLEX.
+Поиск вакансий всегда делает HeadHunter API (LLM сюда не вмешивается).
+
+🚀 Развёртывание
+Вариант A — Render (рекомендуем для демо)
+
+BFF (Backend)
+
+Создайте веб-сервис из папки server (Node 18).
+
+В Environment добавьте переменные из блока «Server (BFF)».
+
+Установите PORT (например, 10000) — Render сам подставит переменную для процесса.
+
+Команда запуска: npm start (внутри server — node index.js).
+
+Frontend
+
+Создайте статическое приложение из корня репозитория:
+
+npm run build в Build Command,
+
+dist как Publish Directory.
+
+В Environment укажите:
+
+VITE_API_URL=https://<ваш-bff>.onrender.com,
+
+VITE_API_PREFIX=/api,
+
+другие VITE_* по необходимости.
+
+После деплоя проверьте CORS: добавьте домен фронта в FRONT_ORIGINS на BFF.
+
+OAuth HH (опционально)
+
+В настройках HH-приложения укажите Redirect URI:
+https://<ваш-bff>.onrender.com/api/auth/hh/callback
+И продублируйте его в HH_REDIRECT_URI на BFF.
+
+Вариант B — Docker (единый хост)
+# Сборка образа
 docker build -t ai-resume-builder .
 
-# Run container
-docker run -p 8787:8787 \
-  -e OPENROUTER_API_KEY=your-key \
-  ai-resume-builder
-```
+# Запуск BFF
+docker run -d --name airesume-bff -p 3001:3001 \
+  -e NODE_ENV=production \
+  -e PORT=3001 \
+  -e FRONT_ORIGINS=https://your-frontend.example \
+  -e OPENROUTER_API_KEY=sk-or-v1-*** \
+  ... \
+  your-bff-image
 
-### Heroku
-```bash
-heroku create ai-resume-builder
-heroku config:set OPENROUTER_API_KEY=your-key
-git push heroku main
-```
+# Фронтенд как статику можно отдать через NGINX/кастомный контейнер
 
-### Vercel
-```bash
-npm i -g vercel
-vercel --prod
-```
+Вариант C — Vercel / Netlify + любой BFF
 
----
+Деплой фронта → переменная VITE_API_URL указывает на внешний BFF.
 
-## 🔧 Configuration
+На BFF добавьте домены фронта в FRONT_ORIGINS.
 
-### Environment Variables
+🧪 Smoke-тесты (полезно после деплоя)
+# Проверка BFF здоровья
+curl -i https://<bff>/health
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OPENROUTER_API_KEY` | ✅ Yes | OpenRouter API key for AI features |
-| `HH_CLIENT_ID` | ❌ No | HeadHunter OAuth client ID |
-| `HH_CLIENT_SECRET` | ❌ No | HeadHunter OAuth secret |
-| `PUBLIC_URL` | ✅ Yes | Your app's public URL |
-| `ALLOWED_ORIGINS` | ❌ No | CORS allowed origins (comma-separated) |
-| `PORT` | ❌ No | Server port (default: 8787) |
-| `NODE_ENV` | ❌ No | Environment (development/production) |
-| `GA_MEASUREMENT_ID` | ❌ No | Google Analytics ID |
-| `SENTRY_DSN` | ❌ No | Sentry error tracking DSN |
+# Проверка HH статуса через BFF
+curl -i https://<bff>/api/health/hh
 
-### Feature Flags
-```env
-ENABLE_AI_RECOMMENDATIONS=true
-ENABLE_HH_INTEGRATION=true
-ENABLE_PDF_EXPORT=true
-ENABLE_ANALYTICS=true
-```
+# Поиск вакансий (должен вернуть JSON HH с items[])
+curl -s 'https://<bff>/api/hh/jobs/search?text=developer&per_page=5' | jq .
 
----
+# Генерация рекомендаций (минимальный профиль)
+curl -s -X POST https://<bff>/api/recommendations/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"profile":{"position":"Frontend Developer","skills":["JavaScript","React","CSS"]}}' | jq .
 
-## 📚 API Documentation
+⚙️ Переменные окружения (сводно)
+Ключ  Где Обязательно Назначение
+VITE_APP_NAME Front нет Название приложения
+VITE_API_URL  Front да  Базовый URL BFF
+VITE_API_PREFIX Front да  Префикс API (/api)
+VITE_USE_MOCKS  Front нет Моки фронта
+VITE_API_TIMEOUT_MS Front нет Таймаут API
+VITE_AREAS_TTL_MS Front нет TTL кеша справочников
+NODE_ENV  BFF да  development / production
+PORT  BFF да  Порт BFF (локально 3001)
+FRONT_ORIGINS BFF да (прод) CORS-белый список (через запятую)
+FRONT_REDIRECT_URL  BFF нет Куда возвращать после OAuth
+HH_HOST BFF да  hh.kz или hh.ru (для валюты/ссылок)
+HH_OAUTH_HOST BFF нет OAuth-хост HH
+HH_CLIENT_ID/HH_CLIENT_SECRET BFF нет OAuth клиента HH
+HH_REDIRECT_URI BFF нет CallBack URI
+HH_USER_AGENT BFF да  «Честный» UA (дублируется в HH-User-Agent)
+COOKIE_DOMAIN/COOKIE_SECURE BFF нет Куки
+OPENROUTER_API_KEY  BFF да (если LLM) Ключ OpenRouter
+OPENROUTER_MODEL  BFF нет deepseek/deepseek-r1:free или google/gemma-3-12b-it:free
+OPENROUTER_BASE_URL/REFERER/TITLE BFF нет Служебные поля OpenRouter
+RECS_*  BFF нет Тюнинг рекомендательного движка
+🔒 Рекомендации по безопасности
 
-### Backend Endpoints
+В проде включите HTTPS, COOKIE_SECURE=true.
 
-#### Health Check
-```http
-GET /health
-```
-Returns server health status and service availability.
+Установите корректный HH_USER_AGENT (реальный, с контактом), иначе HH может ограничивать.
 
-#### AI Chat
-```http
-POST /api/ai/chat
-Content-Type: application/json
+Регулярно ротируйте OPENROUTER_API_KEY.
 
-{
-  "messages": [
-    { "role": "system", "content": "You are a career advisor" },
-    { "role": "user", "content": "Help me improve my resume" }
-  ],
-  "complexity": "auto",
-  "temperature": 0.3
-}
-```
+Следите за логами rate-limit и 429/5xx от HH (BFF не скрывает ошибки — проверяйте).
 
-#### Job Search
-```http
-GET /api/jobs/search?text=developer&experience=junior&salary=200000&page=0
-```
+🐛 Частые проблемы
 
-#### HeadHunter OAuth
-```http
-GET /api/auth/hh/start
-GET /api/auth/hh/callback?code=...&state=...
-```
+Вакансии «не появляются», пока не тронешь фильтр
 
----
+Проверьте, что фронт идёт на ваш BFF (VITE_API_URL) и CORS позволяет домен фронта (FRONT_ORIGINS).
 
-## 🧪 Testing
+Посмотрите заголовок ответа X-Source-HH-URL — попробуйте открыть эту ссылку прямо в браузере.
 
-```bash
-# Run tests
-npm test
+Если 403/429/5xx — проблема на стороне HH (ограничения/таймаут). Увеличьте RECS_FETCH_TIMEOUT_MS, уменьшите RECS_PER_PAGE.
 
-# Run tests with UI
-npm run test:ui
+LLM не отвечает
 
-# Generate coverage report
-npm run test:coverage
-```
+Проверьте OPENROUTER_API_KEY и OPENROUTER_MODEL.
 
----
+На время диагностики установите RECS_USE_LLM=0 — движок будет работать только по рынку HH.
 
-## 🎨 Customization
+OAuth HH не проходит
 
-### Templates
-Add custom resume templates in `src/components/ResumePDF.jsx`:
-```jsx
-const templates = {
-  custom: {
-    name: 'My Template',
-    color: 'indigo',
-    // ... template config
-  }
-};
-```
+Убедитесь, что HH_REDIRECT_URI совпадает в HH-настройках и на BFF.
 
-### Styling
-Modify Tailwind config in `tailwind.config.js`:
-```js
-theme: {
-  extend: {
-    colors: {
-      primary: '#your-color'
-    }
-  }
-}
-```
+Проверьте домен фронта и куки-политику (COOKIE_SECURE на проде).
 
----
+📁 Структура (вкратце)
+ai-resume-builder/
+├─ server/                # BFF (Express, CommonJS)
+│  ├─ index.js            # запуск, CORS, health, inline /api/hh/jobs/search
+│  └─ routes/
+│     ├─ hh.js            # areas, search (минималистичная прокся)
+│     └─ recommendations.js# рынок+LLM, анализ, improve
+├─ src/                   # React-клиент
+│  ├─ components/         # UI, PDF, мастер резюме
+│  ├─ hooks/, services/   # API-клиенты, i18n-утилиты
+│  └─ locales/            # словари RU/KZ/EN (при необходимости)
+└─ .env(.example)         # примеры настроек
 
-## 📊 Performance
-
-### Bundle Size
-- **Initial**: ~150KB gzipped
-- **Vendor (React)**: ~45KB gzipped
-- **PDF Renderer**: Lazy loaded on demand
-- **Total (loaded)**: ~200KB gzipped
-
-### Lighthouse Score
-- **Performance**: 95+
-- **Accessibility**: 100
-- **Best Practices**: 100
-- **SEO**: 100
-
-### Core Web Vitals
-- **LCP**: < 2.5s
-- **FID**: < 100ms
-- **CLS**: < 0.1
-
----
-
-## 🔒 Security
-
-### Implemented Measures
-- ✅ Helmet.js security headers
-- ✅ Rate limiting (100 req/15min, 10 AI req/min)
-- ✅ Input validation (express-validator)
-- ✅ CSRF protection in OAuth
-- ✅ Secure cookies (httpOnly, secure in prod)
-- ✅ No localStorage for sensitive data
-- ✅ Content Security Policy
-
-### Security Checklist
-- [ ] Enable HTTPS (required for production)
-- [ ] Rotate API keys regularly
-- [ ] Monitor rate limit violations
-- [ ] Set up error tracking (Sentry)
-- [ ] Enable security headers
-- [ ] Regular dependency updates
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. AI Recommendations not working**
-```bash
-# Check API key
-echo $OPENROUTER_API_KEY
-
-# Test API endpoint
-curl -X POST http://localhost:8787/api/ai/chat \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"test"}]}'
-```
-
-**2. HeadHunter OAuth fails**
-- Verify redirect URI matches HH app settings
-- Check client ID and secret
-- Ensure cookies are enabled
-
-**3. PDF Export not working**
-- Clear browser cache
-- Check console for @react-pdf errors
-- Verify profile data is complete
-
-**4. Build fails**
-```bash
-# Clear cache and reinstall
-rm -rf node_modules package-lock.json
-npm install
-npm run build
-```
-
----
-
-## 📈 Monitoring
-
-### Metrics to Track
-- API response times
-- AI request success rate
-- PDF generation success rate
-- User session duration
-- Conversion rate (resume downloads)
-
-### Recommended Tools
-- **Google Analytics** - User behavior
-- **Sentry** - Error tracking
-- **Uptime Robot** - Availability monitoring
-- **Lighthouse CI** - Performance tracking
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Code Style
-```bash
+🧹 Качество кода
+# Линт/фиксы (если настроено)
 npm run lint:fix
-```
 
----
+📄 Лицензия
 
-## 📄 License
+MIT — см. LICENSE.
 
-MIT License - see [LICENSE](LICENSE) file for details.
+🙌 Поддержка
 
----
+Issues в репозитории.
 
-## 🙏 Acknowledgments
+Оперативные вопросы — владелец проекта/команда.
 
-- **OpenRouter** - AI model API
-- **HeadHunter** - Job search API
-- **React PDF** - PDF generation
-- **Tailwind CSS** - Styling framework
-- **Lucide** - Icon library
-
----
-
-## 📞 Support
-
-- **Documentation**: [https://github.com/your-username/ai-resume-builder/wiki](https://github.com/your-username/ai-resume-builder/wiki)
-- **Issues**: [GitHub Issues](https://github.com/your-username/ai-resume-builder/issues)
-- **Email**: support@airesume.com
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Multi-language support (EN, KZ, RU)
-- [ ] More resume templates
-- [ ] Cover letter generator
-- [ ] LinkedIn integration
-- [ ] Mobile app (React Native)
-- [ ] Resume analytics dashboard
-- [ ] Interview preparation tips
-- [ ] Salary insights
-
----
-
-**Made with ❤️ by [Your Name](https://github.com/your-username)**
+Made with ❤️ for better careers
