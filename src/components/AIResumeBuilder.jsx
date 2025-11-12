@@ -199,21 +199,21 @@ function profileSignature(p = {}) {
 
   const exp = Array.isArray(p.experience)
     ? p.experience.slice(0, 6).map(e => ({
-        t: norm(e.title || e.position),
-        c: norm(e.company),
-        s: norm(e.start || e.from || e.dateStart || e.date_from),
-        e: norm(e.end || e.to || e.dateEnd || e.date_to),
-        d: norm(e.description),
-      }))
+      t: norm(e.title || e.position),
+      c: norm(e.company),
+      s: norm(e.start || e.from || e.dateStart || e.date_from),
+      e: norm(e.end || e.to || e.dateEnd || e.date_to),
+      d: norm(e.description),
+    }))
     : [];
 
   const edu = Array.isArray(p.education)
     ? p.education.slice(0, 6).map(e => ({
-        i: norm(e.institution || e.school || e.university),
-        d: norm(e.degree),
-        m: norm(e.major || e.speciality || e.specialization),
-        y: String(e.year || e.graduationYear || '').trim(),
-      }))
+      i: norm(e.institution || e.school || e.university),
+      d: norm(e.degree),
+      m: norm(e.major || e.speciality || e.specialization),
+      y: String(e.year || e.graduationYear || '').trim(),
+    }))
     : [];
 
   return JSON.stringify({ role, summary, location, skills, exp, edu });
@@ -286,6 +286,165 @@ function missingProfileSections(p = {}, t) {
   if (!(normalizeText(p.summary).length >= 20)) miss.push(t('builder.personal.summary'));
   return miss;
 }
+
+/* ===================== Фоллбэк-эвристики для AI-рекомендаций ===================== */
+
+/** Простейшая карта смежных навыков по частым профилям */
+const SKILL_EXPAND_MAP = {
+  // Frontend
+  'javascript': ['TypeScript', 'ES6+', 'Async/Await', 'Webpack', 'Vite', 'Jest', 'Testing Library'],
+  'typescript': ['React', 'Next.js', 'Zustand', 'Redux', 'Jest', 'Playwright'],
+  'react': ['Next.js', 'React Router', 'Redux Toolkit', 'Zustand', 'RTK Query', 'React Query', 'Jest'],
+  'redux': ['Redux Toolkit', 'RTK Query', 'Immer'],
+  'html': ['Accessibility (a11y)', 'Semantic HTML', 'SEO Basics'],
+  'css': ['TailwindCSS', 'Sass/SCSS', 'PostCSS', 'Responsive Design'],
+  'tailwindcss': ['Headless UI', 'Radix UI'],
+  // Backend / general
+  'node.js': ['Express', 'NestJS', 'Prisma', 'PostgreSQL', 'Redis', 'Docker'],
+  'python': ['Pandas', 'NumPy', 'FastAPI', 'SQLAlchemy'],
+  'sql': ['PostgreSQL', 'Indexes', 'Query Optimization'],
+  // Data / analytics
+  'power bi': ['DAX', 'Power Query', 'Data Modeling'],
+  'excel': ['Advanced formulas', 'Power Query', 'VBA basics'],
+  'python (data)': ['Pandas', 'Matplotlib', 'Seaborn', 'Scikit-learn'],
+  // Design
+  'figma': ['Design Systems', 'Auto Layout', 'Prototyping', 'UX Research Basics'],
+};
+
+/** Упрощённая роль из профиля → список релевантных ролей */
+function localRolesFromProfile(profile) {
+  const roleTxt = (deriveDesiredRole(profile) || '').toLowerCase();
+  const s = extractSkills(profile);
+  const has = (x) => s.includes(x.toLowerCase()) || roleTxt.includes(x.toLowerCase());
+  const out = new Set();
+
+  if (has('react') || has('frontend') || has('javascript')) {
+    out.add('Frontend Developer');
+    out.add('React Developer');
+    out.add('JavaScript Developer');
+  }
+  if (has('typescript')) out.add('TypeScript Developer');
+  if (has('node') || has('node.js')) {
+    out.add('Node.js Developer');
+    out.add('Full-Stack Developer');
+  }
+  if (has('python') || has('sql') || has('power bi') || has('excel')) {
+    out.add('Data Analyst');
+  }
+  if (has('figma') || has('ui') || has('ux') || roleTxt.includes('дизайн')) {
+    out.add('UI/UX Designer');
+  }
+
+  // если ничего не определили — используем deriveDesiredRole
+  const seed = deriveDesiredRole(profile);
+  if (out.size === 0 && seed) out.add(seed);
+
+  return Array.from(out).slice(0, 6);
+}
+
+/** Расширение навыков по базовым seed-скиллам */
+function localGapFrom(profile) {
+  const have = new Set(extractSkills(profile)); // в нижнем регистре
+  const seed = Array.from(have);
+  const acc = new Set();
+
+  seed.forEach((sk) => {
+    // прямые совпадения ключей
+    const m = SKILL_EXPAND_MAP[sk] || SKILL_EXPAND_MAP[sk.replace(/\s+/g, '')] || [];
+    m.forEach((x) => acc.add(String(x).trim()));
+    // простые эвристики по частотным веткам
+    if (/react/.test(sk)) {
+      ['Next.js', 'Redux Toolkit', 'RTK Query', 'React Query', 'Jest', 'Playwright'].forEach((x) => acc.add(x));
+    }
+    if (sk === 'javascript' || sk === 'js') {
+      ['TypeScript', 'ES6+', 'Async/Await', 'Webpack', 'Vite'].forEach((x) => acc.add(x));
+    }
+    if (sk === 'css') ['TailwindCSS', 'Responsive Design', 'Sass/SCSS'].forEach((x) => acc.add(x));
+  });
+
+  // отфильтруем то, что уже есть
+  const out = Array.from(acc).filter((x) => !have.has(x.toLowerCase()));
+  return uniq(out).slice(0, 16);
+}
+
+/** Примитивный подбор курсов по навыку — линк на поиск Coursera/Udemy/Stepik */
+function courseSearchLinks(skill) {
+  const q = encodeURIComponent(skill);
+  return [
+    { provider: 'Coursera', title: skill, url: `https://www.coursera.org/search?query=${q}` },
+    { provider: 'Udemy', title: skill, url: `https://www.udemy.com/courses/search/?q=${q}` },
+    { provider: 'Stepik', title: skill, url: `https://stepik.org/search?query=${q}` },
+  ];
+}
+
+/** Собираем локальные курсы под набор навыков, режем до 10, дедупим по url */
+function localCourseLinks(skills = []) {
+  const acc = [];
+  const seen = new Set();
+  skills.slice(0, 8).forEach((s) => {
+    courseSearchLinks(s).forEach((c) => {
+      const key = c.url;
+      if (!seen.has(key)) {
+        seen.add(key);
+        acc.push({
+          name: `${c.provider} — ${c.title}`,
+          duration: '',
+          url: c.url,
+        });
+      }
+    });
+  });
+  return acc.slice(0, 10);
+}
+
+/** Нормализация ответа ИИ к единому контракту UI */
+function normalizeAIRecs(recRaw) {
+  if (!recRaw) return null;
+
+  let professions = (recRaw?.roles || recRaw?.professions || [])
+    .map((r) => (typeof r === 'string' ? r : (r?.title || '')))
+    .filter(Boolean);
+
+  // ⬇️ главное исправление: берём именно growSkills
+  let skillsToLearn = (recRaw?.growSkills || recRaw?.skillsToGrow || recRaw?.skillsToLearn || [])
+    .map((s) => (typeof s === 'string' ? s : (s?.name || '')))
+    .filter(Boolean);
+
+  let courses = (recRaw?.courses || []).map((c) => ({
+    name: [c?.provider, c?.title].filter(Boolean).join(' — '),
+    duration: c?.duration || '',
+    url: c?.url || c?.link || ''
+  })).filter(c => c.name);
+
+  professions = uniq(professions).slice(0, 6);
+  skillsToLearn = uniq(skillsToLearn).slice(0, 16);
+  // дедуп по url/имени
+  const seenUrl = new Set();
+  courses = courses.filter((c) => {
+    const key = c.url || c.name;
+    if (!key || seenUrl.has(key)) return false;
+    seenUrl.add(key);
+    return true;
+  }).slice(0, 10);
+
+  const matchScore = Number(recRaw?.marketFitScore ?? recRaw?.marketScore);
+  return {
+    professions,
+    skillsToLearn,
+    courses,
+    matchScore: Number.isFinite(matchScore) ? Math.max(0, Math.min(100, matchScore)) : undefined,
+    debug: recRaw?.debug || {}
+  };
+}
+
+const isTooNarrow = (r) => {
+  if (!r) return true;
+  const roles = Array.isArray(r.professions) ? r.professions.length : 0;
+  const skills = Array.isArray(r.skillsToLearn) ? r.skillsToLearn.length : 0;
+  const crs = Array.isArray(r.courses) ? r.courses.length : 0;
+  // узким считаем ответ, где ролей <3 или навыков <5 или курсов <3
+  return roles < 3 || skills < 5 || crs < 3;
+};
 
 /* ===================== Выбор города (только KZ) ===================== */
 function CitySelect({ value, onChange }) {
@@ -473,48 +632,11 @@ function AIResumeBuilder() {
   ]), [t]);
 
   // === AI-FIRST рекомендации без треков/пресетов ===
-  const normalizeAIRecs = useCallback((recRaw) => {
-    if (!recRaw) return null;
-
-    let professions = (recRaw?.roles || recRaw?.professions || [])
-      .map((r) => (typeof r === 'string' ? r : (r?.title || '')))
-      .filter(Boolean);
-
-    let skillsToLearn = (recRaw?.growSkills || recRaw?.skillsToGrow || [])
-      .map((s) => (typeof s === 'string' ? s : (s?.name || '')))
-      .filter(Boolean);
-
-    let courses = (recRaw?.courses || []).map((c) => ({
-      name: [c?.provider, c?.title].filter(Boolean).join(' — '),
-      duration: c?.duration || '',
-      url: c?.url || c?.link || ''
-    })).filter(c => c.name);
-
-    professions = uniq(professions).slice(0, 6);
-    skillsToLearn = uniq(skillsToLearn).slice(0, 10);
-    courses = courses.slice(0, 10);
-
-    const matchScore = Number(recRaw?.marketFitScore ?? recRaw?.marketScore);
-    return {
-      professions,
-      skillsToLearn,
-      courses,
-      matchScore: Number.isFinite(matchScore) ? Math.max(0, Math.min(100, matchScore)) : undefined,
-      debug: recRaw?.debug || {}
-    };
-  }, []);
-
-  const isTooNarrow = (r) => {
-    if (!r) return true;
-    const roles = Array.isArray(r.professions) ? r.professions.length : 0;
-    const skills = Array.isArray(r.skillsToLearn) ? r.skillsToLearn.length : 0;
-    const crs = Array.isArray(r.courses) ? r.courses.length : 0;
-    // узким считаем ответ, где ролей <3 или навыков <5 или курсов <3
-    return roles < 3 || skills < 5 || crs < 3;
-  };
+  // (normalizeAIRecs и isTooNarrow перенесены выше в единый блок)
 
   const generateRecommendations = async () => {
-    if (!hasProfileForRecs(profile)) {
+    const profileOk = hasProfileForRecs(profile);
+    if (!profileOk) {
       setRecommendations(null);
       setIsGenerating(false);
       return;
@@ -534,7 +656,7 @@ function AIResumeBuilder() {
         sig: profileSignature(profile),        // ⬅️ sig вместо signature
         lang: langCode,
         // мягкие подсказки для промпта на бэке (если поддерживается)
-        expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
+        expand: { minRoles: 6, minSkills: 12, minCourses: 10 },
         meta: { diversify: true, avoidNarrow: true }
       });
 
@@ -550,7 +672,7 @@ function AIResumeBuilder() {
             lang: langCode,
             focusRole: seed?.role || '',
             seedSkills: Array.isArray(seed?.skills) ? seed.skills.slice(0, 12) : [],
-            expand: { minRoles: 6, minSkills: 10, minCourses: 10 },
+            expand: { minRoles: 6, minSkills: 12, minCourses: 10 },
             meta: { diversify: true, avoidNarrow: true, seeded: true }
           });
           const seeded = normalizeAIRecs(seededRaw);
@@ -562,34 +684,66 @@ function AIResumeBuilder() {
         }
       }
 
-      // 3) Финал: если всё ещё бедно или пусто — без выдумок, только локальный фолбэк
+      // 3) Локальная нормализация и дополнение, если ИИ всё ещё узко
+      const haveSkills = extractSkills(profile); // нижний регистр
+      const filterOutExisting = (arr) =>
+        uniq(arr).filter((x) => !haveSkills.includes(String(x).toLowerCase()));
+
       if (!rec || isTooNarrow(rec)) {
-        const seedRole = deriveDesiredRole(profile);
-        const seedSkills = extractSkills(profile).slice(0, 10);
+        // локальный фоллбэк БЕЗ выдумывания: роли из профиля + gap и курсы
+        const roles = localRolesFromProfile(profile);
+        const gap = localGapFrom(profile);
+        const gapFiltered = filterOutExisting(gap).slice(0, 12);
+        const courses = localCourseLinks(gapFiltered);
+
         rec = {
-          professions: seedRole ? [seedRole] : [],
-          skillsToLearn: seedSkills,
-          courses: [],
+          professions: roles,
+          skillsToLearn: gapFiltered,
+          courses,
           matchScore: computeMarketFit(profile),
-          debug: { fallback: 'profile-seed', ai: false }
+          debug: { fallback: 'local-gap', ai: false }
         };
       } else {
-        if (!Number.isFinite(rec.matchScore)) {
-          rec.matchScore = computeMarketFit(profile);
+        // если у ИИ уже что-то есть — подчистим и усилим локально
+        const addedGap = localGapFrom(profile);
+        const mergedSkills = filterOutExisting([...(rec.skillsToLearn || []), ...addedGap]).slice(0, 16);
+
+        // курсы: оставим ИИ-курсы, но если их мало — догенерим локальными ссылками
+        let courses = Array.isArray(rec.courses) ? rec.courses : [];
+        if (courses.length < 3) {
+          const localMore = localCourseLinks(mergedSkills);
+          const seen = new Set(courses.map((c) => c.url || c.name));
+          localMore.forEach((c) => {
+            const key = c.url || c.name;
+            if (!seen.has(key)) { seen.add(key); courses.push(c); }
+          });
         }
+        courses = courses.slice(0, 10);
+
+        rec = {
+          professions: uniq([...(rec.professions || []), ...localRolesFromProfile(profile)]).slice(0, 6),
+          skillsToLearn: mergedSkills,
+          courses,
+          matchScore: Number.isFinite(rec.matchScore) ? rec.matchScore : computeMarketFit(profile),
+          debug: { ...(rec.debug || {}), patched: 'local-augment' }
+        };
       }
 
       setRecommendations(rec);
     } catch {
-      // Сервис ИИ недоступен: показываем только то, что реально есть в профиле (без домыслов)
-      const seedRole = deriveDesiredRole(profile);
-      const seedSkills = extractSkills(profile).slice(0, 10);
+      // Сервис ИИ недоступен: показываем локальный фоллбэк, а не «свои же» навыки
+      const roles = localRolesFromProfile(profile);
+      const gap = localGapFrom(profile);
+      const haveSkills = extractSkills(profile);
+      const skillsToLearn = uniq(gap).filter((x) => !haveSkills.includes(x.toLowerCase())).slice(0, 12);
+      const courses = localCourseLinks(skillsToLearn);
+
       setRecommendations({
-        professions: seedRole ? [seedRole] : [],
-        skillsToLearn: seedSkills,
-        courses: [],
+        professions: roles,
+        skillsToLearn,
+        courses,
         matchScore: computeMarketFit(profile),
-        debug: { error: 'ai-service-error', fallback: 'profile-seed' }
+        debug: { error: 'ai-service-error', fallback: 'local-gap' }
       });
     } finally {
       setIsGenerating(false);
@@ -712,7 +866,7 @@ function AIResumeBuilder() {
             {/* Контакты — вместо ссылок/колонок */}
             <div className="md:col-span-3">
               <h4 className="font-semibold mb-4">Контакты</h4>
-              <ul className="space-y-2 text-sm text-gray-300">
+              <ul className="space-y-2 text-sm text-gray-3 00">
                 <li className="flex items-start gap-2">
                   <MapPin className="mt-0.5" size={16} />
                   <div>
@@ -764,7 +918,7 @@ function HomePage({ onCreate, onFindJobs }) {
             <Sparkles size={16} />
             <span className="text-sm font-medium">{t('home.badge')}</span>
           </div>
-        <h1 className="text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">
             {t('home.titlePrefix')}{' '}
             <span className="text-blue-600">{t('home.titleAccent')}</span>
           </h1>
@@ -840,7 +994,7 @@ function RecommendationsPage({
   // выбранная (целевая) профессия — одно поле
   const [selectedProfession, setSelectedProfession] = React.useState(() => {
     const p = recommendations?.professions?.[0] || '';
-       return String(p || '').trim();
+    return String(p || '').trim();
   });
 
   React.useEffect(() => {
@@ -849,6 +1003,7 @@ function RecommendationsPage({
 
   // авто-обновление рекомендаций при изменении профиля (дебаунс)
   React.useEffect(() => {
+    if (!profileOk) return; // если мало данных — не дёргаем генерацию
     if (!isGenerating) generateRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSig, profileOk]);
@@ -1062,7 +1217,9 @@ function RecommendationsPage({
                         {t('recommendations.openCourse')}
                       </a>
                     ) : (
-                      <span className="text-xs text-gray-400">{notAvailable}</span>
+                      <span className="text-xs text-gray-400">
+                        {lang === 'kk' ? 'Қолжетімсіз' : lang === 'en' ? 'Unavailable' : 'Недоступно'}
+                      </span>
                     )}
                   </div>
                 ))}
@@ -1674,9 +1831,9 @@ function VacanciesPage({
               {loading
                 ? t('vacancies.loading')
                 : (<>
-                    {t('vacancies.found')}: <span className="font-semibold">{found}</span>
-                    {pages ? ` • ${t('vacancies.page')} ${page + 1} ${t('vacancies.of')} ${pages}` : ''}
-                  </>)}
+                  {t('vacancies.found')}: <span className="font-semibold">{found}</span>
+                  {pages ? ` • ${t('vacancies.page')} ${page + 1} ${t('vacancies.of')} ${pages}` : ''}
+                </>)}
             </div>
 
             <div className="flex items-center gap-2">

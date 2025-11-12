@@ -1,0 +1,97 @@
+{
+  "sql": [
+    { "provider": "Stepik", "title": "Интерактивный курс SQL с практикой", "duration": "3–6 нед", "url": "https://stepik.org/search?query=SQL" },
+    { "provider": "Coursera", "title": "SQL для анализа данных (специализация)", "duration": "1–3 мес", "url": "https://www.coursera.org/search?query=SQL" }
+  ],
+  "excel": [
+    { "provider": "Stepik", "title": "Excel: формулы, сводные, Power Query", "duration": "2–6 нед", "url": "https://stepik.org/search?query=Excel" },
+    { "provider": "Udemy", "title": "Практический Excel для аналитиков", "duration": "1–2 мес", "url": "https://www.udemy.com/courses/search/?q=Excel" }
+  ],
+  "power bi": [
+    { "provider": "Coursera", "title": "Power BI: визуализация и DAX", "duration": "1–2 мес", "url": "https://www.coursera.org/search?query=Power%20BI" },
+    { "provider": "Stepik", "title": "Power BI на русском", "duration": "2–6 нед", "url": "https://stepik.org/search?query=Power%20BI" }
+  ],
+  "tableau": [
+    { "provider": "Coursera", "title": "Tableau для анализа данных", "duration": "1–2 мес", "url": "https://www.coursera.org/search?query=Tableau" }
+  ],
+  "python": [
+    { "provider": "Stepik", "title": "Питон: основы программирования", "duration": "4–8 нед", "url": "https://stepik.org/search?query=Python" },
+    { "provider": "Coursera", "title": "Python for Everybody (спец.)", "duration": "2–4 мес", "url": "https://www.coursera.org/specializations/python" }
+  ],
+  "pandas": [
+    { "provider": "Coursera", "title": "Анализ данных в Python: Pandas", "duration": "3–6 нед", "url": "https://www.coursera.org/search?query=pandas" }
+  ],
+  "numpy": [
+    { "provider": "Coursera", "title": "NumPy: численные расчёты", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=numpy" }
+  ],
+  "mlflow": [
+    { "provider": "Udemy", "title": "MLflow и MLOps на практике", "duration": "2–4 нед", "url": "https://www.udemy.com/courses/search/?q=mlflow" }
+  ],
+  "airflow": [
+    { "provider": "Udemy", "title": "Apache Airflow: оркестрация пайплайнов", "duration": "2–6 нед", "url": "https://www.udemy.com/courses/search/?q=airflow" }
+  ],
+  "kafka": [
+    { "provider": "Coursera", "title": "Apache Kafka для разработчиков", "duration": "3–6 нед", "url": "https://www.coursera.org/search?query=Kafka" }
+  ],
+  "spark": [
+    { "provider": "Coursera", "title": "Big Data с Apache Spark", "duration": "1–3 мес", "url": "https://www.coursera.org/search?query=Apache%20Spark" }
+  ],
+  "react": [
+    { "provider": "Coursera", "title": "React: от основ к продакшену", "duration": "3–6 нед", "url": "https://www.coursera.org/search?query=React" },
+    { "provider": "Stepik", "title": "React + Hooks + Router", "duration": "2–6 нед", "url": "https://stepik.org/search?query=React" }
+  ],
+  "node": [
+    { "provider": "Udemy", "title": "Node.js, Express и REST API", "duration": "1–2 мес", "url": "https://www.udemy.com/courses/search/?q=node%20express" }
+  ],
+  "django": [
+    { "provider": "Coursera", "title": "Django веб-разработка", "duration": "3–6 нед", "url": "https://www.coursera.org/search?query=Django" }
+  ],
+  "fastapi": [
+    { "provider": "Udemy", "title": "FastAPI: быстрые бэкенды на Python", "duration": "2–4 нед", "url": "https://www.udemy.com/courses/search/?q=fastapi" }
+  ],
+  "docker": [
+    { "provider": "Coursera", "title": "Docker и контейнеризация", "duration": "2–6 нед", "url": "https://www.coursera.org/search?query=Docker" }
+  ],
+  "kubernetes": [
+    { "provider": "Coursera", "title": "Kubernetes: настройка и деплой", "duration": "3–6 нед", "url": "https://www.coursera.org/search?query=Kubernetes" }
+  ],
+  "terraform": [
+    { "provider": "Udemy", "title": "Terraform для DevOps", "duration": "2–6 нед", "url": "https://www.udemy.com/courses/search/?q=terraform" }
+  ],
+  "ansible": [
+    { "provider": "Udemy", "title": "Ansible: автоматизация инфраструктуры", "duration": "2–6 нед", "url": "https://www.udemy.com/courses/search/?q=ansible" }
+  ],
+  "selenium": [
+    { "provider": "Coursera", "title": "Selenium: тест-автоматизация", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=Selenium" }
+  ],
+  "cypress": [
+    { "provider": "Udemy", "title": "Cypress: E2E-тесты с нуля", "duration": "2–4 нед", "url": "https://www.udemy.com/courses/search/?q=cypress" }
+  ],
+  "bpmn": [
+    { "provider": "Coursera", "title": "BPMN 2.0: моделирование процессов", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=BPMN%202.0" }
+  ],
+  "graphql": [
+    { "provider": "Udemy", "title": "GraphQL на практике", "duration": "2–4 нед", "url": "https://www.udemy.com/courses/search/?q=graphql" }
+  ],
+  "accessibility": [
+    { "provider": "Coursera", "title": "Доступность веб-интерфейсов (A11y)", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=web%20accessibility" }
+  ],
+  "performance": [
+    { "provider": "Udemy", "title": "Оптимизация производительности фронтенда", "duration": "2–4 нед", "url": "https://www.udemy.com/courses/search/?q=frontend%20performance" }
+  ],
+  "communication": [
+    { "provider": "Coursera", "title": "Навыки деловой коммуникации", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=communication" }
+  ],
+  "presentation": [
+    { "provider": "Stepik", "title": "Презентации: структура и дизайн", "duration": "2–3 нед", "url": "https://stepik.org/search?query=presentation" }
+  ],
+  "agile": [
+    { "provider": "Coursera", "title": "Agile/Scrum: основы и практика", "duration": "2–4 нед", "url": "https://www.coursera.org/search?query=agile%20scrum" }
+  ],
+  "data analysis": [
+    { "provider": "Coursera", "title": "Введение в анализ данных", "duration": "1–2 мес", "url": "https://www.coursera.org/search?query=data%20analysis" }
+  ],
+  "digital marketing": [
+    { "provider": "Coursera", "title": "Цифровой маркетинг (спец.)", "duration": "1–3 мес", "url": "https://www.coursera.org/search?query=digital%20marketing" }
+  ]
+}

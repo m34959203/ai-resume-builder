@@ -1,3 +1,5 @@
+// src/services/bff.js
+
 /* eslint-disable no-console */
 
 /**
@@ -12,10 +14,11 @@
  *  - безопасная сборка query (без undefined/пустых)
  *  - корректные параметры поиска HH (валюта по host, salary, experience)
  *  - детальная диагностика запросов /hh/jobs/search (+ X-Source-HH-URL в логах)
- *  - X-No-Cache для обхода возможного SW/PWA-кэша
+ *  - X-No-Cache/Pragma для обхода возможного SW/PWA-кэша
  *  - устойчивые переводчики (batch + graceful fallback)
  *  - ✅ experience: отправляем только валидные HH-коды
  *  - ✅ поддержка optional-параметров HH: specialization, professional_role, employment, schedule, search_period, order_by
+ *  - ✅ единый контракт рекомендаций: roles/growSkills/courses (+ marketFitScore) на выходе fetchRecommendations()
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -161,7 +164,7 @@ async function parsePayload(res) {
  *  - timeoutMs?: number
  *  - noDedupe?: boolean (для GET)
  *  - cache?: RequestCache (по умолчанию 'no-store')
- *  - noCacheHeader?: boolean (не добавлять X-No-Cache)
+ *  - noCacheHeader?: boolean (не добавлять X-No-Cache/Pragma для jobs-search)
  */
 export async function safeFetchJSON(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
@@ -172,13 +175,14 @@ export async function safeFetchJSON(url, options = {}) {
     ...(options.headers || {}),
   };
 
-  // Для запросов к вакансиям принудительно пробиваем no-cache,
+  // Для запросов к вакансиям пробиваем no-cache,
   // чтобы исключить влияние SW/PWA runtime cache
   const normalizedUrl = makeApiUrl(url);
   const isJobsSearch = normalizedUrl.includes('/hh/jobs/search');
   if (isJobsSearch && !options.noCacheHeader) {
     headers['X-No-Cache'] = '1';
-    headers['Cache-Control'] = 'no-cache';
+    headers['Cache-Control'] = 'no-cache, no-store';
+    headers.Pragma = 'no-cache';
   }
 
   let body = options.body;
@@ -964,22 +968,29 @@ function marketFit(profile = {}) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-/** Универсальный нормализатор ответа рекомендаций для UI */
+/** Универсальный нормализатор ответа рекомендаций → единый контракт (roles/growSkills/courses) */
 function normalizeRecPayload(payload, profile) {
   const raw =
     payload && typeof payload === 'object'
       ? (payload.data && payload.ok !== undefined ? payload.data : payload)
       : {};
 
-  // роли
+  // роли (как объекты с title; если строки — оборачиваем)
   let roles = Array.isArray(raw.roles) ? raw.roles
            : Array.isArray(raw.professions) ? raw.professions
            : [];
   roles = roles
     .map(r => (typeof r === 'string' ? { title: r } : r))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(r => ({
+      title: r.title || r.name || '',
+      url: r.url || (r.title ? `https://hh.kz/search/vacancy?text=${encodeURIComponent(r.title)}` : ''),
+      hhQuery: r.hhQuery || r.title || '',
+      vacancies: Number.isFinite(+r.vacancies) ? +r.vacancies : undefined
+    }))
+    .filter(r => r.title);
 
-  // навыки для развития
+  // навыки для развития → массив объектов { name, ... }
   const growArr =
     (Array.isArray(raw.growSkills) ? raw.growSkills : null) ??
     (Array.isArray(raw.skillsToGrow) ? raw.skillsToGrow.map(n => ({ name: n })) : null) ??
@@ -999,16 +1010,26 @@ function normalizeRecPayload(payload, profile) {
     growSkills = localGrow.map((n) => ({ name: n, demand: 1, gap: true }));
   }
 
-  // курсы
+  // курсы → нормализуем { name, duration, url }
   let courses = Array.isArray(raw.courses) ? raw.courses
              : Array.isArray(raw.recommendedCourses) ? raw.recommendedCourses
              : Array.isArray(raw.courseRecommendations) ? raw.courseRecommendations
              : [];
-  courses = courses.map(c => (typeof c === 'string' ? { title: c, provider: '', url: c } : c));
+  courses = courses.map((c) => {
+    if (typeof c === 'string') return { name: c, duration: '', url: c };
+    const name = [c?.provider, c?.title].filter(Boolean).join(' — ') || c?.name || '';
+    const duration = c?.duration || '';
+    const url = c?.url || c?.link || '';
+    return name ? { name, duration, url } : null;
+  }).filter(Boolean);
 
   // если курсов нет — сгенерируем по GAP
   if (!courses.length && growSkills.length) {
-    courses = growSkills.slice(0, 3).flatMap((g) => localCourseLinks(String(g.name)));
+    courses = growSkills.slice(0, 3).flatMap((g) => localCourseLinks(String(g.name))).map((c) => ({
+      name: [c.provider, c.title].filter(Boolean).join(' — '),
+      duration: c.duration || '',
+      url: c.url || '',
+    }));
   }
 
   // оценка соответствия
@@ -1016,18 +1037,24 @@ function normalizeRecPayload(payload, profile) {
 
   // если не пришли роли — подскажем локально
   if (!roles.length) {
-    const localRoles = localGuessRoles(profile).map((r) => ({ title: r, vacancies: 0, hhQuery: r, url: `https://hh.kz/search/vacancy?text=${encodeURIComponent(r)}` }));
+    const localRoles = localGuessRoles(profile).map((r) => ({
+      title: r,
+      hhQuery: r,
+      url: `https://hh.kz/search/vacancy?text=${encodeURIComponent(r)}`
+    }));
     roles = localRoles;
   }
 
+  // окончательный контракт
   return {
-    marketFitScore: market,
-    marketScore: market,
-    roles,
+    marketFitScore: Number.isFinite(+market) ? Math.max(0, Math.min(100, Math.round(+market))) : marketFit(profile),
+    roles,                // объекты { title, url?, hhQuery?, vacancies? }
+    growSkills,           // объекты { name, ... }
+    courses,              // объекты { name, duration, url }
+    // поля-скидки для совместимости с старым UI
     professions: roles,
-    growSkills,
     skillsToGrow: growSkills.map(s => s.name),
-    courses,
+    skillsToLearn: growSkills.map(s => s.name),
     debug: raw.debug || {},
   };
 }
@@ -1062,6 +1089,7 @@ export async function fetchRecommendations(profile, opts = {}) {
       headers: { 'Content-Type': 'application/json' },
       body,
       noDedupe: true,
+      timeoutMs: opts.timeoutMs ?? API_TIMEOUT_MS,
     });
     return normalizeRecPayload(resp, profile);
   } catch (e1) {
@@ -1073,6 +1101,7 @@ export async function fetchRecommendations(profile, opts = {}) {
         headers: { 'Content-Type': 'application/json' },
         body,
         noDedupe: true,
+        timeoutMs: opts.timeoutMs ?? API_TIMEOUT_MS,
       });
       return normalizeRecPayload(resp, profile);
     } catch (e2) {

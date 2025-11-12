@@ -32,27 +32,62 @@ export const translations = {
       fillPrompt: 'Рекомендации появятся после анализа резюме',
       fillDescription: 'Заполните основные разделы — и мы подберём профессии, навыки и курсы. Начните с:',
       fillButton: 'Заполнить резюме',
-      viewVacancies: 'Посмотреть вакансии',
-      analyzing: 'Анализируем ваш профиль…',
-      marketScore: 'Оценка соответствия рынку',
-      matchScore: 'Оценка соответствия рынку',
-      professions: 'Рекомендуемые профессии',
-      suitableRole: 'Целевая профессия',
-      findVacancies: 'Найти вакансии',
-      skillsToLearn: 'Навыки для развития',
-      courses: 'Рекомендуемые курсы',
-      duration: 'Длительность',
-      details: 'Подробнее',
-      findVacanciesButton: 'Найти вакансии',
-      improveResume: 'Улучшить резюме',
-      needMoreData: 'Нужно немного больше данных',
-      missingSections: 'Отсутствуют разделы',
-      hint: 'Ниже — подборка направлений, навыков и курсов. Нажмите на профессию, чтобы сразу искать вакансии.',
+
+      // Основные действия
       generate: 'Сгенерировать рекомендации',
       generating: 'Генерируем рекомендации…',
-      openCourse: 'Открыть курс',
+      refresh: 'Обновить',
+      improveResume: 'Улучшить резюме',
+      viewVacancies: 'Посмотреть вакансии',
+      findVacanciesButton: 'Найти вакансии',
       searchVacancies: 'Искать вакансии по этой профессии',
-      aiEmpty: 'Пока нет рекомендаций'
+      openCourse: 'Открыть курс',
+
+      // Оценка и хинты
+      marketScore: 'Оценка соответствия рынку',
+      matchScore: 'Оценка соответствия рынку',
+      scoreHint: 'Это ориентировочная оценка по заполненности резюме и совпадению с рынком.',
+      scoreLow: 'низкая',
+      scoreMedium: 'средняя',
+      scoreHigh: 'высокая',
+      updatedAt: 'Обновлено {time}',
+
+      // Секции
+      professions: 'Рекомендуемые профессии',
+      rolesTitle: 'Рекомендуемые роли',
+      suitableRole: 'Целевая профессия',
+      skillsToLearn: 'Навыки для развития',
+      skillsTitle: 'Навыки для развития',
+      courses: 'Рекомендуемые курсы',
+      coursesTitle: 'Курсы для прокачки',
+      duration: 'Длительность',
+      details: 'Подробнее',
+      provider: 'Платформа',
+      visit: 'Перейти',
+      openInHH: 'Открыть поиск на HH',
+      copyQuery: 'Скопировать запрос',
+      copied: 'Скопировано!',
+      roleVacancies: 'вакансий: {n}',
+      seeMore: 'Показать ещё',
+      seeLess: 'Свернуть',
+
+      // Пустые/ошибки
+      needMoreData: 'Нужно немного больше данных',
+      missingSections: 'Отсутствуют разделы',
+      missingMap: {
+        personal: 'Личные данные',
+        experience: 'Опыт работы',
+        skills: 'Навыки',
+        education: 'Образование',
+        title: 'Должность / цель'
+      },
+      completeSection: 'Заполнить раздел',
+      hint: 'Ниже — подборка направлений, навыков и курсов. Нажмите на профессию, чтобы сразу искать вакансии.',
+      aiEmpty: 'Пока нет рекомендаций',
+      aiEmptyShort: 'Недостаточно данных для рекомендаций.',
+      noSkills: 'Пока нет навыков для развития.',
+      noCourses: 'Пока нет курсов — добавьте навыки или опыт.',
+      genError: 'Не удалось построить рекомендации. Попробуйте ещё раз.'
     },
 
     // Вакансии
@@ -289,7 +324,6 @@ export const translations = {
       license: 'Водительские права',
       duties: 'Обязанности и достижения',
 
-      // Доп.мета для PDF
       meta: {
         present: 'настоящее время'
       },
@@ -320,16 +354,16 @@ export const translations = {
     },
 
     home: {
-      badge: 'AI-қолдаумен Түйіндеме Құрастырушы',
+      badge: 'AI көмегімен Түйіндеме Құрастырушы',
       titlePrefix: 'Керемет түйіндеме жасаңыз',
       titleAccent: 'бірнеше минутта',
       title: 'Бірнеше минутта керемет түйіндеме жасаңыз',
-      subtitle: 'AI қуатты түйіндеме дайындауға және қолайлы вакансияларды табуға көмектеседі',
+      subtitle: 'AI мықты түйіндеме дайындауға және лайықты вакансияларды табуға көмектеседі',
       createButton: 'Түйіндеме жасау',
       findJobsButton: 'Вакансия іздеу',
       features: {
         ai: { title: 'Ақылды түйіндеме', description: 'Әр бөлімді жақсарту бойынша кеңестер' },
-        vacancies: { title: 'Вакансия іздеу', description: 'HeadHunter-мен интеграция арқылы қолайлы ұсыныстар' },
+        vacancies: { title: 'Вакансия іздеу', description: 'HeadHunter интеграциясы арқылы релевантты ұсыныстар' },
         recommendations: { title: 'Ұсыныстар', description: 'Өсу үшін дағдылар, рөлдер және курстар' }
       }
     },
@@ -340,27 +374,62 @@ export const translations = {
       fillPrompt: 'Ұсыныстар түйіндемені талдағаннан кейін пайда болады',
       fillDescription: 'Негізгі бөлімдерді толтырыңыз — біз мамандықтарды, дағдыларды және курстарды таңдаймыз. Бастаңыз:',
       fillButton: 'Түйіндемені толтыру',
-      viewVacancies: 'Вакансияларды қарау',
-      analyzing: 'Профиліңізді талдап жатырмыз…',
-      marketScore: 'Нарыққа сәйкестік бағасы',
-      matchScore: 'Нарыққа сәйкестік бағасы',
-      professions: 'Ұсынылатын мамандықтар',
-      suitableRole: 'Мақсатты мамандық',
-      findVacancies: 'Вакансия табу',
-      skillsToLearn: 'Үйренуге арналған дағдылар',
-      courses: 'Ұсынылатын курстар',
-      duration: 'Ұзақтығы',
-      details: 'Толығырақ',
-      findVacanciesButton: 'Вакансия табу',
-      improveResume: 'Түйіндемені жақсарту',
-      needMoreData: 'Қосымша бірнеше дерек қажет',
-      missingSections: 'Жетіспейтін бөлімдер',
-      hint: 'Төменде бағыттар, дағдылар және курстар іріктелді. Вакансияны бірден іздеу үшін мамандықты басыңыз.',
+
+      // Негізгі әрекеттер
       generate: 'Ұсыныстарды генерациялау',
       generating: 'Ұсыныстар жасалуда…',
-      openCourse: 'Курсты ашу',
+      refresh: 'Жаңарту',
+      improveResume: 'Түйіндемені жақсарту',
+      viewVacancies: 'Вакансияларды қарау',
+      findVacanciesButton: 'Вакансия табу',
       searchVacancies: 'Осы мамандық бойынша іздеу',
-      aiEmpty: 'Әзірге ұсыныстар жоқ'
+      openCourse: 'Курсты ашу',
+
+      // Бағалау және хинттер
+      marketScore: 'Нарыққа сәйкестік бағасы',
+      matchScore: 'Нарыққа сәйкестік бағасы',
+      scoreHint: 'Бұл түйіндеме толықтығы мен нарыққа сәйкестік бойынша жуық бағалау.',
+      scoreLow: 'төмен',
+      scoreMedium: 'орта',
+      scoreHigh: 'жоғары',
+      updatedAt: 'Жаңартылған: {time}',
+
+      // Бөлімдер
+      professions: 'Ұсынылатын мамандықтар',
+      rolesTitle: 'Ұсынылатын рөлдер',
+      suitableRole: 'Мақсатты мамандық',
+      skillsToLearn: 'Үйренуге арналған дағдылар',
+      skillsTitle: 'Дамытуға арналған дағдылар',
+      courses: 'Ұсынылатын курстар',
+      coursesTitle: 'Дамыту курстары',
+      duration: 'Ұзақтығы',
+      details: 'Толығырақ',
+      provider: 'Платформа',
+      visit: 'Көру',
+      openInHH: 'HH-де іздеуді ашу',
+      copyQuery: 'Сұрауды көшіру',
+      copied: 'Көшірілді!',
+      roleVacancies: 'бос орын: {n}',
+      seeMore: 'Көбірек көрсету',
+      seeLess: 'Жасыру',
+
+      // Бос/қате күйлер
+      needMoreData: 'Ұсыныстар үшін деректер жеткіліксіз',
+      missingSections: 'Жетіспейтін бөлімдер',
+      missingMap: {
+        personal: 'Жеке деректер',
+        experience: 'Жұмыс тәжірибесі',
+        skills: 'Дағдылар',
+        education: 'Білім',
+        title: 'Лауазым / мақсат'
+      },
+      completeSection: 'Бөлімді толтыру',
+      hint: 'Төменде бағыттар, дағдылар және курстар іріктелді. Вакансияны бірден іздеу үшін мамандықты басыңыз.',
+      aiEmpty: 'Әзірге ұсыныстар жоқ',
+      aiEmptyShort: 'Ұсыныстар үшін дерек жеткіліксіз.',
+      noSkills: 'Әзірге дағдылар ұсынылмады.',
+      noCourses: 'Әзірге курстар жоқ — дағдыларды немесе тәжірибені қосыңыз.',
+      genError: 'Ұсыныстарды құру мүмкін болмады. Қайталап көріңіз.'
     },
 
     vacancies: {
@@ -590,7 +659,7 @@ export const translations = {
       age: 'Жасы',
       marital: 'Отбасылық жағдайы',
       children: 'Балалар',
-      license: 'Жүргізуші куәлігі',
+      license: 'Жүргі­зуші куәлігі',
       duties: 'Міндеттер мен жетістіктер',
 
       meta: {
@@ -641,29 +710,64 @@ export const translations = {
       title: 'AI Recommendations',
       subtitle: 'Tips based on your resume',
       fillPrompt: 'Recommendations will appear after resume analysis',
-      fillDescription: 'Fill in the main sections — and we will select professions, skills and courses. Start with:',
+      fillDescription: 'Fill in the main sections — we will suggest professions, skills and courses. Start with:',
       fillButton: 'Fill Resume',
-      viewVacancies: 'View Jobs',
-      analyzing: 'Analyzing your profile…',
-      marketScore: 'Market Fit Score',
-      matchScore: 'Market Fit Score',
-      professions: 'Recommended Professions',
-      suitableRole: 'Target profession',
-      findVacancies: 'Find Jobs',
-      skillsToLearn: 'Skills to Learn',
-      courses: 'Recommended Courses',
-      duration: 'Duration',
-      details: 'Details',
-      findVacanciesButton: 'Find Jobs',
-      improveResume: 'Improve Resume',
-      needMoreData: 'We need a bit more data',
-      missingSections: 'Missing sections',
-      hint: 'Below are suggested roles, skills and courses. Click a profession to search jobs instantly.',
+
+      // Primary actions
       generate: 'Generate recommendations',
       generating: 'Generating recommendations…',
-      openCourse: 'Open course',
+      refresh: 'Refresh',
+      improveResume: 'Improve Resume',
+      viewVacancies: 'View Jobs',
+      findVacanciesButton: 'Find Jobs',
       searchVacancies: 'Search jobs for this profession',
-      aiEmpty: 'No recommendations yet'
+      openCourse: 'Open course',
+
+      // Score & hints
+      marketScore: 'Market Fit Score',
+      matchScore: 'Market Fit Score',
+      scoreHint: 'Heuristic score based on resume completeness and market alignment.',
+      scoreLow: 'low',
+      scoreMedium: 'medium',
+      scoreHigh: 'high',
+      updatedAt: 'Updated {time}',
+
+      // Sections
+      professions: 'Recommended Professions',
+      rolesTitle: 'Recommended Roles',
+      suitableRole: 'Target profession',
+      skillsToLearn: 'Skills to Learn',
+      skillsTitle: 'Skills to Develop',
+      courses: 'Recommended Courses',
+      coursesTitle: 'Courses to Level Up',
+      duration: 'Duration',
+      details: 'Details',
+      provider: 'Provider',
+      visit: 'Visit',
+      openInHH: 'Open search on HH',
+      copyQuery: 'Copy query',
+      copied: 'Copied!',
+      roleVacancies: 'vacancies: {n}',
+      seeMore: 'Show more',
+      seeLess: 'Show less',
+
+      // Empty/error states
+      needMoreData: 'We need a bit more data',
+      missingSections: 'Missing sections',
+      missingMap: {
+        personal: 'Personal info',
+        experience: 'Work experience',
+        skills: 'Skills',
+        education: 'Education',
+        title: 'Job title / objective'
+      },
+      completeSection: 'Complete section',
+      hint: 'Below are suggested roles, skills and courses. Click a profession to search jobs instantly.',
+      aiEmpty: 'No recommendations yet',
+      aiEmptyShort: 'Not enough data for recommendations.',
+      noSkills: 'No skills to suggest yet.',
+      noCourses: 'No courses yet — add skills or experience.',
+      genError: 'Could not build recommendations. Please try again.'
     },
 
     vacancies: {
