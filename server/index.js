@@ -7,6 +7,8 @@
  * - Встроенный /api/ai/infer-search для фронта
  * - ✅ Честная прокся /api/hh/jobs/search — не «глотает» ошибки HH
  * - ✅ Маппинг experience → HH-коды (none/0-1 не отправляем) — для старых фронтов
+ * - ✅ Корректный CORS (Render/Vercel и ENV), проброс HH-User-Agent
+ * - ✅ Явный лог флагов рекомендаций (RECS_*)
  */
 
 const express = require('express');
@@ -37,7 +39,9 @@ const config = {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  hhUserAgent: process.env.HH_USER_AGENT || 'AI-Resume-Builder/1.0 (+https://ai-resume-frontend-nepa.onrender.com)',
+  // Важно: HH блокирует запросы без честного UA; продублируем в HH-User-Agent
+  hhUserAgent: process.env.HH_USER_AGENT
+    || 'AI-Resume-Builder/1.0 (+https://ai-resume-frontend-nepa.onrender.com)',
   hhTimeoutMs: Number(process.env.HH_TIMEOUT_MS || 12000),
 };
 
@@ -46,6 +50,18 @@ const defaultOrigins = [
   'http://127.0.0.1:5173',
   'http://localhost:4173',
   'http://localhost:3000',
+];
+
+// Динамические origin'ы из окружения платформ
+const runtimeOrigins = [
+  process.env.RENDER_EXTERNAL_URL,                            // https://app.onrender.com
+  process.env.FRONTEND_URL,                                   // произвольный кастомный
+  process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
+  process.env.NETLIFY_URL && `https://${process.env.NETLIFY_URL}`,
+].filter(Boolean);
+
+let allowedOrigins = [
+  ...new Set([ ...defaultOrigins, ...config.frontOrigins, ...runtimeOrigins ]),
 ];
 
 const __dirnameResolved = __dirname || path.dirname(require.main?.filename || '');
@@ -80,8 +96,6 @@ app.use((req, res, next) => {
 /* ────────────────────────────────────────────────────────────
  * CORS
  * ──────────────────────────────────────────────────────────── */
-const allowedOrigins = config.frontOrigins.length > 0 ? config.frontOrigins : defaultOrigins;
-
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true); // SSR/health/локальные curl
@@ -89,8 +103,10 @@ const corsOptions = {
       const url = new URL(origin);
       const host = url.hostname || '';
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Разрешаем все поддомены platform hosting
       if (host.endsWith('onrender.com')) return callback(null, true);
-      if (host.endsWith('vercel.app')) return callback(null, true);
+      if (host.endsWith('vercel.app'))  return callback(null, true);
+      if (host.endsWith('netlify.app')) return callback(null, true);
       if (!config.isProduction && /^localhost$/.test(host)) return callback(null, true);
     } catch {}
     console.warn(`⚠️ CORS rejected: ${origin}`);
@@ -162,7 +178,7 @@ app.get('/api/health/hh', async (_req, res) => {
   const t0 = Date.now();
   try {
     const r = await fetch('https://api.hh.ru/status', {
-      headers: { 'User-Agent': config.hhUserAgent, 'Accept': 'text/plain' },
+      headers: { 'User-Agent': config.hhUserAgent, 'HH-User-Agent': config.hhUserAgent, 'Accept': 'text/plain' },
       signal: AbortSignal.timeout(config.hhTimeoutMs),
     });
     const txt = await r.text().catch(() => '');
@@ -396,9 +412,12 @@ hhInline.get('/jobs/search', async (req, res) => {
   try {
     const headers = {
       'User-Agent': config.hhUserAgent,
+      'HH-User-Agent': config.hhUserAgent, // 👈 критично для HH
       'Accept': 'application/json',
       'Accept-Language': req.headers['accept-language'] || 'ru-RU,ru;q=0.9,en;q=0.8',
       'X-Request-ID': req.id,
+      // Проброс реферера может снижать антибот-подозрения
+      ...(req.headers.referer ? { Referer: req.headers.referer } : {}),
     };
     // Если фронт прислал "X-No-Cache: 1", пробиваем no-cache до HH.
     if (req.headers['x-no-cache']) headers['Cache-Control'] = 'no-cache';
@@ -453,7 +472,18 @@ app.use('/api/hh', hhInline);
 /* ────────────────────────────────────────────────────────────
  * РОУТЫ HH и РЕКОМЕНДАЦИЙ (остальные точки, areas/me/…)
  * ──────────────────────────────────────────────────────────── */
+function safeUseRouterOnce(mountPath, localPath) {
+  // защита от двойного монтирования
+  let mounted = false;
+  return () => {
+    if (mounted) return;
+    safeUseRouter(mountPath, localPath);
+    mounted = true;
+  };
+}
+
 function mountRoutes() {
+  // Основные
   safeUseRouter('/api/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
   safeUseRouter('/api/recommendations', path.join(__dirnameResolved, 'routes', 'recommendations.js'));
 
@@ -512,15 +542,40 @@ app.use((err, req, res, _next) => {
 });
 
 /* ────────────────────────────────────────────────────────────
- * START
+ * START + ENV LOGS
  * ──────────────────────────────────────────────────────────── */
 const server = app.listen(config.port, '0.0.0.0', () => {
+  // Логируем CORS
   console.log('═══════════════════════════════════════════════════════════');
   console.log('🚀 AI Resume Builder Server (CommonJS)');
   console.log('═══════════════════════════════════════════════════════════');
   console.log(`📍 Environment: ${config.nodeEnv}`);
   console.log(`🌐 Listening on: http://0.0.0.0:${config.port}`);
-  console.log(`🔒 CORS Origins: ${allowedOrigins.length} configured`);
+
+  // Вытаскиваем/показываем активные Origins (уникальные)
+  allowedOrigins = [...new Set(allowedOrigins)];
+  console.log(`🔒 CORS Origins (${allowedOrigins.length}):`);
+  for (const o of allowedOrigins) console.log(`   - ${o}`);
+  console.log('───────────────────────────────────────────────────────────');
+
+  // Лог флагов рекомендаций
+  const flag = (v, d='0') => ['1','true','yes','on'].includes(String(v ?? d).toLowerCase());
+  const rec = {
+    HH_HOST: process.env.HH_HOST || 'hh.kz',
+    USE_MARKET: flag(process.env.RECS_USE_MARKET, '1'),
+    USE_LLM: flag(process.env.RECS_USE_LLM, '1'),
+    LLM_COMPLEX: flag(process.env.RECS_LLM_COMPLEX, '0'),
+    DEBUG: flag(process.env.RECS_DEBUG, '0'),
+    MAX_ROLES: Number(process.env.RECS_MAX_ROLES || 5),
+    SAMPLE_PAGES: Number(process.env.RECS_SAMPLE_PAGES || 2),
+    PER_PAGE: Number(process.env.RECS_PER_PAGE || 50),
+  };
+  console.log('🎛  Recommendations flags:');
+  Object.entries(rec).forEach(([k,v]) => console.log(`   ${k} = ${v}`));
+  console.log('───────────────────────────────────────────────────────────');
+
+  // Лог UA для HH
+  console.log(`🪪 HH User-Agent: ${config.hhUserAgent}`);
   console.log('═══════════════════════════════════════════════════════════');
   console.log('✅ Server ready');
   console.log('═══════════════════════════════════════════════════════════');
