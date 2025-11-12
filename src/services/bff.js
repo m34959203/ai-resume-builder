@@ -10,11 +10,12 @@
  * Улучшения:
  *  - надёжное определение API_BASE (Render/локалка/ENV/window)
  *  - безопасная сборка query (без undefined/пустых)
- *  - корректные параметры поиска HH (currency=KZT, salary, experience)
- *  - детальная диагностика запросов /hh/jobs/search
+ *  - корректные параметры поиска HH (валюта по host, salary, experience)
+ *  - детальная диагностика запросов /hh/jobs/search (+ X-Source-HH-URL в логах)
  *  - X-No-Cache для обхода возможного SW/PWA-кэша
  *  - устойчивые переводчики (batch + graceful fallback)
- *  - ✅ experience: никогда не отправляем "none"/"0-1", только валидные HH-коды
+ *  - ✅ experience: отправляем только валидные HH-коды
+ *  - ✅ поддержка optional-параметров HH: specialization, professional_role, employment, schedule, search_period, order_by
  */
 
 import { mockJobs, mockResumes } from './mocks';
@@ -54,7 +55,6 @@ function computeApiBase() {
   const isRenderFrontend = typeof host === 'string' && host.includes('onrender.com');
   if (isRenderFrontend) {
     const bffCustom = env('VITE_RENDER_BFF_URL', '').trim();
-    // дефолт — ваш продовый BFF на Render
     const base = bffCustom || 'https://ai-resume-bff-nepa.onrender.com';
     const bffUrl = `${base.replace(/\/+$/, '')}${prefix}`;
     console.log('[BFF] Render detected, using BFF URL:', bffUrl);
@@ -210,7 +210,11 @@ export async function safeFetchJSON(url, options = {}) {
     if (isJobsSearch) {
       console.log('[BFF Client] Response status:', res.status);
       try {
-        console.log('[BFF Client] Response headers:', Object.fromEntries([...res.headers.entries()]));
+        const headersObj = Object.fromEntries([...res.headers.entries()]);
+        console.log('[BFF Client] Response headers:', headersObj);
+        if (headersObj['x-source-hh-url']) {
+          console.log('[BFF Client] HH URL:', headersObj['x-source-hh-url']);
+        }
       } catch {}
     }
 
@@ -307,6 +311,12 @@ const toIntOrUndef = (v, min = 0) => {
 
 const normalizeHost = (h) => (FORCE_KZ ? 'hh.kz' : (h || HOST_DEFAULT)).toLowerCase();
 export const getDefaultHost = () => normalizeHost();
+
+function currencyForHost(h) {
+  const host = normalizeHost(h);
+  return host === 'hh.ru' ? 'RUR' : 'KZT';
+}
+export const getDefaultCurrency = (h) => currencyForHost(h);
 
 /* -------------------- OAUTH (HeadHunter) -------------------- */
 
@@ -526,6 +536,17 @@ export async function suggestCities(query, { host = normalizeHost(), limit = 8, 
 
 /* -------------------- ВАКАНСИИ -------------------- */
 
+function truthy(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(s);
+}
+
+function clamp(n, lo, hi) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return lo;
+  return Math.max(lo, Math.min(hi, x));
+}
+
 function buildJobsQuery(params = {}) {
   const q = new URLSearchParams();
 
@@ -545,9 +566,16 @@ function buildJobsQuery(params = {}) {
   // Зарплата/валюта (HH понимает salary + currency)
   const salaryClean = stripCurrency(params.salary);
   if (salaryClean != null) q.set('salary', salaryClean);
-  q.set('currency', String(params.currency || 'KZT'));
+  q.set('currency', String(params.currency || currencyForHost(params.host)));
 
-  if (params.only_with_salary) q.set('only_with_salary', 'true');
+  if (truthy(params.only_with_salary)) q.set('only_with_salary', 'true');
+
+  // Дополнительные параметры HH (опционально)
+  if (params.specialization) q.set('specialization', String(params.specialization));
+  if (params.professional_role) q.set('professional_role', String(params.professional_role));
+  if (params.employment) q.set('employment', String(params.employment)); // full, part, project, volunteer, probation
+  if (params.schedule) q.set('schedule', String(params.schedule));       // remote, fullDay, shift, flexible, flyInFlyOut
+  if (params.search_period != null) q.set('search_period', String(clamp(params.search_period, 1, 30)));
 
   const page = toIntOrUndef(params.page, 0);
   if (page !== undefined) q.set('page', String(page));
@@ -579,7 +607,9 @@ export async function searchJobs(params = {}) {
     if (kz?.id) area = String(kz.id);
   }
 
-  const q = buildJobsQuery({ ...params, host, area });
+  const currency = params.currency || currencyForHost(host);
+
+  const q = buildJobsQuery({ ...params, host, area, currency });
   const url = `/hh/jobs/search?${q.toString()}`;
   const data = await safeFetchJSON(url, {
     method: 'GET',
@@ -608,7 +638,7 @@ export async function searchJobsSmart(params = {}) {
   const merged = {
     per_page: params.per_page ?? 20,
     page: params.page ?? 0,
-    currency: params.currency || 'KZT',
+    currency: params.currency || currencyForHost(host),
     ...params,
     area,
     host,
@@ -623,16 +653,24 @@ export async function searchVacanciesRaw(params = {}) {
   if (params.text) q.set('text', params.text);
   if (params.area) q.set('area', params.area);
 
-  // 🔧 важно: сначала нормализуем, потом ставим, если получилось
   const ex = normalizeExperience(params.experience);
   if (ex) q.set('experience', ex);
 
   if (params.page != null) q.set('page', String(params.page));
   if (params.per_page != null) q.set('per_page', String(params.per_page));
   if (params.salary != null) q.set('salary', stripCurrency(params.salary) || '');
-  q.set('currency', String(params.currency || 'KZT'));
-  if (params.only_with_salary) q.set('only_with_salary', 'true');
+  q.set('currency', String(params.currency || currencyForHost(host)));
+  if (truthy(params.only_with_salary)) q.set('only_with_salary', 'true');
+
+  // те же доп.параметры
+  if (params.specialization) q.set('specialization', String(params.specialization));
+  if (params.professional_role) q.set('professional_role', String(params.professional_role));
+  if (params.employment) q.set('employment', String(params.employment));
+  if (params.schedule) q.set('schedule', String(params.schedule));
+  if (params.search_period != null) q.set('search_period', String(clamp(params.search_period, 1, 30)));
+
   q.set('host', host);
+
   const url = `/hh/vacancies?${q.toString()}`;
   return safeFetchJSON(url, { method: 'GET' });
 }
