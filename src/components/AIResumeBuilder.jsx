@@ -1223,7 +1223,7 @@ function VacanciesPage({
 }) {
   const { t, lang } = useTranslation();
   const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1356,21 +1356,23 @@ function VacanciesPage({
     setSearchQuery((q) => (q ? `${q} ${s}` : s));
   };
 
-  // локальный дебаунс (название иное, чтобы не конфликтовать с глобальным)
-  function useDebouncedLocal(value, delay = 650) {
+  // дебаунс только для текстового ввода (300мс), фильтры — сразу
+  function useDebouncedLocal(value, delay = 300) {
     const [v, setV] = useState(value);
+    const isFirst = useRef(true);
     useEffect(() => {
+      if (isFirst.current) { isFirst.current = false; setV(value); return; }
       const t = setTimeout(() => setV(value), delay);
       return () => clearTimeout(t);
     }, [value, delay]);
     return v;
   }
-  const debouncedSearch = useDebouncedLocal(searchQuery, 650);
+  const debouncedSearch = useDebouncedLocal(searchQuery, 300);
+  // фильтры (город/опыт/зарплата) срабатывают мгновенно — без дебаунса
   const filtersKey = useMemo(
     () => JSON.stringify({ location: filters.location, experience: filters.experience, salary: filters.salary }),
     [filters.location, filters.experience, filters.salary]
   );
-  const debouncedFiltersKey = useDebouncedLocal(filtersKey, 650);
 
   // единая функция маппинга (важно: корректные ссылки HH)
   const mapResponse = useCallback((data) => {
@@ -1569,7 +1571,7 @@ function VacanciesPage({
   );
 
   // сброс авто-расширения при явном изменении пользователем
-  useEffect(() => { setAutoRelaxInfo(null); setCityWidenOffer(null); }, [debouncedSearch, debouncedFiltersKey]);
+  useEffect(() => { setAutoRelaxInfo(null); setCityWidenOffer(null); }, [debouncedSearch, filtersKey]);
 
   // основной эффект запуска поиска
   useEffect(() => {
@@ -1590,7 +1592,7 @@ function VacanciesPage({
     });
 
     return () => { try { ac.abort(); } catch {} };
-  }, [debouncedSearch, debouncedFiltersKey, page, perPage, blocked]); // eslint-disable-line
+  }, [debouncedSearch, filtersKey, page, perPage, blocked]); // eslint-disable-line
 
   // мягкий бутстрап (для "резюме → вакансии")
   useEffect(() => {
