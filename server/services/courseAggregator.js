@@ -6,14 +6,14 @@
  *
  * Stepik:   Открытый API (без ключа) — поиск + детали курсов
  * Coursera: Парсинг поисковой страницы (без ключа)
- * YouTube:  YouTube Data API v3 (нужен YOUTUBE_API_KEY) или fallback на ссылки
+ * YouTube:  YouTube Data API v3 (нужен GOOGLE_API_KEY) или fallback на ссылки
  *
  * Все запросы с таймаутами, кешированием и graceful fallback.
  */
 
 const CACHE_TTL_MS = Number(process.env.COURSE_CACHE_TTL_MS || 30 * 60 * 1000); // 30 мин
 const FETCH_TIMEOUT = 8000;
-const YOUTUBE_API_KEY = (process.env.YOUTUBE_API_KEY || '').trim();
+const GOOGLE_API_KEY = (process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
 
 const _cache = new Map();
 function cacheGet(key) {
@@ -180,7 +180,7 @@ async function fetchCoursera(query, limit = 3) {
 /* ======================== YOUTUBE ======================== */
 
 /**
- * YouTube Data API v3 (нужен YOUTUBE_API_KEY).
+ * YouTube Data API v3 (нужен GOOGLE_API_KEY).
  * Если ключа нет — fallback на ссылки поиска.
  */
 async function fetchYouTube(query, limit = 3) {
@@ -188,7 +188,7 @@ async function fetchYouTube(query, limit = 3) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
-  if (YOUTUBE_API_KEY) {
+  if (GOOGLE_API_KEY) {
     try {
       const params = new URLSearchParams({
         part: 'snippet',
@@ -198,7 +198,7 @@ async function fetchYouTube(query, limit = 3) {
         videoDuration: 'medium',
         relevanceLanguage: 'ru',
         order: 'relevance',
-        key: YOUTUBE_API_KEY,
+        key: GOOGLE_API_KEY,
       });
       const url = `https://www.googleapis.com/youtube/v3/search?${params}`;
       const res = await fetchWithTimeout(url);

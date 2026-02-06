@@ -16,7 +16,7 @@ try {
   ({ getCourses: getCoursesExt } = require('../services/courseAggregator'));
 } catch {}
 
-// ИИ (OpenRouter) — опционально
+// ИИ (Gemini / OpenRouter) — опционально
 let ai = null;
 try {
   ai = require('../services/ai'); // { recommendFromProfile, inferSearch, ... }
