@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Mail, Phone, MapPin, Plus, X, Check, Sparkles, Download,
-  Briefcase, BookOpen, Upload, Globe, RefreshCw
+  Briefcase, BookOpen, Upload, Globe, RefreshCw, Search, TrendingUp
 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { translateProfileForLang } from '../services/bff'; // ✅ авто-перевод профиля перед PDF
@@ -1388,7 +1388,21 @@ function BuilderPage({
                 {t('builder.buttons.next')}
               </button>
             ) : canDownload ? (
-              <div className="ml-auto flex flex-col items-end gap-2">
+              <div className="ml-auto flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => setCurrentPage('vacancies')}
+                  className="px-5 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-2 transition"
+                >
+                  <Search size={18} />
+                  {t('builder.buttons.findVacancies') || 'Подобрать вакансию'}
+                </button>
+                <button
+                  onClick={() => setCurrentPage('recommendations')}
+                  className="px-5 py-2 border border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 flex items-center gap-2 transition"
+                >
+                  <TrendingUp size={18} />
+                  {t('builder.buttons.getRecommendations') || 'Получить рекомендации'}
+                </button>
                 <button
                   onClick={handleDownload}
                   disabled={downloading}
@@ -1399,7 +1413,7 @@ function BuilderPage({
                   <Download size={20} />
                   {downloading ? t('builder.messages.generating') : t('builder.buttons.downloadPDF')}
                 </button>
-                {downloadError && <p className="text-sm text-red-600">{downloadError}</p>}
+                {downloadError && <p className="text-sm text-red-600 w-full text-right">{downloadError}</p>}
               </div>
             ) : (
               <div className="ml-auto flex flex-col items-end gap-2">
