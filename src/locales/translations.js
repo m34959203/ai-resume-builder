@@ -256,6 +256,8 @@ export const translations = {
         next: 'Далее',
         generateWithAI: 'Генерировать с ИИ',
         downloadPDF: 'Скачать PDF',
+        findVacancies: 'Подобрать вакансию',
+        getRecommendations: 'Получить рекомендации',
         save: 'Сохранить',
         cancel: 'Отмена'
       },
@@ -595,6 +597,8 @@ export const translations = {
         next: 'Алға',
         generateWithAI: 'AI көмегімен жасау',
         downloadPDF: 'PDF жүктеу',
+        findVacancies: 'Вакансия табу',
+        getRecommendations: 'Ұсыныстар алу',
         save: 'Сақтау',
         cancel: 'Болдырмау'
       },
@@ -932,6 +936,8 @@ export const translations = {
         next: 'Next',
         generateWithAI: 'Generate with AI',
         downloadPDF: 'Download PDF',
+        findVacancies: 'Find Vacancies',
+        getRecommendations: 'Get Recommendations',
         save: 'Save',
         cancel: 'Cancel'
       },
