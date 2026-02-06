@@ -299,10 +299,6 @@ export default function ModernTemplate({ profile = {}, theme, labels, t, lang, p
 
       {/* ===== RIGHT CONTENT ===== */}
       <View style={styles.right}>
-        {/* Name + position header */}
-        <Text style={styles.name}>{name}</Text>
-        {has(position) && <Text style={styles.position}>{position}</Text>}
-        <View style={styles.topRule} />
 
         {/* Profile / Summary */}
         {has(summary) && (
