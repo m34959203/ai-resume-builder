@@ -1,52 +1,55 @@
 import React from 'react';
-import { FileText, Briefcase, TrendingUp, Sparkles } from 'lucide-react';
+import { FileText, Briefcase, BarChart3, Sparkles } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 
-/* 3D-style AI document illustration — large */
-function HeroIllustration() {
+/* 3D Document Illustration — CSS only, no images */
+function DocIllustration() {
   return (
-    <div className="relative w-64 h-72 sm:w-80 sm:h-[360px] flex-shrink-0">
-      {/* Shadow underneath */}
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[70%] h-10 bg-blue-300/20 blur-3xl rounded-full" />
-
+    <div className="relative">
       {/* Document card */}
-      <div
-        className="absolute inset-4 sm:inset-6 rounded-3xl transform rotate-3"
-        style={{
-          background: 'linear-gradient(155deg, #f5f7fd 0%, #e6eaf5 100%)',
-          boxShadow: '0 20px 60px -15px rgba(100,120,180,0.25), 0 8px 24px -8px rgba(100,120,180,0.15)',
-          border: '1px solid rgba(210,218,240,0.6)',
-        }}
-      >
-        {/* Header accent */}
-        <div className="absolute top-8 left-7 right-7 h-3 bg-blue-300/40 rounded-full" />
+      <div className="w-[320px] h-[400px] sm:w-[380px] sm:h-[470px] bg-white rounded-[40px] shadow-[-20px_40px_80px_rgba(37,99,235,0.15)] border border-white p-8 sm:p-10 relative animate-float">
+        {/* Blue corner with AI */}
+        <div className="absolute top-0 right-0 w-32 h-32 sm:w-36 sm:h-36 bg-[#2563EB] rounded-bl-[60px] rounded-tr-[40px] flex items-center justify-center shadow-inner">
+          {/* Chip icon */}
+          <div className="flex flex-col items-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="mb-1">
+              <rect x="6" y="6" width="12" height="12" rx="2.5" stroke="white" strokeWidth="1.5" />
+              <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="text-white font-extrabold text-3xl tracking-wide">AI</span>
+          </div>
+        </div>
+
         {/* Text lines */}
-        <div className="absolute top-16 left-7 right-7 space-y-3">
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-full" />
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-[85%]" />
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-3/4" />
-          <div className="h-2.5 bg-blue-200/40 rounded-full w-[80%]" />
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-full" />
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-2/3" />
-          <div className="h-2.5 bg-gray-300/50 rounded-full w-[90%]" />
-          <div className="h-2.5 bg-blue-200/40 rounded-full w-3/5" />
+        <div className="space-y-7 mt-16 sm:mt-20">
+          <div className="h-5 w-3/4 bg-slate-100 rounded-full" />
+          <div className="space-y-3.5">
+            <div className="h-2.5 w-full bg-slate-50 rounded-full" />
+            <div className="h-2.5 w-full bg-slate-50 rounded-full" />
+            <div className="h-2.5 w-4/5 bg-slate-50 rounded-full" />
+          </div>
+          <div className="h-5 w-1/2 bg-slate-100 rounded-full mt-10" />
+          <div className="space-y-3.5">
+            <div className="h-2.5 w-full bg-slate-50 rounded-full" />
+            <div className="h-2.5 w-2/3 bg-slate-50 rounded-full" />
+          </div>
         </div>
       </div>
+      {/* Glow behind */}
+      <div className="absolute -z-10 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-400/20 blur-[100px] rounded-full" />
+    </div>
+  );
+}
 
-      {/* AI chip badge */}
-      <div
-        className="absolute -top-2 -right-2 sm:top-0 sm:right-0 w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-2xl flex flex-col items-center justify-center transform rotate-6"
-        style={{
-          background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)',
-          boxShadow: '0 8px 30px -4px rgba(37,99,235,0.5)',
-        }}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mb-0.5 sm:w-7 sm:h-7">
-          <rect x="6" y="6" width="12" height="12" rx="2" stroke="white" strokeWidth="1.8" />
-          <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-        <span className="text-white text-base sm:text-lg font-extrabold tracking-wide">AI</span>
+/* Feature card */
+function FeatureCard({ icon: Icon, title, desc }) {
+  return (
+    <div className="bg-white/40 backdrop-blur-2xl border border-white/60 p-8 sm:p-10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.03)] hover:bg-white/80 transition-all group cursor-default">
+      <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-[#3B82F6] to-[#60A5FA] rounded-2xl flex items-center justify-center mb-6 sm:mb-8 shadow-xl shadow-blue-100 group-hover:scale-110 transition-transform">
+        <Icon className="text-white" size={24} />
       </div>
+      <h3 className="text-xl sm:text-2xl font-bold text-[#1E293B] mb-3 tracking-tight">{title}</h3>
+      <p className="text-[#64748B] font-medium leading-relaxed text-[15px]">{desc}</p>
     </div>
   );
 }
@@ -54,83 +57,81 @@ function HeroIllustration() {
 export default function HomePage({ onCreate, onFindJobs }) {
   const { t } = useTranslation();
 
-  const features = [
-    { icon: FileText, titleKey: 'home.features.ai.title', descKey: 'home.features.ai.description' },
-    { icon: Briefcase, titleKey: 'home.features.vacancies.title', descKey: 'home.features.vacancies.description' },
-    { icon: TrendingUp, titleKey: 'home.features.recommendations.title', descKey: 'home.features.recommendations.description' },
-  ];
-
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(140deg, #e8ecf6 0%, #ede8f5 40%, #f0ecf8 60%, #e8ecf6 100%)' }}>
-      <div className="max-w-6xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-8">
+    <div className="min-h-screen bg-[#F0F4FF] bg-mesh-gradient relative overflow-hidden antialiased text-slate-900">
+      <main className="max-w-7xl mx-auto px-5 sm:px-10 pt-28 sm:pt-40 pb-20">
 
-        {/* Hero */}
-        <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-4 mb-20 sm:mb-28">
-          <div className="flex-1 text-center lg:text-left">
+        {/* ===== Hero ===== */}
+        <div className="flex flex-col lg:flex-row items-center justify-between w-full gap-12 lg:gap-20">
+          {/* Left */}
+          <div className="max-w-2xl space-y-8 sm:space-y-10 text-center lg:text-left">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 bg-blue-50/80 text-blue-600 px-5 py-2 rounded-full mb-7 border border-blue-100/80">
-              <Sparkles size={15} />
-              <span className="text-sm font-medium">{t('home.badge')}</span>
+            <div className="inline-flex items-center gap-2 bg-[#DBEAFE] text-[#2563EB] px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
+              <Sparkles size={14} />
+              {t('home.badge')}
             </div>
 
             {/* Title */}
-            <h1 className="text-[2.5rem] sm:text-[3.25rem] font-extrabold text-gray-900 leading-[1.15] mb-5 tracking-tight">
+            <h1 className="text-5xl sm:text-7xl font-extrabold text-[#0F172A] leading-[1.05] tracking-tight">
               {t('home.titleLine1')}<br />
               {t('home.titleLine2')}
             </h1>
 
             {/* Subtitle */}
-            <p className="text-base sm:text-[17px] text-gray-500 mb-9 max-w-lg mx-auto lg:mx-0 leading-relaxed">
+            <p className="text-lg sm:text-xl text-[#475569] leading-relaxed font-medium opacity-90 max-w-lg mx-auto lg:mx-0">
               {t('home.subtitle')}
             </p>
 
-            {/* CTA */}
-            <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
+            {/* Buttons */}
+            <div className="flex flex-wrap gap-5 justify-center lg:justify-start">
               <button
                 onClick={onCreate}
-                className="px-8 py-4 text-white rounded-2xl font-semibold transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2.5 hover:shadow-xl hover:shadow-blue-500/35 text-[15px]"
-                style={{ background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 40%, #2563eb 100%)' }}
+                className="group relative flex items-center gap-3 px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-[#3B82F6] to-[#60A5FA] text-white rounded-[20px] font-bold text-base sm:text-lg shadow-2xl shadow-blue-300 transition-all hover:scale-105 active:scale-95 overflow-hidden"
               >
-                <FileText size={19} /> {t('home.createButton')}
+                {/* Shine effect */}
+                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
+                <FileText size={20} />
+                {t('home.createButton')}
               </button>
+
               <button
                 onClick={onFindJobs}
-                className="px-8 py-4 bg-white text-blue-600 rounded-2xl font-semibold hover:bg-blue-50/80 transition-all border border-gray-200 flex items-center gap-2.5 shadow-sm text-[15px]"
+                className="flex items-center gap-3 px-8 sm:px-10 py-4 sm:py-5 bg-white/50 backdrop-blur-md border border-slate-200 text-[#334155] rounded-[20px] font-bold text-base sm:text-lg hover:bg-white transition-all shadow-sm"
               >
-                <Briefcase size={19} /> {t('home.findJobsButton')}
+                <Briefcase size={20} className="text-[#3B82F6]" />
+                {t('home.findJobsButton')}
               </button>
             </div>
           </div>
 
-          <HeroIllustration />
+          {/* Right — 3D document */}
+          <div className="flex-shrink-0">
+            <DocIllustration />
+          </div>
         </div>
 
-        {/* Feature Cards */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(({ icon: Icon, titleKey, descKey }, i) => (
-            <div
-              key={i}
-              className="bg-white/50 backdrop-blur-sm p-8 rounded-3xl border border-white/70 hover:shadow-xl hover:bg-white/70 transition-all"
-              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.03), 0 6px 20px rgba(0,0,0,0.03)' }}
-            >
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
-                style={{
-                  background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)',
-                  boxShadow: '0 4px 14px -2px rgba(37,99,235,0.35)',
-                }}
-              >
-                <Icon className="text-white" size={26} />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">{t(titleKey)}</h3>
-              <p className="text-gray-500 text-[15px] leading-relaxed">{t(descKey)}</p>
-            </div>
-          ))}
+        {/* ===== Feature cards ===== */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 w-full mt-24 sm:mt-32">
+          <FeatureCard
+            icon={FileText}
+            title={t('home.features.ai.title')}
+            desc={t('home.features.ai.description')}
+          />
+          <FeatureCard
+            icon={Briefcase}
+            title={t('home.features.vacancies.title')}
+            desc={t('home.features.vacancies.description')}
+          />
+          <FeatureCard
+            icon={BarChart3}
+            title={t('home.features.recommendations.title')}
+            desc={t('home.features.recommendations.description')}
+          />
         </div>
-      </div>
+      </main>
 
       {/* Footer */}
-      <footer className="text-center py-10 text-gray-400 text-sm">
+      <footer className="w-full py-10 text-center text-slate-400 text-sm font-medium border-t border-slate-200/50">
         &copy; {new Date().getFullYear()} ZhezU AI Resume. All rights reserved.
       </footer>
     </div>
