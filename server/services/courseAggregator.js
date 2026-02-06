@@ -13,7 +13,7 @@
 
 const CACHE_TTL_MS = Number(process.env.COURSE_CACHE_TTL_MS || 30 * 60 * 1000); // 30 мин
 const FETCH_TIMEOUT = 8000;
-const GOOGLE_API_KEY = (process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+const GOOGLE_API_KEY = (process.env.GOOGLE_API_KEY || process.env.YOUTUBE_API_KEY || '').trim();
 
 const _cache = new Map();
 function cacheGet(key) {
