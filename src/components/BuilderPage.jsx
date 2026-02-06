@@ -207,170 +207,323 @@ const TemplateSelect = React.memo(function TemplateSelect({ selected, onSelect, 
 });
 
 /* ---------- ПОЛНЫЙ предпросмотр ---------- */
-const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
-  // Полная поддержка разных схем полей
-  const email   = profile.email;
-  const phone   = profile.phone;
-  const loc     = profile.location;
-  const title   = firstNonEmpty(profile.position, profile.desiredRole, profile.targetRole);
-  const photo   = profile.photo;
 
-  const age     = profile.age;
-  const family  = profile.maritalStatus;
-  const kids    = profile.children;
-  const rights  = firstNonEmpty(profile.driversLicense, profile.driverLicense); // совместимость
-
-  const skills  = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
-
-  const experience = Array.isArray(profile.experience) ? profile.experience : [];
-  const education  = Array.isArray(profile.education) ? profile.education : [];
-  const languages  = Array.isArray(profile.languages) ? profile.languages : [];
+/* ---- Minimal preview (single-column clean) ---- */
+function MinimalPreview({ profile, t, fullName, title, email, phone, loc, website, skills, experience, education, languages }) {
+  const presentLabel = t('builder.experience.current') || 'наст. время';
+  const contacts = [
+    email && `✉ ${email}`,
+    phone && `☎ ${phone}`,
+    loc && `⊙ ${loc}`,
+    website && `⌂ ${website}`,
+  ].filter(Boolean);
 
   return (
-    <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-      <h4 className="font-semibold mb-3 text-green-900">{t('builder.preview.title')}</h4>
-
-      <div className="bg-white rounded-lg p-6 border shadow-sm">
-        {/* Шапка */}
-        <div className="mb-4 flex gap-4">
-          {photo ? (
-            <img src={photo} alt={t('builder.preview.photoAlt')} className="w-16 h-16 rounded-full object-cover border" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-gray-200" />
-          )}
-
-          <div>
-            <h2 className="text-2xl font-bold">{profile.fullName || t('builder.preview.yourName')}</h2>
-            {title && <p className="text-gray-800 font-medium mt-1">{title}</p>}
-
-            <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
-              {email && (<span className="flex items-center gap-1"><Mail size={14} />{email}</span>)}
-              {phone && (<span className="flex items-center gap-1"><Phone size={14} />{phone}</span>)}
-              {loc && (<span className="flex items-center gap-1"><MapPin size={14} />{loc}</span>)}
-            </div>
-
-            {(age || family || kids || rights) && (
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500 mt-2">
-                {age && <span>{t('builder.personal.age')}: {age}</span>}
-                {family && <span>{t('builder.personal.maritalStatus')}: {family}</span>}
-                {kids && <span>{t('builder.personal.children')}: {kids}</span>}
-                {rights && <span>{t('builder.personal.driversLicense')}: {rights}</span>}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* О себе */}
-        {profile.summary && (
-          <div className="mb-5">
-            <h3 className="font-semibold mb-2">{t('builder.personal.summary')}</h3>
-            <p className="text-sm text-gray-700 whitespace-pre-line">{profile.summary}</p>
+    <div className="bg-white rounded-sm shadow-lg overflow-hidden" style={{ aspectRatio: '1/1.414' }}>
+      <div className="p-8 text-[11px] text-slate-700 leading-relaxed h-full overflow-y-auto">
+        {/* Header */}
+        <h1 className="text-[22px] font-bold text-slate-900 leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
+          {fullName}
+        </h1>
+        {title && (
+          <p className="text-[9px] text-slate-500 uppercase tracking-[0.25em] mt-1 mb-3 font-normal">{title}</p>
+        )}
+        {contacts.length > 0 && (
+          <div className="flex flex-wrap gap-4 border-t border-slate-100 pt-2 mb-5 text-[9px] text-slate-600">
+            {contacts.map((c, i) => <span key={i}>{c}</span>)}
           </div>
         )}
 
-        {/* Навыки — все */}
+        {/* Summary */}
+        {profile.summary && (
+          <div className="mb-4">
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">
+              {t('builder.personal.summary')}
+            </h2>
+            <p className="text-[10px] text-slate-700 leading-relaxed">{profile.summary}</p>
+          </div>
+        )}
+
+        {/* Experience */}
+        {experience.length > 0 && (
+          <div className="mb-4">
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">
+              {t('builder.experience.label')}
+            </h2>
+            <div className="space-y-3">
+              {experience.map((e, idx) => {
+                const pos   = firstNonEmpty(e.position, e.title, e.role);
+                const comp  = firstNonEmpty(e.company, e.employer, e.org);
+                const start = fmtDate(firstNonEmpty(e.startDate, e.start, e.from, e.dateStart, e.date_from));
+                const end   = e.currentlyWorking ? presentLabel : fmtDate(firstNonEmpty(e.endDate, e.end, e.to, e.dateEnd, e.date_to));
+                const text  = firstNonEmpty(e.responsibilities, e.description, e.achievements);
+                const bullets = String(text || '').split(/\n|•|;/g).map(s => s.trim()).filter(Boolean).slice(0, 8);
+                return (
+                  <div key={e.id || idx}>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[11px] font-semibold text-slate-900">{pos || '—'}</span>
+                      <span className="text-[8px] text-slate-500 uppercase tracking-wide whitespace-nowrap ml-2">
+                        {start || '—'} — {end || '—'}
+                      </span>
+                    </div>
+                    {comp && <p className="text-[9px] text-slate-600 italic">{comp}</p>}
+                    {bullets.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {bullets.map((b, i) => (
+                          <li key={i} className="flex gap-1.5 text-[9px] text-slate-700">
+                            <span>•</span><span>{b}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Skills */}
         {skills.length > 0 && (
-          <div className="mb-5">
-            <h3 className="font-semibold mb-2">{t('builder.skills.title')}</h3>
-            <div className="flex flex-wrap gap-2">
-              {skills.map((s) => (
-                <span key={s} className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                  {s}
-                </span>
+          <div className="mb-4">
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">
+              {t('builder.skills.title')}
+            </h2>
+            <div className="flex flex-wrap gap-1">
+              {skills.map((s, i) => (
+                <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-medium rounded-sm">{s}</span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Опыт — весь список */}
-        {experience.length > 0 && (
-          <div className="mb-5">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <Briefcase size={18} /> {t('builder.experience.label')}
-            </h3>
-            <ul className="space-y-3">
-              {experience.map((e, idx) => {
-                const pos   = firstNonEmpty(e.position, e.title, e.role);
-                const comp  = firstNonEmpty(e.company, e.employer, e.org);
-                const start = fmtDate(firstNonEmpty(e.startDate, e.start, e.from, e.dateStart, e.date_from));
-                const end   = e.currentlyWorking ? t('builder.experience.current') : fmtDate(firstNonEmpty(e.endDate, e.end, e.to, e.dateEnd, e.date_to));
-                const text  = firstNonEmpty(e.responsibilities, e.description, e.achievements);
-                const place = e.location || e.city || '';
-
-                const bullets = String(text || '')
-                  .split(/\n|•|;-?/g)
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                  .slice(0, 12);
-
-                return (
-                  <li key={e.id || idx} className="border rounded-lg p-4 bg-white">
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <div>
-                        <div className="font-semibold text-gray-900">{pos || '—'}</div>
-                        <div className="text-gray-700">{comp || '—'}</div>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {start || '—'} — {end || '—'}{place ? ` • ${place}` : ''}
-                      </div>
-                    </div>
-
-                    {bullets.length > 0 && (
-                      <ul className="list-disc pl-5 mt-2 text-sm text-gray-700">
-                        {bullets.map((b, i) => <li key={i}>{b}</li>)}
-                      </ul>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        {/* Образование — весь список */}
+        {/* Education */}
         {education.length > 0 && (
-          <div className="mb-5">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <BookOpen size={18} /> {t('builder.education.title') ?? t('builder.education.addEducation')}
-            </h3>
-            <ul className="space-y-3">
+          <div className="mb-4">
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">
+              {t('builder.education.title') ?? t('builder.education.addEducation')}
+            </h2>
+            <div className="space-y-2">
               {education.map((e, idx) => {
                 const inst  = firstNonEmpty(e.institution, e.university, e.school, e.org);
                 const level = firstNonEmpty(e.level, e.degree);
                 const spec  = firstNonEmpty(e.specialization, e.major, e.faculty, e.program);
                 const year  = firstNonEmpty(e.year, e.graduationYear, e.end, e.dateEnd, e.date_to);
                 return (
-                  <li key={e.id || idx} className="border rounded-lg p-4 bg-white">
-                    <div className="font-semibold text-gray-900">{inst || '—'}</div>
-                    <div className="text-gray-700">{[level, spec].filter(Boolean).join(' • ') || '—'}</div>
-                    <div className="text-sm text-gray-600 mt-1">{fmtDate(year)}</div>
-                  </li>
+                  <div key={e.id || idx}>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[11px] font-semibold text-slate-900">{level || inst || '—'}</span>
+                      {year && <span className="text-[8px] text-slate-500 ml-2">{fmtDate(year)}</span>}
+                    </div>
+                    {level && inst && <p className="text-[9px] text-slate-600 italic">{inst}</p>}
+                    {spec && <p className="text-[9px] text-slate-600">{spec}</p>}
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           </div>
         )}
 
-        {/* Языки — весь список */}
+        {/* Languages */}
         {languages.length > 0 && (
-          <div className="mb-1">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <Globe size={18} /> {t('builder.languages.title')}
-            </h3>
-            <ul className="flex flex-wrap gap-2">
+          <div>
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">
+              {t('builder.languages.title')}
+            </h2>
+            <div className="flex flex-wrap gap-4 text-[9px]">
               {languages.map((l, idx) => {
                 const name = typeof l === 'string' ? l : firstNonEmpty(l.language, l.name, l.lang);
                 const lvl  = typeof l === 'string' ? '' : firstNonEmpty(l.level, l.proficiency);
                 return (
-                  <li key={l.id || idx} className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-700">
-                    {name}{lvl ? ` — ${lvl}` : ''}
+                  <span key={l.id || idx}>
+                    <span className="font-semibold">{name}</span>
+                    {lvl ? ` — ${lvl}` : ''}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---- Modern preview (two-column sidebar) ---- */
+function ModernPreview({ profile, t, fullName, title, email, phone, loc, website, skills, experience, education, languages }) {
+  const presentLabel = t('builder.experience.current') || 'наст. время';
+  const photo = profile.photo;
+
+  return (
+    <div className="bg-white rounded-sm shadow-lg overflow-hidden flex" style={{ aspectRatio: '1/1.414' }}>
+      {/* Sidebar */}
+      <aside className="w-[34%] bg-slate-100 border-r border-slate-200 p-5 flex flex-col gap-4 text-[10px]">
+        {/* Photo + Name */}
+        <div className="flex flex-col items-center text-center">
+          {photo ? (
+            <img src={photo} alt={fullName} className="w-16 h-16 rounded-full object-cover mb-2 border-2 border-white shadow-sm" />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-slate-300 mb-2 border-2 border-white shadow-sm" />
+          )}
+          <h1 className="text-[13px] font-bold leading-tight uppercase tracking-wider text-slate-900">{fullName}</h1>
+          {title && <p className="text-blue-600 font-semibold text-[9px] mt-0.5 uppercase">{title}</p>}
+        </div>
+
+        {/* Contact */}
+        {(phone || email || loc || website) && (
+          <div>
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-2 pb-1 border-b border-slate-200">
+              {t('builder.sections.contact') || 'Contact'}
+            </h2>
+            <ul className="space-y-1.5 text-[9px]">
+              {phone && <li className="flex items-center gap-1.5"><Phone size={10} className="text-blue-600 flex-shrink-0" />{phone}</li>}
+              {email && <li className="flex items-center gap-1.5"><Mail size={10} className="text-blue-600 flex-shrink-0" /><span className="break-all">{email}</span></li>}
+              {loc && <li className="flex items-center gap-1.5"><MapPin size={10} className="text-blue-600 flex-shrink-0" />{loc}</li>}
+              {website && <li className="flex items-center gap-1.5"><Globe size={10} className="text-blue-600 flex-shrink-0" /><span className="break-all">{website}</span></li>}
+            </ul>
+          </div>
+        )}
+
+        {/* Skills */}
+        {skills.length > 0 && (
+          <div>
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-2 pb-1 border-b border-slate-200">
+              {t('builder.skills.title')}
+            </h2>
+            <div className="flex flex-wrap gap-1">
+              {skills.map((s, i) => (
+                <span key={i} className="px-1.5 py-0.5 bg-white border border-slate-200 text-[8px] font-medium rounded">{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Languages */}
+        {languages.length > 0 && (
+          <div>
+            <h2 className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-2 pb-1 border-b border-slate-200">
+              {t('builder.languages.title')}
+            </h2>
+            <ul className="space-y-1 text-[9px]">
+              {languages.map((l, idx) => {
+                const name = typeof l === 'string' ? l : firstNonEmpty(l.language, l.name, l.lang);
+                const lvl  = typeof l === 'string' ? '' : firstNonEmpty(l.level, l.proficiency);
+                return (
+                  <li key={l.id || idx} className="flex justify-between">
+                    <span>{name}</span>
+                    {lvl && <span className="text-slate-400">{lvl}</span>}
                   </li>
                 );
               })}
             </ul>
           </div>
         )}
+      </aside>
+
+      {/* Right content */}
+      <div className="flex-1 p-6 flex flex-col gap-4 bg-white overflow-y-auto text-[10px]">
+        {/* Summary */}
+        {profile.summary && (
+          <div>
+            <h2 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.15em] mb-2 flex items-center gap-2">
+              <span className="w-5 h-[2px] bg-blue-600" />
+              {t('builder.personal.summary')}
+            </h2>
+            <p className="text-slate-600 leading-relaxed text-[10px]">{profile.summary}</p>
+          </div>
+        )}
+
+        {/* Experience */}
+        {experience.length > 0 && (
+          <div>
+            <h2 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.15em] mb-2 flex items-center gap-2">
+              <span className="w-5 h-[2px] bg-blue-600" />
+              {t('builder.experience.label')}
+            </h2>
+            <div className="space-y-3">
+              {experience.map((e, idx) => {
+                const pos   = firstNonEmpty(e.position, e.title, e.role);
+                const comp  = firstNonEmpty(e.company, e.employer, e.org);
+                const start = fmtDate(firstNonEmpty(e.startDate, e.start, e.from, e.dateStart, e.date_from));
+                const end   = e.currentlyWorking ? presentLabel : fmtDate(firstNonEmpty(e.endDate, e.end, e.to, e.dateEnd, e.date_to));
+                const text  = firstNonEmpty(e.responsibilities, e.description, e.achievements);
+                const bullets = String(text || '').split(/\n|•|;/g).map(s => s.trim()).filter(Boolean).slice(0, 8);
+                const isCurrent = e.currentlyWorking || !fmtDate(firstNonEmpty(e.endDate, e.end, e.to, e.dateEnd, e.date_to));
+                return (
+                  <div key={e.id || idx}>
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h3 className="font-bold text-[11px] text-slate-900">{pos || '—'}</h3>
+                      <span className={`text-[8px] font-semibold whitespace-nowrap ml-2 ${isCurrent ? 'text-blue-600' : 'text-slate-400'}`}>
+                        {start || '—'} — {end || '—'}
+                      </span>
+                    </div>
+                    {comp && <p className="text-slate-500 italic text-[9px] mb-1">{comp}</p>}
+                    {bullets.length > 0 && (
+                      <ul className="list-disc ml-4 text-slate-600 space-y-0.5 text-[9px]">
+                        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Education */}
+        {education.length > 0 && (
+          <div>
+            <h2 className="text-[10px] font-bold text-slate-900 uppercase tracking-[0.15em] mb-2 flex items-center gap-2">
+              <span className="w-5 h-[2px] bg-blue-600" />
+              {t('builder.education.title') ?? t('builder.education.addEducation')}
+            </h2>
+            <div className="space-y-2">
+              {education.map((e, idx) => {
+                const inst  = firstNonEmpty(e.institution, e.university, e.school, e.org);
+                const level = firstNonEmpty(e.level, e.degree);
+                const spec  = firstNonEmpty(e.specialization, e.major, e.faculty, e.program);
+                const year  = firstNonEmpty(e.year, e.graduationYear, e.end, e.dateEnd, e.date_to);
+                return (
+                  <div key={e.id || idx}>
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h3 className="font-bold text-[11px] text-slate-900">
+                        {[level, spec].filter(Boolean).join(' — ') || inst}
+                      </h3>
+                      {year && <span className="text-[8px] text-slate-400 ml-2">{fmtDate(year)}</span>}
+                    </div>
+                    {(level || spec) && inst && <p className="text-slate-500 italic text-[9px]">{inst}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+const ResumePreview = React.memo(function ResumePreview({ profile, t, template }) {
+  const fullName = profile.fullName || t('builder.preview.yourName');
+  const title    = firstNonEmpty(profile.position, profile.desiredRole, profile.targetRole);
+  const email    = profile.email;
+  const phone    = profile.phone;
+  const loc      = profile.location;
+  const website  = firstNonEmpty(profile.website, profile.portfolio);
+  const skills   = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
+  const experience = Array.isArray(profile.experience) ? profile.experience : [];
+  const education  = Array.isArray(profile.education) ? profile.education : [];
+  const languages  = Array.isArray(profile.languages) ? profile.languages : [];
+
+  const common = { profile, t, fullName, title, email, phone, loc, website, skills, experience, education, languages };
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-6">
+      <h4 className="font-semibold mb-3 text-slate-700">{t('builder.preview.title')}</h4>
+      {template === 'modern'
+        ? <ModernPreview {...common} />
+        : <MinimalPreview {...common} />
+      }
     </div>
   );
 });
@@ -1212,7 +1365,7 @@ function BuilderPage({
                 </div>
 
                 {/* Полный предпросмотр */}
-                <ResumePreview profile={form} t={t} />
+                <ResumePreview profile={form} t={t} template={selectedTemplate} />
               </div>
             )}
           </div>
