@@ -530,7 +530,7 @@ function AIResumeBuilder() {
 
   const [selectedTemplate, setSelectedTemplate] = useState('modern');
   const [vacancies, setVacancies] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => deriveQueryFromProfile(profile) || '');
   const [recommendations, setRecommendations] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -1222,7 +1222,12 @@ function VacanciesPage({
   profile,
 }) {
   const { t, lang } = useTranslation();
-  const [filters, setFilters] = useState({ location: '', experience: '', salary: '' });
+  // Инициализируем из профиля сразу — чтобы первый поиск шёл с правильными данными
+  const [filters, setFilters] = useState(() => ({
+    location: (profile?.location || '').trim(),
+    experience: calcExperienceCategory(profile) || '',
+    salary: '',
+  }));
   const [showFilters, setShowFilters] = useState(true);
 
   const [loading, setLoading] = useState(false);
@@ -1244,7 +1249,8 @@ function VacanciesPage({
   const blocked = retryAfter && Date.now() < retryAfter;
 
   const [useProfile, setUseProfile] = useState(true);
-  const appliedRef = useRef(false);
+  // Профиль уже применён при инициализации state (searchQuery, filters)
+  const appliedRef = useRef(!!profile);
   const reqIdRef = useRef(0);
 
   // ⬇️ флаг для авто-расширения (чтобы не зациклиться)
