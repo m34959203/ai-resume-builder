@@ -744,7 +744,7 @@ function AIResumeBuilder() {
               <img
                 src={zhezuLogo}
                 alt={BRAND_NAME}
-                className="w-10 h-10 rounded-md object-contain"
+                className="w-12 h-12 rounded-lg object-contain"
                 loading="eager"
               />
               <span className="text-xl font-extrabold tracking-tight">

@@ -36,12 +36,12 @@ export default function HomePage({ onCreate, onFindJobs }) {
 
   return (
     <div className="min-h-screen bg-[#F0F4FF] bg-mesh-gradient relative overflow-hidden antialiased text-slate-900">
-      <main className="max-w-6xl mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-8">
+      <main className="max-w-5xl mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-8">
 
         {/* ===== Hero ===== */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-8">
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-16">
           {/* Left */}
-          <div className="max-w-xl space-y-4 text-center lg:text-left">
+          <div className="max-w-lg space-y-4 text-center lg:text-left">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-[#DBEAFE] text-[#2563EB] px-3.5 py-1.5 rounded-full text-[13px] font-semibold">
               <Sparkles size={13} />
