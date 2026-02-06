@@ -26,8 +26,10 @@ if (process.env.NODE_ENV !== 'production') {
 // Опциональные зависимости
 let compression = null;
 let helmet = null;
+let rateLimit = null;
 try { compression = require('compression'); } catch {}
 try { helmet = require('helmet'); } catch {}
+try { rateLimit = require('express-rate-limit'); } catch {}
 
 /* ────────────────────────────────────────────────────────────
  * CONFIG
@@ -76,11 +78,29 @@ app.disable('x-powered-by');
 app.set('etag', false);
 
 /* Безопасность/сжатие */
-if (helmet) app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+if (helmet) app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https://api.hh.ru', 'https://openrouter.ai', ...allowedOrigins],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 if (compression) app.use(compression());
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+/* Rate limiting */
+if (rateLimit) {
+  app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api/ai/', rateLimit({ windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api/recommendations/', rateLimit({ windowMs: 60 * 1000, max: 15, standardHeaders: true, legacyHeaders: false }));
+}
+
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 /* ────────────────────────────────────────────────────────────
  * X-Request-ID для трассировки
@@ -307,6 +327,9 @@ function uniqCI(arr = []) {
 app.post('/api/ai/infer-search', (req, res) => {
   try {
     const profile = req.body?.profile || {};
+    if (JSON.stringify(profile).length > 50000) {
+      return res.status(400).json({ error: 'Profile too large' });
+    }
     const role = deriveRole(profile);
     const city = normalizeText(profile?.location);
     const exp = calcExperienceCategory(profile);
@@ -447,24 +470,22 @@ hhInline.get('/jobs/search', async (req, res) => {
 
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
+      console.error(`[hh/jobs/search] HH API error: ${r.status}`, errText.slice(0, 500));
       return res.status(r.status).json({
         ok: false,
         error: 'HH_API_ERROR',
         status: r.status,
-        details: errText.slice(0, 2000),
-        url,
       });
     }
 
     const txt = await r.text();
     let data = null;
     try { data = JSON.parse(txt); } catch {
+      console.error('[hh/jobs/search] Bad JSON from HH API', txt.slice(0, 500));
       return res.status(502).json({
         ok: false,
         error: 'HH_BAD_PAYLOAD',
         status: 502,
-        details: txt.slice(0, 2000),
-        url,
       });
     }
 

@@ -38,18 +38,8 @@ function useDebouncedValue(value, delay = 800) {
   return v;
 }
 
-// --- уникализация без учёта регистра
-const uniqCI = (arr = []) => {
-  const seen = new Set();
-  const out = [];
-  for (const v of arr) {
-    const k = String(v || '').trim().toLowerCase();
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(String(v).trim());
-  }
-  return out;
-};
+// --- уникализация без учёта регистра (shared util)
+import { uniqCI } from '../utils/strings';
 const uniq = (arr = []) => uniqCI(arr);
 
 // --- нормализация навыков профиля (строки и объекты)

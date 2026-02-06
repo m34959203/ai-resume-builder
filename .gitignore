@@ -105,6 +105,9 @@ docker-compose.override.yml
 # ============================================
 # Security & Secrets (NEVER COMMIT!)
 # ============================================
+.env
+.env.local
+.env.*.local
 *.pem
 *.key
 *.cert
