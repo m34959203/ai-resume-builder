@@ -39,6 +39,7 @@ const router = createHashRouter(
 
 // ====== PWA: автообновление, если включено ======
 const enablePWA = String(import.meta.env.VITE_ENABLE_PWA ?? (import.meta.env.PROD ? '1' : '0')) === '1';
+/*
 if (enablePWA && import.meta.env.PROD) {
   // не падаем, если плагин не установлен
   import('virtual:pwa-register')
@@ -58,6 +59,7 @@ if (enablePWA && import.meta.env.PROD) {
     })
     .catch(() => {});
 }
+*/
 
 // ====== Глобальные ловушки ошибок, чтобы видеть сбои API/рендера ======
 window.addEventListener('error', (e) => {
