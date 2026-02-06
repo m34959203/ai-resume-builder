@@ -9,7 +9,7 @@ function DocIllustration() {
       <img
         src="/images/hero-doc.svg"
         alt="AI Resume Document"
-        className="w-[240px] h-[280px] sm:w-[280px] sm:h-[320px] drop-shadow-2xl"
+        className="w-[200px] h-[230px] sm:w-[240px] sm:h-[280px] drop-shadow-2xl"
         draggable={false}
       />
       {/* Glow */}
@@ -21,12 +21,12 @@ function DocIllustration() {
 /* Feature card */
 function FeatureCard({ icon: Icon, title, desc }) {
   return (
-    <div className="bg-white/45 backdrop-blur-xl border border-white/60 p-6 sm:p-7 rounded-[22px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:bg-white/70 transition-all group cursor-default">
-      <div className="w-12 h-12 bg-gradient-to-br from-[#3B82F6] to-[#60A5FA] rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-blue-100/80 group-hover:scale-105 transition-transform">
-        <Icon className="text-white" size={21} />
+    <div className="bg-white/45 backdrop-blur-xl border border-white/60 p-5 sm:p-6 rounded-[20px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:bg-white/70 transition-all group cursor-default">
+      <div className="w-11 h-11 bg-gradient-to-br from-[#3B82F6] to-[#60A5FA] rounded-lg flex items-center justify-center mb-3 shadow-lg shadow-blue-100/80 group-hover:scale-105 transition-transform">
+        <Icon className="text-white" size={19} />
       </div>
-      <h3 className="text-lg font-bold text-[#1E293B] mb-1.5 tracking-tight">{title}</h3>
-      <p className="text-[#64748B] leading-relaxed text-[14px]">{desc}</p>
+      <h3 className="text-base font-bold text-[#1E293B] mb-1 tracking-tight">{title}</h3>
+      <p className="text-[#64748B] leading-relaxed text-[13px]">{desc}</p>
     </div>
   );
 }
@@ -36,12 +36,12 @@ export default function HomePage({ onCreate, onFindJobs }) {
 
   return (
     <div className="min-h-screen bg-[#F0F4FF] bg-mesh-gradient relative overflow-hidden antialiased text-slate-900">
-      <main className="max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20 pb-12">
+      <main className="max-w-6xl mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-8">
 
         {/* ===== Hero ===== */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-10">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-8">
           {/* Left */}
-          <div className="max-w-xl space-y-5 text-center lg:text-left">
+          <div className="max-w-xl space-y-4 text-center lg:text-left">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-[#DBEAFE] text-[#2563EB] px-3.5 py-1.5 rounded-full text-[13px] font-semibold">
               <Sparkles size={13} />
@@ -49,7 +49,7 @@ export default function HomePage({ onCreate, onFindJobs }) {
             </div>
 
             {/* Title */}
-            <h1 className="text-[2.5rem] sm:text-[3.1rem] font-extrabold text-[#0F172A] leading-[1.1] tracking-tight">
+            <h1 className="text-[2.2rem] sm:text-[2.75rem] font-extrabold text-[#0F172A] leading-[1.1] tracking-tight">
               {t('home.titleLine1')}<br />
               {t('home.titleLine2')}
             </h1>
@@ -87,7 +87,7 @@ export default function HomePage({ onCreate, onFindJobs }) {
         </div>
 
         {/* ===== Feature cards ===== */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-16 sm:mt-20">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10 sm:mt-12">
           <FeatureCard
             icon={FileText}
             title={t('home.features.ai.title')}
