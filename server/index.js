@@ -126,6 +126,7 @@ function originAllowed(origin) {
     if (host.endsWith('onrender.com')) return true;
     if (host.endsWith('vercel.app'))  return true;
     if (host.endsWith('netlify.app')) return true;
+    if (host.endsWith('.zhezu.kz') || host === 'zhezu.kz') return true;
     if (!config.isProduction && (host === 'localhost' || host === '127.0.0.1')) return true;
   } catch {}
   return false;
@@ -522,10 +523,30 @@ function mountRoutes() {
 mountRoutes();
 
 /* ────────────────────────────────────────────────────────────
- * ROOT
+ * STATIC FILES + SPA FALLBACK (production on Plesk/hoster.kz)
  * ──────────────────────────────────────────────────────────── */
-app.get('/', (_req, res) => {
-  res.type('text/plain; charset=utf-8').send(`
+const distPath = path.join(__dirnameResolved, '..', 'dist');
+const hasDistDir = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'));
+
+if (config.isProduction && hasDistDir) {
+  // Serve built frontend assets with long-term caching
+  app.use(express.static(distPath, {
+    maxAge: '1y',
+    immutable: true,
+    index: 'index.html',  // serve index.html for /
+  }));
+
+  // SPA fallback: non-API GET requests → index.html (hash router, but just in case)
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+
+  console.log(`📂 Serving static files from ${distPath}`);
+} else {
+  // Dev/API-only mode: show server info at root
+  app.get('/', (_req, res) => {
+    res.type('text/plain; charset=utf-8').send(`
 ╔════════════════════════════════════════════════════╗
 ║      AI RESUME BUILDER - SERVER (CommonJS)        ║
 ╚════════════════════════════════════════════════════╝
@@ -559,7 +580,8 @@ Courses:
 AI helpers:
   POST /api/ai/infer-search
 `.trim());
-});
+  });
+}
 
 /* ────────────────────────────────────────────────────────────
  * ERRORS — добавляем CORS даже при ошибках/404

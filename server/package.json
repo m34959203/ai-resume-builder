@@ -6,7 +6,7 @@
   "main": "index.js",
   "type": "commonjs",
   "engines": {
-    "node": ">=18.18.0 <21"
+    "node": ">=18.18.0"
   },
   "scripts": {
     "start": "cross-env NODE_ENV=production node index.js",
