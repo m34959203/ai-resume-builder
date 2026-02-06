@@ -72,7 +72,8 @@ export async function searchJobs(params = {}) {
   const host = normalizeHost(params.host || HOST_DEFAULT || 'hh.kz');
 
   let area = params.area;
-  if (!params.city && !area && host === 'hh.kz') {
+  // Fallback к стране, если area не задан (независимо от city)
+  if (!area && host === 'hh.kz') {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
     if (kz?.id) area = String(kz.id);
   }
@@ -99,7 +100,9 @@ export async function searchJobsSmart(params = {}) {
     const resolved = await resolveAreaId(params.city, host).catch(() => null);
     if (resolved?.id) area = resolved.id;
   }
-  if (!params.city && !area && host === 'hh.kz') {
+  // Fallback: если город указан, но не резолвится — используем корень страны (КЗ)
+  // Раньше fallback срабатывал только когда city пуст, из-за чего запрос уходил без area
+  if (!area && host === 'hh.kz') {
     const kz = await getCountryRoot(host, /казахстан/i).catch(() => null);
     if (kz?.id) area = String(kz.id);
   }
