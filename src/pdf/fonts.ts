@@ -1,12 +1,18 @@
 import { Font } from "@react-pdf/renderer";
 
-// Аккуратно строим URL с учётом Vite BASE_URL (напр. "/ai-resume-builder/")
+// Строим абсолютный URL шрифта (react-pdf требует полный URL в браузере)
 const BASE =
   (typeof window !== "undefined" && (window.__vite_base__ || window.base)) ||
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ||
   "/";
 
-const src = (p) => `${BASE.replace(/\/+$/, "/")}fonts/${p}`;
+const src = (p: string): string => {
+  const path = `${BASE.replace(/\/+$/, "/")}fonts/${p}`;
+  if (typeof window !== "undefined" && path.startsWith("/")) {
+    return `${window.location.origin}${path}`;
+  }
+  return path;
+};
 
 // Inter — основной гротеск (поддерживает кириллицу)
 Font.register({

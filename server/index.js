@@ -62,6 +62,7 @@ const runtimeOrigins = [
   process.env.FRONTEND_URL,                                   // произвольный кастомный
   process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
   process.env.NETLIFY_URL && `https://${process.env.NETLIFY_URL}`,
+  process.env.RAILWAY_PUBLIC_DOMAIN && `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`,
 ].filter(Boolean);
 
 let allowedOrigins = [
@@ -126,6 +127,7 @@ function originAllowed(origin) {
     if (host.endsWith('onrender.com')) return true;
     if (host.endsWith('vercel.app'))  return true;
     if (host.endsWith('netlify.app')) return true;
+    if (host.endsWith('.railway.app') || host.endsWith('.up.railway.app')) return true;
     if (host.endsWith('.zhezu.kz') || host === 'zhezu.kz') return true;
     if (!config.isProduction && (host === 'localhost' || host === '127.0.0.1')) return true;
   } catch {}
@@ -210,7 +212,7 @@ app.get('/version', (_req, res) => {
       if (pkg && pkg.version) version = String(pkg.version);
     }
   } catch {}
-  const commit = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '';
+  const commit = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '';
   res.json({ version, commit });
 });
 

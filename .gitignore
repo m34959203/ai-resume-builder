@@ -92,7 +92,6 @@ pnpm-lock.yaml
 # Docker
 # ============================================
 docker-compose.override.yml
-.dockerignore
 
 # ============================================
 # Deployment

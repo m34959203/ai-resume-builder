@@ -285,6 +285,7 @@ const styles = StyleSheet.create({
     // ВАЖНО: верх/низ задаём динамически, здесь только базовое
     paddingHorizontal: INSET_X,
     fontSize: 10,
+    fontFamily: DEFAULT_PDF_FONT || "Inter",
   },
   root: {
     fontFamily: DEFAULT_PDF_FONT || "Inter",
