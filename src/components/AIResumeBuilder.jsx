@@ -122,7 +122,7 @@ function pickLatestExperience(profile) {
 
 function calcExperienceCategory(profile) {
   const items = Array.isArray(profile?.experience) ? profile.experience : [];
-  if (!items.length) return 'noExperience';
+  if (!items.length) return ''; // не фильтруем — показываем все вакансии
   let ms = 0;
   items.forEach((it) => {
     const start = bestOfDates(it, ['start', 'from', 'dateStart', 'date_from']);
@@ -134,7 +134,7 @@ function calcExperienceCategory(profile) {
     }
   });
   const years = ms / (365 * 24 * 3600 * 1000);
-  if (years < 1) return 'noExperience';
+  if (years < 1) return ''; // <1 год — не фильтруем, чтобы не сужать выдачу
   if (years < 3) return 'between1And3';
   if (years < 6) return 'between3And6';
   return 'moreThan6';
@@ -278,13 +278,14 @@ function deriveDesiredRole(profile) {
 const deriveQueryFromProfile = (p) => deriveDesiredRole(p);
 
 // --- опыт от ИИ к HH ---
+// 'none'/'0-1' → '' (не фильтруем), иначе HH фильтр noExperience слишком жёсткий
 function hhExpFromAi(aiExp) {
   const v = String(aiExp || '').trim();
-  if (v === 'none' || v === '0-1') return 'noExperience';
+  if (v === 'none' || v === '0-1' || v === 'noExperience') return ''; // показываем все вакансии
   if (v === '1-3') return 'between1And3';
   if (v === '3-6') return 'between3And6';
   if (v === '6+') return 'moreThan6';
-  if (['noExperience','between1And3','between3And6','moreThan6'].includes(v)) return v;
+  if (['between1And3','between3And6','moreThan6'].includes(v)) return v;
   return '';
 }
 
@@ -1449,7 +1450,7 @@ function VacanciesPage({
 
       const baseText = (typedText || '').trim() || inferredRole || 'разработчик';
       const baseCity = chosenCity || inferredCity || undefined;
-      const baseExp  = (chosenExp === 'none') ? 'noExperience' : (chosenExp || inferredExp || '');
+      const baseExp  = (chosenExp === 'none') ? '' : (chosenExp || inferredExp || '');
 
       const salaryNum = salaryVal ? String(salaryVal).replace(/\D/g, '') : undefined;
 
@@ -1475,7 +1476,7 @@ function VacanciesPage({
         let res = await doQuery(baseText, baseCity, baseExp);
         if (reqIdRef.current !== myId) return;
 
-        // 2) авто-расширение: если пусто — убираем город
+        // 2) авто-расширение: если пусто — убираем город (ищем по всему КЗ)
         if (!res.items.length && baseCity) {
           const widened = await doQuery(baseText, undefined, baseExp);
           if (reqIdRef.current !== myId) return;
@@ -1495,8 +1496,29 @@ function VacanciesPage({
           }
         }
 
-        // 4) всё ещё пусто — подставляем общий текст
-        if (!res.items.length && baseText) {
+        // 4) всё ещё пусто — пробуем русский аналог запроса (EN → RU)
+        if (!res.items.length && /[a-zA-Z]/.test(baseText)) {
+          const ruText = baseText
+            .replace(/\bfull\s*stack\b/i, 'Fullstack')
+            .replace(/\bdeveloper\b/i, 'разработчик')
+            .replace(/\bengineer\b/i, 'инженер')
+            .replace(/\bdesigner\b/i, 'дизайнер')
+            .replace(/\bmanager\b/i, 'менеджер')
+            .replace(/\banalyst\b/i, 'аналитик')
+            .replace(/\bfrontend\b/i, 'Frontend')
+            .replace(/\bbackend\b/i, 'Backend');
+          if (ruText !== baseText) {
+            const ruRes = await doQuery(ruText, undefined, '');
+            if (reqIdRef.current !== myId) return;
+            if (ruRes.items.length) {
+              res = ruRes;
+              setAutoRelaxInfo({ dropped: 'lang' });
+            }
+          }
+        }
+
+        // 5) всё ещё пусто — подставляем общий текст
+        if (!res.items.length && baseText && baseText !== 'разработчик') {
           const generic = await doQuery('разработчик', undefined, '');
           if (reqIdRef.current !== myId) return;
           if (generic.items.length) {
@@ -1582,16 +1604,19 @@ function VacanciesPage({
     if (lang === 'kk') {
       if (kind === 'city') return 'Іздеуді кеңейттік: қала сүзгісі алынды.';
       if (kind === 'experience') return 'Іздеуді кеңейттік: тәжірибе сүзгісі алынды.';
+      if (kind === 'lang') return 'Іздеуді кеңейттік: сұраныс орысшаға аударылды.';
       return 'Іздеуді кеңейттік: жалпы сұраныс қолданылды.';
     }
     if (lang === 'en') {
       if (kind === 'city') return 'Search widened: city filter removed.';
       if (kind === 'experience') return 'Search widened: experience filter removed.';
+      if (kind === 'lang') return 'Search widened: query translated to Russian.';
       return 'Search widened: using a more generic query.';
     }
     // ru
     if (kind === 'city') return 'Расширили поиск: убрали фильтр по городу.';
     if (kind === 'experience') return 'Расширили поиск: убрали фильтр по опыту.';
+    if (kind === 'lang') return 'Расширили поиск: перевели запрос на русский.';
     return 'Расширили поиск: использован более общий запрос.';
   };
 
