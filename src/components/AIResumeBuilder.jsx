@@ -18,6 +18,7 @@ import {
   inferSearchFromProfile,
   getDefaultHost,
   fetchRecommendations,
+  fetchCourses,
 } from '../services/bff';
 
 // ⬇️ ЛОГОТИП БРЕНДА (положите файл в src/assets/zhezu-logo.png)
@@ -429,6 +430,30 @@ function localCourseLinks(skills = []) {
   return acc.slice(0, 10);
 }
 
+/** Загрузка реальных курсов с BFF (Stepik/Coursera/YouTube), fallback на локальные ссылки */
+async function loadRealCourses(skills = [], limit = 12) {
+  if (!skills.length) return [];
+  try {
+    const resp = await fetchCourses({ skills, limit });
+    if (resp.ok && resp.courses.length > 0) {
+      return resp.courses.map((c) => ({
+        name: [c.provider, c.title].filter(Boolean).join(' — '),
+        duration: c.duration || '',
+        url: c.url || '',
+        cover: c.cover || '',
+        provider: c.provider || '',
+        description: c.description || '',
+        learners: c.learners || 0,
+        channel: c.channel || '',
+        source: c.source || 'api',
+      }));
+    }
+  } catch {
+    // fallback ниже
+  }
+  return localCourseLinks(skills);
+}
+
 /** Нормализация ответа ИИ к единому контракту UI */
 function normalizeAIRecs(recRaw) {
   if (!recRaw) return null;
@@ -443,9 +468,15 @@ function normalizeAIRecs(recRaw) {
     .filter(Boolean);
 
   let courses = (recRaw?.courses || []).map((c) => ({
-    name: [c?.provider, c?.title].filter(Boolean).join(' — '),
+    name: c?.name || [c?.provider, c?.title].filter(Boolean).join(' — '),
     duration: c?.duration || '',
-    url: c?.url || c?.link || ''
+    url: c?.url || c?.link || '',
+    cover: c?.cover || '',
+    provider: c?.provider || '',
+    description: c?.description || '',
+    learners: c?.learners || 0,
+    channel: c?.channel || '',
+    source: c?.source || '',
   })).filter(c => c.name);
 
   professions = uniq(professions).slice(0, 6);
@@ -568,13 +599,14 @@ function AIResumeBuilder() {
       return;
     }
 
-    // Если данных недостаточно для ИИ, но что-то есть — локальный фолбэк
+    // Если данных недостаточно для ИИ, но что-то есть — загружаем реальные курсы
     if (!profileOk) {
+      setIsGenerating(true);
       const roles = localRolesFromProfile(profile);
       const gap = localGapFrom(profile);
       const haveSkills = extractSkills(profile);
       const skillsToLearn = uniq(gap).filter((x) => !haveSkills.includes(x.toLowerCase())).slice(0, 12);
-      const courses = localCourseLinks(skillsToLearn);
+      const courses = await loadRealCourses(skillsToLearn, 10);
 
       setRecommendations({
         professions: roles,
@@ -636,11 +668,11 @@ function AIResumeBuilder() {
         uniq(arr).filter((x) => !haveSkills.includes(String(x).toLowerCase()));
 
       if (!rec || isTooNarrow(rec)) {
-        // локальный фоллбэк БЕЗ выдумывания: роли из профиля + gap и курсы
+        // локальный фоллбэк БЕЗ выдумывания: роли из профиля + gap + реальные курсы
         const roles = localRolesFromProfile(profile);
         const gap = localGapFrom(profile);
         const gapFiltered = filterOutExisting(gap).slice(0, 12);
-        const courses = localCourseLinks(gapFiltered);
+        const courses = await loadRealCourses(gapFiltered, 10);
 
         rec = {
           professions: roles,
@@ -650,16 +682,16 @@ function AIResumeBuilder() {
           debug: { fallback: 'local-gap', ai: false }
         };
       } else {
-        // если у ИИ уже что-то есть — подчистим и усилим локально
+        // если у ИИ уже что-то есть — подчистим и усилим, подтянем реальные курсы
         const addedGap = localGapFrom(profile);
         const mergedSkills = filterOutExisting([...(rec.skillsToLearn || []), ...addedGap]).slice(0, 16);
 
-        // курсы: оставим ИИ-курсы, но если их мало — догенерим локальными ссылками
+        // курсы: оставим ИИ-курсы, но если их мало — подтянем реальные с API
         let courses = Array.isArray(rec.courses) ? rec.courses : [];
         if (courses.length < 3) {
-          const localMore = localCourseLinks(mergedSkills);
+          const realMore = await loadRealCourses(mergedSkills, 10);
           const seen = new Set(courses.map((c) => c.url || c.name));
-          localMore.forEach((c) => {
+          realMore.forEach((c) => {
             const key = c.url || c.name;
             if (!seen.has(key)) { seen.add(key); courses.push(c); }
           });
@@ -677,12 +709,12 @@ function AIResumeBuilder() {
 
       setRecommendations(rec);
     } catch {
-      // Сервис ИИ недоступен: показываем локальный фоллбэк, а не «свои же» навыки
+      // Сервис ИИ недоступен: реальные курсы + локальный фоллбэк
       const roles = localRolesFromProfile(profile);
       const gap = localGapFrom(profile);
       const haveSkills = extractSkills(profile);
       const skillsToLearn = uniq(gap).filter((x) => !haveSkills.includes(x.toLowerCase())).slice(0, 12);
-      const courses = localCourseLinks(skillsToLearn);
+      const courses = await loadRealCourses(skillsToLearn, 10);
 
       setRecommendations({
         professions: roles,
@@ -939,9 +971,13 @@ function RecommendationsPage({
   const CoursesSkeleton = () => (
     <div className="space-y-2" aria-hidden>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2">
-          <div className="w-2/3 h-4 bg-gray-100 rounded" />
-          <div className="w-20 h-8 bg-gray-100 rounded" />
+        <div key={i} className="flex items-start gap-3 rounded-lg border px-3 py-2.5 animate-pulse">
+          <div className="w-16 h-12 bg-gray-100 rounded flex-shrink-0" />
+          <div className="flex-1 space-y-1.5 pt-0.5">
+            <div className="w-3/4 h-4 bg-gray-100 rounded" />
+            <div className="w-1/3 h-3 bg-gray-100 rounded" />
+          </div>
+          <div className="w-20 h-8 bg-gray-100 rounded self-center flex-shrink-0" />
         </div>
       ))}
     </div>
@@ -1091,13 +1127,39 @@ function RecommendationsPage({
             ) : (
               <div className="space-y-2">
                 {(recommendations?.courses || []).map((c, i) => (
-                  <div key={`${c.name}-${i}`} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm text-gray-900 truncate">{c.name}</div>
-                      {(c.duration || c.url) && (
-                        <div className="text-xs text-gray-500">
-                          {c.duration || ''}{c.duration && c.url ? ' • ' : ''}{c.url ? t('recommendations.openCourse') : ''}
-                        </div>
+                  <div key={`${c.url || c.name}-${i}`} className="flex items-start gap-3 rounded-lg border px-3 py-2.5 hover:bg-gray-50 transition">
+                    {c.cover && (
+                      <img
+                        src={c.cover}
+                        alt=""
+                        className="w-16 h-12 rounded object-cover flex-shrink-0 bg-gray-100"
+                        loading="lazy"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm text-gray-900 line-clamp-2">{c.name}</div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                        {c.provider && (
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                            c.provider === 'Stepik' ? 'bg-green-100 text-green-700' :
+                            c.provider === 'YouTube' ? 'bg-red-100 text-red-700' :
+                            c.provider?.startsWith('Coursera') ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {c.provider}
+                          </span>
+                        )}
+                        {c.duration && <span className="text-xs text-gray-500">{c.duration}</span>}
+                        {c.channel && <span className="text-xs text-gray-400">{c.channel}</span>}
+                        {c.learners > 0 && (
+                          <span className="text-xs text-gray-400">
+                            {c.learners.toLocaleString()} {lang === 'en' ? 'students' : lang === 'kk' ? 'student' : 'студ.'}
+                          </span>
+                        )}
+                      </div>
+                      {c.description && (
+                        <div className="text-xs text-gray-500 mt-1 line-clamp-1">{c.description}</div>
                       )}
                     </div>
                     {c.url ? (
@@ -1105,13 +1167,13 @@ function RecommendationsPage({
                         href={c.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 inline-flex items-center gap-1"
+                        className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 inline-flex items-center gap-1 flex-shrink-0 self-center"
                       >
                         <ExternalLink size={14} />
                         {t('recommendations.openCourse')}
                       </a>
                     ) : (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-400 self-center">
                         {lang === 'kk' ? 'Қолжетімсіз' : lang === 'en' ? 'Unavailable' : 'Недоступно'}
                       </span>
                     )}
