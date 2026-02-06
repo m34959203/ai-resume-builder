@@ -83,10 +83,12 @@ if (helmet) app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https://api.hh.ru', 'https://generativelanguage.googleapis.com', 'https://www.googleapis.com', ...allowedOrigins],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: ["'self'", 'data:', 'blob:', 'https://api.hh.ru', 'https://generativelanguage.googleapis.com', 'https://www.googleapis.com', ...allowedOrigins],
+      fontSrc: ["'self'", 'data:'],
+      workerSrc: ["'self'", 'blob:'],
     },
   },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
