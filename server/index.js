@@ -85,7 +85,7 @@ if (helmet) app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https://api.hh.ru', 'https://openrouter.ai', ...allowedOrigins],
+      connectSrc: ["'self'", 'https://api.hh.ru', 'https://generativelanguage.googleapis.com', 'https://www.googleapis.com', ...allowedOrigins],
     },
   },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
