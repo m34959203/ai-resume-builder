@@ -40,29 +40,8 @@ const COLOR_BG = {
   green: 'bg-green-100',
 };
 
-/* ---------- helpers ---------- */
-const isBlank = (v) => !v || !String(v).trim();
-
-const norm = (s) => String(s || '').toLowerCase().trim();
-const uniqCaseInsensitive = (arr) => {
-  const seen = new Set();
-  const out = [];
-  for (const x of arr) {
-    const k = norm(x);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(x);
-  }
-  return out;
-};
-
-const firstNonEmpty = (...vals) => {
-  for (const v of vals) {
-    const s = String(v ?? '').trim();
-    if (s) return s;
-  }
-  return '';
-};
+/* ---------- helpers (shared) ---------- */
+import { norm, uniqCaseInsensitive, isBlank, firstNonEmpty } from '../utils/strings';
 
 const fmtDate = (v) => {
   if (!v) return '';
@@ -294,8 +273,8 @@ const ResumePreview = React.memo(function ResumePreview({ profile, t }) {
           <div className="mb-5">
             <h3 className="font-semibold mb-2">{t('builder.skills.title')}</h3>
             <div className="flex flex-wrap gap-2">
-              {skills.map((s, i) => (
-                <span key={`${s}-${i}`} className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+              {skills.map((s) => (
+                <span key={s} className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs">
                   {s}
                 </span>
               ))}

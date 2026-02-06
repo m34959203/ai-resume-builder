@@ -7,6 +7,8 @@ import {
   Phone, Mail,
 } from 'lucide-react';
 import BuilderPage from './BuilderPage';
+import HomePage from './HomePage';
+import CitySelect from './CitySelect';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useTranslation } from '../hooks/useTranslation';
 import {
@@ -38,18 +40,8 @@ function useDebouncedValue(value, delay = 800) {
   return v;
 }
 
-// --- уникализация без учёта регистра
-const uniqCI = (arr = []) => {
-  const seen = new Set();
-  const out = [];
-  for (const v of arr) {
-    const k = String(v || '').trim().toLowerCase();
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(String(v).trim());
-  }
-  return out;
-};
+// --- уникализация без учёта регистра (shared util)
+import { uniqCI } from '../utils/strings';
 const uniq = (arr = []) => uniqCI(arr);
 
 // --- нормализация навыков профиля (строки и объекты)
@@ -446,113 +438,6 @@ const isTooNarrow = (r) => {
   return roles < 3 || skills < 5 || crs < 3;
 };
 
-/* ===================== Выбор города (только KZ) ===================== */
-function CitySelect({ value, onChange }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value || '');
-  const [cities, setCities] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => setQuery(value || ''), [value]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const areas = await fetchAreas(HOST);
-        if (cancelled) return;
-
-        const kz = (areas || []).find((c) => /казахстан|kazakhstan|қазақстан/i.test(c?.name));
-        const acc = [];
-        function walk(node) {
-          if (!node) return;
-          const child = Array.isArray(node.areas) ? node.areas : [];
-          if (!child.length) {
-            acc.push({ id: String(node.id), name: node.name });
-            return;
-          }
-          child.forEach(walk);
-        }
-        if (kz) walk(kz);
-
-        const uniqCities = [];
-        const seen = new Set();
-        acc.forEach((x) => {
-          const k = x.name.toLowerCase();
-          if (!seen.has(k)) { seen.add(k); uniqCities.push(x); }
-        });
-
-        setCities(uniqCities.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
-      } catch {
-        setCities([
-          { id: 'almaty', name: 'Алматы' },
-          { id: 'astana', name: 'Астана' },
-          { id: 'shymkent', name: 'Шымкент' },
-        ]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = (query || '').trim().toLowerCase();
-    if (!q) return cities.slice(0, 50);
-    return cities
-      .filter((c) => c.name.toLowerCase().includes(q))
-      .slice(0, 50);
-  }, [query, cities]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <input
-        type="text"
-        placeholder={t('vacancies.cityPlaceholder')}
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        className="w-full px-4 py-2 border rounded-lg"
-        aria-label={t('builder.personal.location')}
-      />
-      {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow-lg">
-          {loading ? (
-            <div className="p-3 text-sm text-gray-500">{t('common.loading')}</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-3 text-sm text-gray-500">{t('vacancies.noCitiesFound')}</div>
-          ) : (
-            filtered.map((c) => (
-              <button
-                key={`${c.id}-${c.name}`}
-                onClick={() => {
-                  setQuery(c.name);
-                  setOpen(false);
-                  onChange?.(c.name, c);
-                }}
-                className="w-full text-left px-3 py-2 hover:bg-gray-50"
-              >
-                {c.name}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ================================= Основной компонент ================================= */
 
 function AIResumeBuilder() {
@@ -906,70 +791,8 @@ function AIResumeBuilder() {
 }
 
 /* ========================== Вспомогательные страницы ========================== */
-
-function HomePage({ onCreate, onFindJobs }) {
-  const { t } = useTranslation();
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full mb-6">
-            <Sparkles size={16} />
-            <span className="text-sm font-medium">{t('home.badge')}</span>
-          </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            {t('home.titlePrefix')}{' '}
-            <span className="text-blue-600">{t('home.titleAccent')}</span>
-          </h1>
-
-          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            {t('home.subtitle')}
-          </p>
-
-          <div className="flex gap-4 justify-center">
-            <button
-              onClick={onCreate}
-              className="px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg"
-            >
-              <FileText size={20} /> {t('home.createButton')}
-            </button>
-            <button
-              onClick={onFindJobs}
-              className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600 flex items-center gap-2"
-            >
-              <Briefcase size={20} /> {t('home.findJobsButton')}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-8 mb-16">
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-              <FileText className="text-blue-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.ai.title')}</h3>
-            <p className="text-gray-600">{t('home.features.ai.description')}</p>
-          </div>
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-              <Briefcase className="text-purple-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.vacancies.title')}</h3>
-            <p className="text-gray-600">{t('home.features.vacancies.description')}</p>
-          </div>
-          <div className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-              <TrendingUp className="text-green-600" size={24} />
-            </div>
-            <h3 className="text-xl font-bold mb-2">{t('home.features.recommendations.title')}</h3>
-            <p className="text-gray-600">{t('home.features.recommendations.description')}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// HomePage extracted to ./HomePage.jsx
+// CitySelect extracted to ./CitySelect.jsx
 
 function RecommendationsPage({
   onBack,

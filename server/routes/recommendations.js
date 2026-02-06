@@ -775,6 +775,28 @@ function fallbackImprove(profile = {}) {
   return { ok: true, updated, changes: { skillsCount: normalizedSkills.length, bulletsCount: bullets.length } };
 }
 
+/* ========================================== VALIDATION =================================== */
+const MAX_PROFILE_SIZE = 50000;  // chars in JSON
+const MAX_SKILLS = 50;
+const MAX_ROLE_LENGTH = 200;
+
+function validateReqBody(body) {
+  const profile = body?.profile || {};
+  const profileStr = JSON.stringify(profile);
+  if (profileStr.length > MAX_PROFILE_SIZE) {
+    return { error: 'Profile too large', status: 400 };
+  }
+  const focusRole = body?.focusRole || null;
+  if (focusRole && String(focusRole).length > MAX_ROLE_LENGTH) {
+    return { error: 'Focus role too long', status: 400 };
+  }
+  const seedSkills = Array.isArray(body?.seedSkills) ? body.seedSkills : [];
+  if (seedSkills.length > MAX_SKILLS) {
+    return { error: 'Too many seed skills', status: 400 };
+  }
+  return null;
+}
+
 /* ========================================== ROUTES ====================================== */
 /**
  * POST /api/recommendations/generate
@@ -784,6 +806,11 @@ function fallbackImprove(profile = {}) {
 router.post('/generate', async (req, res) => {
   const t0 = Date.now();
   try {
+    const validationError = validateReqBody(req.body);
+    if (validationError) {
+      return res.status(validationError.status).json({ error: validationError.error });
+    }
+
     const profile    = req.body?.profile || {};
     const areaId     = req.body?.areaId ?? null;
     const focusRole  = req.body?.focusRole || null;
@@ -844,6 +871,11 @@ router.post('/generate', async (req, res) => {
  */
 router.post('/analyze', async (req, res) => {
   try {
+    const validationError = validateReqBody(req.body);
+    if (validationError) {
+      return res.status(validationError.status).json({ error: validationError.error });
+    }
+
     const profile    = req.body?.profile || {};
     const areaId     = req.body?.areaId ?? null;
     const focusRole  = req.body?.focusRole || null;
@@ -886,6 +918,11 @@ router.post('/analyze', async (req, res) => {
  */
 router.post('/improve', async (req, res) => {
   try {
+    const validationError = validateReqBody(req.body);
+    if (validationError) {
+      return res.status(validationError.status).json({ error: validationError.error });
+    }
+
     const profile = req.body?.profile || {};
     if (typeof improveProfileExt === 'function') {
       const { updated, changes } = await improveProfileExt(profile);

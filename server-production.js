@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
+import crypto from 'node:crypto';
 
 /**
  * В Node 18+ уже есть глобальный fetch и AbortSignal.timeout.
@@ -313,7 +314,7 @@ app.get(
           found: 0,
           page: 0,
           pages: 0,
-          debug: { status: r.status, url, fallback: true },
+          debug: { status: r.status, fallback: true },
         });
       }
 
@@ -332,7 +333,7 @@ app.get(
         found: 0,
         page: 0,
         pages: 0,
-        debug: { error: error.message, url },
+        debug: { error: error.message },
       });
     }
   })
@@ -346,7 +347,7 @@ app.get('/api/auth/hh/start', (req, res) => {
   }
 
   const redirectUri = `${process.env.PUBLIC_URL || FRONT_ORIGINS[0] || 'http://localhost:5173'}/oauth/hh/callback`;
-  const state = Math.random().toString(36).slice(2);
+  const state = crypto.randomBytes(32).toString('hex');
 
   res.cookie('oauth_state', state, {
     httpOnly: true,
