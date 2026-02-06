@@ -12,14 +12,13 @@ export const translations = {
     // Главная
     home: {
       badge: 'AI-powered Resume Builder',
-      titlePrefix: 'Создайте идеальное резюме',
-      titleAccent: 'за минуты',
-      title: 'Создайте идеальное резюме за минуты',
-      subtitle: 'ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии',
+      titleLine1: 'Ваш персональный',
+      titleLine2: 'ИИ-помощник в карьере',
+      subtitle: 'ИИ поможет быстро подготовить сильное резюме и найти подходящие вакансии, а также дать рекомендации по улучшению скиллов',
       createButton: 'Создать резюме',
       findJobsButton: 'Найти вакансии',
       features: {
-        ai: { title: 'Умное резюме', description: 'Подсказки по улучшению каждого раздела' },
+        ai: { title: 'Умное резюме', description: 'Подсказки по улучшению для каждого раздела' },
         vacancies: { title: 'Поиск вакансий', description: 'Интеграция с HeadHunter для релевантных предложений' },
         recommendations: { title: 'Рекомендации', description: 'Навыки, роли и курсы для роста' }
       }
@@ -355,10 +354,9 @@ export const translations = {
 
     home: {
       badge: 'AI көмегімен Түйіндеме Құрастырушы',
-      titlePrefix: 'Керемет түйіндеме жасаңыз',
-      titleAccent: 'бірнеше минутта',
-      title: 'Бірнеше минутта керемет түйіндеме жасаңыз',
-      subtitle: 'AI мықты түйіндеме дайындауға және лайықты вакансияларды табуға көмектеседі',
+      titleLine1: 'Сіздің жеке',
+      titleLine2: 'AI-карьера көмекшіңіз',
+      subtitle: 'AI мықты түйіндеме дайындауға, лайықты вакансияларды табуға және дағдыларды жақсарту бойынша ұсыныстар беруге көмектеседі',
       createButton: 'Түйіндеме жасау',
       findJobsButton: 'Вакансия іздеу',
       features: {
@@ -693,10 +691,9 @@ export const translations = {
 
     home: {
       badge: 'AI-powered Resume Builder',
-      titlePrefix: 'Create the perfect resume',
-      titleAccent: 'in minutes',
-      title: 'Create the perfect resume in minutes',
-      subtitle: 'AI helps you quickly prepare a strong resume and find suitable vacancies',
+      titleLine1: 'Your personal',
+      titleLine2: 'AI career assistant',
+      subtitle: 'AI helps you quickly prepare a strong resume, find suitable vacancies, and get recommendations for improving your skills',
       createButton: 'Create Resume',
       findJobsButton: 'Find Jobs',
       features: {
