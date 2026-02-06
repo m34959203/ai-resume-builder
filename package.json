@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "server:dev": "npm --prefix server run start:dev",
-    "server:start": "npm --prefix server run start"
+    "server:start": "npm --prefix server run start",
+    "dev:auto": "node scripts/autoupdater.js"
   },
   "dependencies": {
     "@react-pdf/renderer": "^3.4.5",
