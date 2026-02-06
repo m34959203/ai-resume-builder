@@ -108,6 +108,7 @@ docker-compose.override.yml
 .env
 .env.*
 !.env.example
+!.env.production
 server/.env
 *.pem
 *.key
