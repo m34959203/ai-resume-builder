@@ -2,37 +2,16 @@ import React from 'react';
 import { FileText, Briefcase, BarChart3, Sparkles } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 
-/* 3D Document Illustration */
+/* Hero illustration — SVG 3D document */
 function DocIllustration() {
   return (
-    <div className="relative">
-      <div className="w-[220px] h-[280px] sm:w-[260px] sm:h-[320px] bg-white rounded-[28px] shadow-[-12px_24px_60px_rgba(37,99,235,0.13)] border border-white/80 p-6 sm:p-7 relative animate-float">
-        {/* Blue corner with AI */}
-        <div className="absolute top-0 right-0 w-24 h-24 sm:w-[104px] sm:h-[104px] bg-[#2563EB] rounded-bl-[40px] rounded-tr-[28px] flex items-center justify-center">
-          <div className="flex flex-col items-center">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="mb-0.5">
-              <rect x="6" y="6" width="12" height="12" rx="2.5" stroke="white" strokeWidth="1.5" />
-              <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <span className="text-white font-extrabold text-xl tracking-wide leading-none">AI</span>
-          </div>
-        </div>
-
-        {/* Text lines */}
-        <div className="space-y-5 mt-10 sm:mt-12">
-          <div className="h-3.5 w-3/4 bg-slate-100 rounded-full" />
-          <div className="space-y-2.5">
-            <div className="h-[7px] w-full bg-slate-50 rounded-full" />
-            <div className="h-[7px] w-full bg-slate-50 rounded-full" />
-            <div className="h-[7px] w-4/5 bg-slate-50 rounded-full" />
-          </div>
-          <div className="h-3.5 w-1/2 bg-slate-100 rounded-full mt-6" />
-          <div className="space-y-2.5">
-            <div className="h-[7px] w-full bg-slate-50 rounded-full" />
-            <div className="h-[7px] w-2/3 bg-slate-50 rounded-full" />
-          </div>
-        </div>
-      </div>
+    <div className="relative animate-float">
+      <img
+        src="/images/hero-doc.svg"
+        alt="AI Resume Document"
+        className="w-[240px] h-[280px] sm:w-[280px] sm:h-[320px] drop-shadow-2xl"
+        draggable={false}
+      />
       {/* Glow */}
       <div className="absolute -z-10 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] h-[340px] bg-blue-400/15 blur-[80px] rounded-full" />
     </div>
