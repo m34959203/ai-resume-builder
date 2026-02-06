@@ -512,10 +512,12 @@ function mountRoutes() {
   // Основные
   safeUseRouter('/api/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
   safeUseRouter('/api/recommendations', path.join(__dirnameResolved, 'routes', 'recommendations.js'));
+  safeUseRouter('/api/courses', path.join(__dirnameResolved, 'routes', 'courses.js'));
 
   // Бэкап-монтаж без /api (на случай старых ссылок со фронта)
   safeUseRouter('/hh', path.join(__dirnameResolved, 'routes', 'hh.js'));
   safeUseRouter('/recommendations', path.join(__dirnameResolved, 'routes', 'recommendations.js'));
+  safeUseRouter('/courses', path.join(__dirnameResolved, 'routes', 'courses.js'));
 }
 mountRoutes();
 
@@ -550,6 +552,9 @@ Recommendations:
   POST /api/recommendations/generate
   POST /api/recommendations/analyze
   POST /api/recommendations/improve
+
+Courses:
+  GET  /api/courses/search?skills=React,TypeScript&limit=12
 
 AI helpers:
   POST /api/ai/infer-search

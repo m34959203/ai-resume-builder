@@ -10,3 +10,4 @@ export { inferSearchFromProfile, polishText, polishBatch } from './ai';
 export { fetchRecommendations, generateRecommendations, improveProfileAI } from './recommendations';
 export { getUserResumes, importResume, ping, getServerVersion } from './resumes';
 export { translateText, translateTextBatch, translateProfileForLang } from './translate';
+export { fetchCourses } from './courses';
