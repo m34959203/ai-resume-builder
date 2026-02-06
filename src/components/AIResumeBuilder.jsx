@@ -27,6 +27,46 @@ const ALLOWED_PAGES = new Set(['home', 'builder', 'recommendations', 'vacancies'
 const HOST = getDefaultHost();
 const HH_WEB_HOST = /hh\.ru/i.test(HOST) ? 'hh.ru' : 'hh.kz';
 const BRAND_NAME = 'ZhezU AI Resume';
+const LS_PROFILE_KEY = 'zhezu_profile';
+
+const DEFAULT_PROFILE = {
+  fullName: '',
+  position: '',
+  email: '',
+  phone: '',
+  location: '',
+  age: '',
+  maritalStatus: '',
+  children: '',
+  driverLicense: '',
+  driversLicense: '',
+  summary: '',
+  photo: null,
+  experience: [],
+  education: [],
+  skills: [],
+  languages: [],
+};
+
+function loadProfileFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_PROFILE_KEY);
+    if (!raw) return DEFAULT_PROFILE;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_PROFILE;
+    return { ...DEFAULT_PROFILE, ...parsed };
+  } catch {
+    return DEFAULT_PROFILE;
+  }
+}
+
+function saveProfileToStorage(profile) {
+  try {
+    localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    // ignore quota errors
+  }
+}
 
 /* ========================== Вспомогательные хелперы ========================== */
 
@@ -448,21 +488,13 @@ function AIResumeBuilder() {
     document.title = `${BRAND_NAME} — умный помощник для создания резюме`;
   }, []);
 
-  const [profile, setProfile] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    location: '',
-    age: '',
-    maritalStatus: '',
-    children: '',
-    driverLicense: '',
-    summary: '',
-    experience: [],
-    education: [],
-    skills: [],
-    languages: []
-  });
+  const [profile, setProfile] = useState(loadProfileFromStorage);
+
+  // Сохраняем профиль в localStorage при изменениях (дебаунс 500ms)
+  useEffect(() => {
+    const timer = setTimeout(() => saveProfileToStorage(profile), 500);
+    return () => clearTimeout(timer);
+  }, [profile]);
 
   const [selectedTemplate, setSelectedTemplate] = useState('modern');
   const [vacancies, setVacancies] = useState([]);
@@ -521,11 +553,40 @@ function AIResumeBuilder() {
 
   const generateRecommendations = async () => {
     const profileOk = hasProfileForRecs(profile);
-    if (!profileOk) {
+
+    // Если профиль совсем пустой — ничего не генерируем
+    const hasAnything =
+      String(profile?.position || '').trim() ||
+      String(profile?.summary || '').trim() ||
+      (Array.isArray(profile?.skills) && profile.skills.filter(Boolean).length > 0) ||
+      (Array.isArray(profile?.experience) && profile.experience.length > 0) ||
+      (Array.isArray(profile?.education) && profile.education.length > 0);
+
+    if (!hasAnything) {
       setRecommendations(null);
       setIsGenerating(false);
       return;
     }
+
+    // Если данных недостаточно для ИИ, но что-то есть — локальный фолбэк
+    if (!profileOk) {
+      const roles = localRolesFromProfile(profile);
+      const gap = localGapFrom(profile);
+      const haveSkills = extractSkills(profile);
+      const skillsToLearn = uniq(gap).filter((x) => !haveSkills.includes(x.toLowerCase())).slice(0, 12);
+      const courses = localCourseLinks(skillsToLearn);
+
+      setRecommendations({
+        professions: roles,
+        skillsToLearn,
+        courses,
+        matchScore: computeMarketFit(profile),
+        debug: { fallback: 'local-partial', ai: false },
+      });
+      setIsGenerating(false);
+      return;
+    }
+
     setIsGenerating(true);
 
     const langCode =
@@ -825,11 +886,21 @@ function RecommendationsPage({
   }, [recommendations?.professions]);
 
   // авто-обновление рекомендаций при изменении профиля (дебаунс)
+  const hasAnything = React.useMemo(() => {
+    return (
+      String(profile?.position || '').trim() ||
+      String(profile?.summary || '').trim() ||
+      (Array.isArray(profile?.skills) && profile.skills.filter(Boolean).length > 0) ||
+      (Array.isArray(profile?.experience) && profile.experience.length > 0) ||
+      (Array.isArray(profile?.education) && profile.education.length > 0)
+    );
+  }, [profile?.position, profile?.summary, profile?.skills, profile?.experience, profile?.education]);
+
   React.useEffect(() => {
-    if (!profileOk) return; // если мало данных — не дёргаем генерацию
+    if (!hasAnything) return; // совсем пустой — не генерируем
     if (!isGenerating) generateRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSig, profileOk]);
+  }, [debouncedSig, hasAnything]);
 
   // Реальная оценка соответствия
   const score = React.useMemo(() => {
