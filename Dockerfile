@@ -3,14 +3,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# 1. Install root deps + build frontend
+# 1. Install root deps
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
+# 2. Copy source + build frontend
 COPY . .
 RUN npm run build
 
-# 2. Production image
+# 3. Production image
 FROM node:20-alpine
 
 WORKDIR /app
@@ -22,11 +23,10 @@ RUN cd server && npm ci --omit=dev
 # Copy built frontend
 COPY --from=builder /app/dist ./dist
 
-# Copy app.js (ESM bridge for Plesk — not used on Railway, but kept for compat)
-COPY app.js ./
+# Copy fonts (Vite copies public/ to dist/ but just in case)
+COPY public/fonts ./dist/fonts
 
 ENV NODE_ENV=production
-ENV PORT=3000
 
 EXPOSE 3000
 
