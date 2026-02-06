@@ -1249,6 +1249,8 @@ function VacanciesPage({
 
   // ⬇️ флаг для авто-расширения (чтобы не зациклиться)
   const [autoRelaxInfo, setAutoRelaxInfo] = useState(null);
+  // предложение расширить поиск по всему КЗ (когда в городе 0 результатов)
+  const [cityWidenOffer, setCityWidenOffer] = useState(null); // { city, found }
 
   useEffect(() => { setPage(0); }, [searchQuery, filters.location, filters.experience, filters.salary]);
 
@@ -1476,19 +1478,22 @@ function VacanciesPage({
         let res = await doQuery(baseText, baseCity, baseExp);
         if (reqIdRef.current !== myId) return;
 
-        // 2) авто-расширение: если пусто — убираем город (ищем по всему КЗ)
+        // 2) если в городе 0 — проверяем по всему КЗ и предлагаем пользователю
+        setCityWidenOffer(null);
+        let hasWidenOffer = false;
         if (!res.items.length && baseCity) {
           const widened = await doQuery(baseText, undefined, baseExp);
           if (reqIdRef.current !== myId) return;
           if (widened.items.length) {
-            res = widened;
-            setAutoRelaxInfo({ dropped: 'city' });
+            // НЕ подменяем результаты — показываем предложение расширить
+            setCityWidenOffer({ city: baseCity, found: widened.found });
+            hasWidenOffer = true;
           }
         }
 
-        // 3) всё ещё пусто — убираем опыт
-        if (!res.items.length && baseExp) {
-          const noExp = await doQuery(baseText, undefined, '');
+        // 3) если всё ещё пусто (и нет предложения по городу) — убираем опыт
+        if (!res.items.length && !hasWidenOffer && baseExp) {
+          const noExp = await doQuery(baseText, baseCity || undefined, '');
           if (reqIdRef.current !== myId) return;
           if (noExp.items.length) {
             res = noExp;
@@ -1496,7 +1501,7 @@ function VacanciesPage({
           }
         }
 
-        // 4) всё ещё пусто — пробуем русский аналог запроса (EN → RU)
+        // 4) пробуем русский аналог запроса (EN → RU)
         if (!res.items.length && /[a-zA-Z]/.test(baseText)) {
           const ruText = baseText
             .replace(/\bfull\s*stack\b/i, 'Fullstack')
@@ -1564,7 +1569,7 @@ function VacanciesPage({
   );
 
   // сброс авто-расширения при явном изменении пользователем
-  useEffect(() => { setAutoRelaxInfo(null); }, [debouncedSearch, debouncedFiltersKey]);
+  useEffect(() => { setAutoRelaxInfo(null); setCityWidenOffer(null); }, [debouncedSearch, debouncedFiltersKey]);
 
   // основной эффект запуска поиска
   useEffect(() => {
@@ -1729,6 +1734,31 @@ function VacanciesPage({
           {autoRelaxInfo && (
             <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
               {autoRelaxMsg(autoRelaxInfo.dropped)}
+            </div>
+          )}
+
+          {/* Предложение расширить поиск по всему КЗ */}
+          {cityWidenOffer && (
+            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 text-sm text-amber-900">
+                <MapPin size={16} className="inline -mt-0.5 mr-1" />
+                {lang === 'kk'
+                  ? <><b>{cityWidenOffer.city}</b> қаласында бос орындар табылмады. Бүкіл Қазақстан бойынша <b>{cityWidenOffer.found}</b> вакансия табылды.</>
+                  : lang === 'en'
+                  ? <>No vacancies found in <b>{cityWidenOffer.city}</b>. Found <b>{cityWidenOffer.found}</b> across all of Kazakhstan.</>
+                  : <>В городе <b>{cityWidenOffer.city}</b> вакансий не найдено. По всему Казахстану найдено <b>{cityWidenOffer.found}</b>.</>
+                }
+              </div>
+              <button
+                onClick={() => {
+                  setCityWidenOffer(null);
+                  setFilters((f) => ({ ...f, location: '' }));
+                  setPage(0);
+                }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium whitespace-nowrap transition"
+              >
+                {lang === 'kk' ? 'Бүкіл ҚР бойынша іздеу' : lang === 'en' ? 'Search all Kazakhstan' : 'Искать по всему Казахстану'}
+              </button>
             </div>
           )}
 
