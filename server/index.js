@@ -445,7 +445,9 @@ function buildVacanciesUrl(params = {}) {
   }
 
   if (date_from && isValidYMD(date_from)) q.set('date_from', date_from);
-  if (order_by) q.set('order_by', String(order_by)); // publication_time | relevance
+
+  // Сортировка: по умолчанию по релевантности, если есть текстовый запрос
+  q.set('order_by', String(order_by || (text ? 'relevance' : 'publication_time')));
 
   return `https://api.hh.ru/vacancies?${q.toString()}`;
 }

@@ -62,8 +62,9 @@ function buildJobsQuery(params = {}) {
     q.set('date_from', params.date_from);
   }
 
-  // Порядок выдачи (опционально)
-  if (params.order_by) q.set('order_by', String(params.order_by)); // 'relevance' | 'publication_time'
+  // Порядок выдачи: по умолчанию по релевантности, если есть текстовый запрос
+  const orderBy = params.order_by || (text ? 'relevance' : 'publication_time');
+  q.set('order_by', orderBy);
 
   return q;
 }
