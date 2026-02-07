@@ -421,7 +421,13 @@ async function buildRecommendations(profile = {}, opts = {}) {
   // roleHit: есть ли вообще роли (как прокси наличия рынка)
   const roleHit = roles.length >= 3 ? 1 : roles.length === 2 ? 0.7 : roles.length === 1 ? 0.5 : 0.2;
 
-  const scoreRaw = (fitSkills * 0.65 + bucketScore * 0.2 + roleHit * 0.15) * 100;
+  // profileBonus: бонус за заполненность профиля (позиция, навыки, описание)
+  const hasPosition = String(profile.position || profile.targetTitle || '').trim().length >= 3;
+  const hasSkillsList = mySkills.length >= 1;
+  const hasSummary = String(profile.summary || '').trim().length >= 20;
+  const profileBonus = (hasPosition ? 0.15 : 0) + (hasSkillsList ? 0.10 : 0) + (hasSummary ? 0.05 : 0);
+
+  const scoreRaw = (fitSkills * 0.55 + bucketScore * 0.15 + roleHit * 0.10 + profileBonus) * 100;
   const marketFitScore = clamp(Math.round(scoreRaw), 10, 90);
 
   const t1 = Date.now();
