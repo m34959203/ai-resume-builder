@@ -389,6 +389,14 @@ function guessRoles(profile, focusRole) {
   ];
   merged.sort((a, b) => priorityOrder.indexOf(a) - priorityOrder.indexOf(b));
 
+  // Последний фолбэк: позицию как есть (для не-IT ролей: «Энергетик», «Бухгалтер» и т.д.)
+  if (!merged.length) {
+    const positionText = String(profile.position || profile.targetTitle || profile.desiredRole || '').trim();
+    if (positionText.length >= 2) {
+      return [positionText];
+    }
+  }
+
   return merged.slice(0, MAX_ROLES);
 }
 
@@ -416,16 +424,21 @@ const expMatchScore = (u, v) => {
   return d === 1 ? 0.7 : d === 2 ? 0.4 : 0.1;
 };
 
-/** Навыки из вакансии */
+/** Навыки из вакансии — извлекает как каноничные (из SKILL_LEXICON), так и сырые key_skills */
 function extractSkillsFromVacancy(v) {
   const pool = [];
+  // Сырые key_skills от HH — берём как есть (включая не-IT навыки)
   const ks = Array.isArray(v.key_skills) ? v.key_skills.map(k => k.name) : [];
   pool.push(...ks);
+  // Дополнительно ищем навыки из SKILL_LEXICON в тексте вакансии
   const txt = [v.name, v.snippet?.requirement, v.snippet?.responsibility, v.description]
     .map(x => String(x||'').toLowerCase()).join(' ');
   for (const s of SKILL_LEXICON) if (txt.includes(lower(s))) pool.push(s);
   const out = new Set();
-  pool.map(s => lower(s)).forEach(raw => { const k = CANON[raw] || raw; if (k) out.add(k); });
+  pool.map(s => lower(s)).forEach(raw => {
+    const k = CANON[raw] || raw;
+    if (k && k.length >= 2) out.add(k); // минимум 2 символа
+  });
   return Array.from(out);
 }
 
@@ -739,9 +752,21 @@ async function fallbackRecommendations(profile = {}, opts = {}) {
       professions.push({ title: 'QA Engineer',        vacancies: 0, hhQuery: 'QA Engineer',        topSkills: [], url: hhSearchUrl('QA Engineer', null) });
   }
 
+  // Если по навыкам ничего не нашли — берём позицию как есть
+  if (!professions.length) {
+    const positionText = String(profile.position || profile.targetTitle || profile.desiredRole || '').trim();
+    if (positionText.length >= 2) {
+      professions.push({ title: positionText, vacancies: 0, hhQuery: positionText, topSkills: [], url: hhSearchUrl(positionText, null) });
+    }
+  }
+
+  // Для не-IT ролей: используем позицию для поиска курсов
+  const positionForCourses = String(profile.position || '').trim();
   const basicGrow = skills.length
     ? ['communication','presentation']
-    : ['agile','data analysis','digital marketing'];
+    : positionForCourses.length >= 2
+      ? [positionForCourses, 'communication', 'presentation']
+      : ['agile','data analysis','digital marketing'];
 
   let courses = basicGrow.slice(0,2).flatMap(s => courseLinks(lower(s)));
   if (typeof getCoursesExt === 'function') {
@@ -822,12 +847,28 @@ router.post('/generate', async (req, res) => {
     const focusRole  = req.body?.focusRole || null;
     const seedSkills = Array.isArray(req.body?.seedSkills) ? req.body.seedSkills : [];
 
-    // 0) Если есть внешний LLM — используем его (приоритет)
+    // 0) Если есть внешний рекомендатель — используем, но ТОЛЬКО если вернул полезные данные
+    let extData = null;
     if (typeof buildRecommendationsExt === 'function') {
-      dbg('using external recommender (LLM)');
-      const data = await buildRecommendationsExt(profile, { areaId, focusRole, seedSkills });
-      return res.json({ ok: true, data, llm: true, timingsMs: { total: Date.now() - t0 } });
+      dbg('trying external recommender');
+      try {
+        extData = await buildRecommendationsExt(profile, { areaId, focusRole, seedSkills });
+      } catch (e) {
+        console.warn('[rec/generate ext failed]', e?.message || e);
+      }
     }
+
+    // Проверяем, вернул ли рекомендатель полезные данные (роли + навыки)
+    const extUseful = extData &&
+      Array.isArray(extData.roles) && extData.roles.length > 0 &&
+      Array.isArray(extData.growSkills) && extData.growSkills.length > 0;
+
+    if (extData && extUseful) {
+      dbg('using external recommender data');
+      return res.json({ ok: true, data: extData, llm: true, timingsMs: { total: Date.now() - t0 } });
+    }
+
+    // Если рекомендатель вернул пустые данные — переходим к рыночному движку
 
     // 1) Рыночный двигатель
     let market = null;

@@ -311,6 +311,14 @@ function guessRoles(profile = {}, focusRole = null) {
     if (firstNonZero.length) return firstNonZero.slice(0, MAX_ROLES);
   }
 
+  // Последний фолбэк: используем позицию как есть (для не-IT ролей типа «Энергетик», «Бухгалтер» и т.д.)
+  if (!merged.length) {
+    const positionText = String(profile.position || profile.targetTitle || profile.desiredRole || '').trim();
+    if (positionText.length >= 2) {
+      return [positionText];
+    }
+  }
+
   return merged.slice(0, MAX_ROLES);
 }
 
@@ -387,6 +395,17 @@ async function buildRecommendations(profile = {}, opts = {}) {
       .map(s => lower(s))
       .filter(s => !mySet.has(s));
     gaps = adv.map(n => ({ name: n, freq: 1, advanced: true })).slice(0, 6);
+  }
+
+  // Если gaps всё ещё пуст (не-IT роль без CORE_SKILLS) — добавим позицию как тему для курсов + общие навыки
+  if (!gaps.length) {
+    const posText = String(profile.position || profile.targetTitle || '').trim();
+    if (posText.length >= 2) {
+      gaps.push({ name: lower(posText), freq: 1, advanced: false });
+    }
+    ['communication', 'presentation', 'excel', 'project management'].forEach(s => {
+      if (!mySet.has(s) && gaps.length < 6) gaps.push({ name: s, freq: 1, advanced: true });
+    });
   }
 
   // курсы

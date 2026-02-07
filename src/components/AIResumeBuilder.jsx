@@ -452,11 +452,22 @@ function localGapFrom(profile) {
   // Если навыков нет или расширение пустое — подсказываем по роли/позиции
   if (acc.size === 0) {
     const roleTxt = (deriveDesiredRole(profile) || '').toLowerCase();
+    let matched = false;
     for (const [key, skills] of Object.entries(ROLE_STARTER_SKILLS)) {
       if (roleTxt.includes(key)) {
         skills.forEach((x) => acc.add(x));
+        matched = true;
         break;
       }
+    }
+
+    // Если позиция не нашлась ни в одном из известных ролей (не-IT роль) —
+    // используем позицию как тему для курсов + базовые навыки
+    if (!matched && roleTxt.length >= 2) {
+      // Сама позиция как тема для поиска курсов
+      acc.add(String(profile.position || deriveDesiredRole(profile) || '').trim());
+      // Универсальные навыки для любой профессии
+      ['Excel', 'Коммуникация', 'Деловое общение', 'Управление проектами', 'Тайм-менеджмент'].forEach((x) => acc.add(x));
     }
   }
 

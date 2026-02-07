@@ -96,6 +96,13 @@ function localGuessRoles(profile) {
     if (has(['selenium','cypress','playwright','testing'])) push('QA Engineer');
     if (has(['docker','kubernetes','terraform','ansible'])) push('DevOps Engineer');
   }
+
+  // Последний фолбэк: позицию как есть (не-IT роли: «Энергетик», «Бухгалтер» и т.д.)
+  if (!roles.length) {
+    const positionText = String(profile?.position || profile?.targetTitle || profile?.desiredRole || '').trim();
+    if (positionText.length >= 2) push(positionText);
+  }
+
   return roles.slice(0, 5);
 }
 
@@ -151,14 +158,25 @@ function localGapFrom(profile) {
       String(profile?.desiredRole || ''),
     ].join(' ').toLowerCase();
 
+    let matched = false;
     for (const [key, skills] of Object.entries(ROLE_STARTER_SKILLS_BFF)) {
       if (roleTxt.includes(key)) {
         skills.forEach((s) => {
           const k = CANON(s) || s;
           if (!mine.has(k) && !suggestions.includes(k)) suggestions.push(k);
         });
+        matched = true;
         break;
       }
+    }
+
+    // Не-IT роль: используем позицию как тему для курсов + универсальные навыки
+    if (!matched && roleTxt.length >= 2) {
+      const posText = String(profile?.position || profile?.targetTitle || '').trim();
+      if (posText) suggestions.push(posText.toLowerCase());
+      ['communication', 'excel', 'presentation', 'project management'].forEach((s) => {
+        if (!mine.has(s) && !suggestions.includes(s)) suggestions.push(s);
+      });
     }
   }
 
