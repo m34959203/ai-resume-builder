@@ -4,7 +4,14 @@ dist
 .git
 .env
 .env.local
+.env.development
 *.log
 .vscode
 .idea
+.cache
+coverage
+tests
+*.md
 stats.html
+.nvmrc
+.gitignore
