@@ -596,7 +596,13 @@ async function buildRecommendationsSmart(profile = {}, opts = {}) {
                     : rolesAgg.some(r => r.vacancies > 20) ? 0.7
                     : rolesAgg.some(r => r.vacancies > 5)  ? 0.4 : 0.2;
 
-  const scoreRaw = (fitSkills * 0.60 + fitExp * 0.25 + roleHit * 0.15) * 100;
+  // profileBonus: бонус за заполненность профиля (позиция, навыки, описание)
+  const hasPosition = String(profile.position || profile.targetTitle || '').trim().length >= 3;
+  const hasSkillsList = mySkills.length >= 1;
+  const hasSummary = String(profile.summary || '').trim().length >= 20;
+  const profileBonus = (hasPosition ? 0.12 : 0) + (hasSkillsList ? 0.08 : 0) + (hasSummary ? 0.05 : 0);
+
+  const scoreRaw = (fitSkills * 0.50 + fitExp * 0.20 + roleHit * 0.10 + profileBonus) * 100;
   const marketFitScore = clamp(Math.round(scoreRaw), 10, 95);
 
   const t1 = Date.now();

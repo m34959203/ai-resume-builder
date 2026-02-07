@@ -167,6 +167,7 @@ function englishLevelScore(langs = []) {
 
 function computeMarketFit(profile = {}) {
   const hasAnything =
+    (profile.position && profile.position.trim().length > 0) ||
     (profile.summary && profile.summary.trim().length > 0) ||
     (Array.isArray(profile.skills) && profile.skills.length > 0) ||
     (Array.isArray(profile.experience) && profile.experience.length > 0) ||
@@ -178,7 +179,18 @@ function computeMarketFit(profile = {}) {
 
   // Конкретика роли/позиции
   const roleText = String(profile.position || profile.title || '').trim();
-  if (roleText.length >= 3) score += Math.min(10, Math.floor(roleText.split(/\s+/).length * 2)); // до 10
+  const roleLower = roleText.toLowerCase();
+  // Бонус за распознаваемую IT-позицию (до 15 вместо 10)
+  const knownPositions = [
+    'developer', 'engineer', 'analyst', 'designer', 'manager', 'devops', 'qa',
+    'разработчик', 'инженер', 'аналитик', 'дизайнер', 'менеджер', 'тестировщик',
+    'frontend', 'backend', 'fullstack', 'full stack', 'data', 'ml', 'sre',
+  ];
+  const isKnownRole = knownPositions.some((p) => roleLower.includes(p));
+  if (roleText.length >= 3) {
+    score += Math.min(10, Math.floor(roleText.split(/\s+/).length * 2)); // до 10
+    if (isKnownRole) score += 5; // бонус за распознаваемую позицию
+  }
 
   // Навыки
   const uniqSkills = Array.from(new Set((profile.skills || []).map((s) => String(s).trim()).filter(Boolean)));
@@ -301,15 +313,16 @@ function prettyExp(aiExp, t) {
 // --- валидация профиля для рекомендаций ---
 const normalizeText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 function hasProfileForRecs(p = {}) {
+  const positionOk = normalizeText(p.position || p.desiredRole || p.targetRole || '').length >= 3;
   const summaryOk = normalizeText(p.summary).length >= 20;
-  const skillsOk  = Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 3;
+  const skillsOk  = Array.isArray(p.skills) && p.skills.filter(Boolean).length >= 1;
   const expOk     = Array.isArray(p.experience) && p.experience.some(
     e => normalizeText(e?.title || e?.position || e?.company || e?.description).length >= 5
   );
   const eduOk     = Array.isArray(p.education) && p.education.some(
     e => normalizeText(e?.degree || e?.major || e?.institution).length >= 3
   );
-  return summaryOk || skillsOk || expOk || eduOk;
+  return positionOk || summaryOk || skillsOk || expOk || eduOk;
 }
 
 function missingProfileSections(p = {}, t) {
@@ -352,21 +365,44 @@ function localRolesFromProfile(profile) {
   const has = (x) => s.includes(x.toLowerCase()) || roleTxt.includes(x.toLowerCase());
   const out = new Set();
 
-  if (has('react') || has('frontend') || has('javascript')) {
+  // Fullstack (should be before frontend/backend to add both)
+  if (has('full stack') || has('fullstack') || has('full-stack') || has('фулл стек') || has('фуллстек')) {
+    out.add('Full Stack Developer');
+    out.add('Frontend Developer');
+    out.add('Backend Developer');
+  }
+
+  if (has('react') || has('frontend') || has('javascript') || has('фронт')) {
     out.add('Frontend Developer');
     out.add('React Developer');
     out.add('JavaScript Developer');
   }
   if (has('typescript')) out.add('TypeScript Developer');
-  if (has('node') || has('node.js')) {
+  if (has('node') || has('node.js') || has('express') || has('nest')) {
     out.add('Node.js Developer');
-    out.add('Full-Stack Developer');
+    out.add('Full Stack Developer');
   }
-  if (has('python') || has('sql') || has('power bi') || has('excel')) {
+  if (has('backend') || has('бэкенд') || has('бэк-енд') || has('серверн') || has('django') || has('spring') || has('.net') || has('laravel') || has('php')) {
+    out.add('Backend Developer');
+  }
+  if (has('python') || has('sql') || has('power bi') || has('excel') || has('analyst') || has('аналитик')) {
     out.add('Data Analyst');
   }
-  if (has('figma') || has('ui') || has('ux') || roleTxt.includes('дизайн')) {
+  if (has('data scientist') || has('machine learning') || has('ml ') || has('tensorflow') || has('pytorch')) {
+    out.add('Data Scientist');
+    out.add('ML Engineer');
+  }
+  if (has('devops') || has('docker') || has('kubernetes') || has('terraform') || has('sre')) {
+    out.add('DevOps Engineer');
+  }
+  if (has('qa') || has('тестировщик') || has('test') || has('selenium') || has('cypress')) {
+    out.add('QA Engineer');
+  }
+  if (has('figma') || has('ui') || has('ux') || roleTxt.includes('дизайн') || roleTxt.includes('designer')) {
     out.add('UI/UX Designer');
+  }
+  if (has('project manager') || has('менеджер проект') || has('руководитель проект')) {
+    out.add('Project Manager');
   }
 
   // если ничего не определили — используем deriveDesiredRole
@@ -375,6 +411,23 @@ function localRolesFromProfile(profile) {
 
   return Array.from(out).slice(0, 6);
 }
+
+/** Карта стартовых навыков по ролям — для случая, когда у пользователя нет навыков */
+const ROLE_STARTER_SKILLS = {
+  'full stack': ['JavaScript', 'TypeScript', 'React', 'Node.js', 'PostgreSQL', 'Docker', 'Git', 'REST API', 'HTML/CSS', 'Testing'],
+  'fullstack': ['JavaScript', 'TypeScript', 'React', 'Node.js', 'PostgreSQL', 'Docker', 'Git', 'REST API', 'HTML/CSS', 'Testing'],
+  'frontend': ['JavaScript', 'TypeScript', 'React', 'Next.js', 'TailwindCSS', 'Redux', 'Jest', 'Git', 'Webpack', 'Accessibility'],
+  'react': ['TypeScript', 'Next.js', 'Redux Toolkit', 'React Query', 'Jest', 'Playwright', 'TailwindCSS'],
+  'backend': ['Node.js', 'PostgreSQL', 'Docker', 'REST API', 'Redis', 'Git', 'CI/CD', 'SQL', 'Testing', 'Security'],
+  'devops': ['Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'Linux', 'AWS', 'Prometheus', 'Grafana', 'Ansible', 'Nginx'],
+  'data analyst': ['SQL', 'Python', 'Pandas', 'Power BI', 'Excel', 'Tableau', 'Statistics', 'Data Visualization', 'A/B Testing'],
+  'data scientist': ['Python', 'TensorFlow', 'PyTorch', 'Pandas', 'NumPy', 'Scikit-learn', 'SQL', 'Feature Engineering', 'MLflow'],
+  'qa': ['Selenium', 'Cypress', 'Playwright', 'Postman', 'SQL', 'Git', 'CI/CD', 'Jest', 'API Testing', 'Performance Testing'],
+  'тестировщик': ['Selenium', 'Cypress', 'Playwright', 'Postman', 'SQL', 'Git', 'CI/CD', 'Jest', 'API Testing'],
+  'designer': ['Figma', 'Prototyping', 'Design Systems', 'User Research', 'Accessibility', 'Auto Layout', 'UI/UX'],
+  'project manager': ['Agile', 'Scrum', 'Jira', 'Confluence', 'Roadmapping', 'Risk Management', 'Stakeholder Management'],
+  'аналитик': ['SQL', 'Python', 'Pandas', 'Power BI', 'Excel', 'Tableau', 'Statistics', 'Data Visualization'],
+};
 
 /** Расширение навыков по базовым seed-скиллам */
 function localGapFrom(profile) {
@@ -395,6 +448,17 @@ function localGapFrom(profile) {
     }
     if (sk === 'css') ['TailwindCSS', 'Responsive Design', 'Sass/SCSS'].forEach((x) => acc.add(x));
   });
+
+  // Если навыков нет или расширение пустое — подсказываем по роли/позиции
+  if (acc.size === 0) {
+    const roleTxt = (deriveDesiredRole(profile) || '').toLowerCase();
+    for (const [key, skills] of Object.entries(ROLE_STARTER_SKILLS)) {
+      if (roleTxt.includes(key)) {
+        skills.forEach((x) => acc.add(x));
+        break;
+      }
+    }
+  }
 
   // отфильтруем то, что уже есть
   const out = Array.from(acc).filter((x) => !have.has(x.toLowerCase()));

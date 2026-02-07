@@ -71,25 +71,49 @@ function localGuessRoles(profile) {
   const roles = [];
   const push = (r) => { if (!roles.includes(r)) roles.push(r); };
 
-  if (/(front[\s-]*end|react|javascript\s*developer)/i.test(txt)) push('Frontend Developer');
-  if (/(back[\s-]*end|node\.?js|django|spring|\.net)/i.test(txt)) push('Backend Developer');
-  if (/(qa|тестировщик|quality\s*assurance)/i.test(txt)) push('QA Engineer');
-  if (/(data\s*analyst|аналитик\s*данных)/i.test(txt)) push('Data Analyst');
-  if (/(data\s*scientist)/i.test(txt)) push('Data Scientist');
-  if (/(devops|ci\/cd)/i.test(txt)) push('DevOps Engineer');
+  // Fullstack (before frontend/backend to add related roles)
+  if (/(full[\s-]*stack|фулл[\s-]*стек)/i.test(txt)) {
+    push('Full Stack Developer');
+    push('Frontend Developer');
+    push('Backend Developer');
+  }
+  if (/(front[\s-]*end|фронт[\s-]*енд|react|javascript\s*developer)/i.test(txt)) push('Frontend Developer');
+  if (/(back[\s-]*end|бэк[\s-]*енд|node\.?js|django|spring|\.net|laravel|php)/i.test(txt)) push('Backend Developer');
+  if (/(qa|тестировщик|quality\s*assurance|инженер\s*по\s*тестированию)/i.test(txt)) push('QA Engineer');
+  if (/(data\s*analyst|аналитик\s*данных|аналитик)/i.test(txt)) push('Data Analyst');
+  if (/(data\s*scientist|ml\s*engineer|machine\s*learning)/i.test(txt)) push('Data Scientist');
+  if (/(devops|ci\/cd|sre|platform\s*engineer)/i.test(txt)) push('DevOps Engineer');
+  if (/(project\s*manager|менеджер\s*проект|руководитель\s*проект)/i.test(txt)) push('Project Manager');
+  if (/(ui\/ux|ux\/ui|product\s*designer|figma|дизайн)/i.test(txt)) push('UI/UX Designer');
 
   const skills = normSkillsArray(profile?.skills);
   const has = (xs) => xs.some((s) => skills.includes(CANON(s)));
 
   if (!roles.length) {
     if (has(['react','javascript','typescript','html','css'])) push('Frontend Developer');
-    if (has(['node','django','spring','.net'])) push('Backend Developer');
+    if (has(['node','django','spring','.net','laravel','php'])) push('Backend Developer');
     if (has(['sql','excel','power bi','tableau','python','pandas','numpy'])) push('Data Analyst');
     if (has(['selenium','cypress','playwright','testing'])) push('QA Engineer');
     if (has(['docker','kubernetes','terraform','ansible'])) push('DevOps Engineer');
   }
-  return roles.slice(0, 4);
+  return roles.slice(0, 5);
 }
+
+/** Карта стартовых навыков по ролям — для случая, когда у пользователя нет навыков */
+const ROLE_STARTER_SKILLS_BFF = {
+  'full stack': ['javascript', 'typescript', 'react', 'node', 'postgres', 'docker', 'git', 'testing'],
+  'fullstack': ['javascript', 'typescript', 'react', 'node', 'postgres', 'docker', 'git', 'testing'],
+  'frontend': ['javascript', 'typescript', 'react', 'next', 'tailwind', 'redux', 'jest', 'git'],
+  'backend': ['node', 'postgres', 'docker', 'redis', 'git', 'ci/cd', 'sql', 'testing'],
+  'devops': ['docker', 'kubernetes', 'terraform', 'ci/cd', 'linux', 'aws', 'prometheus', 'grafana'],
+  'data analyst': ['sql', 'python', 'pandas', 'power bi', 'excel', 'tableau', 'statistics'],
+  'data scientist': ['python', 'tensorflow', 'pytorch', 'pandas', 'numpy', 'sql', 'mlflow'],
+  'qa': ['selenium', 'cypress', 'playwright', 'postman', 'sql', 'git', 'ci/cd', 'jest'],
+  'тестировщик': ['selenium', 'cypress', 'playwright', 'postman', 'sql', 'git', 'ci/cd'],
+  'designer': ['figma', 'prototyping', 'ui/ux', 'accessibility'],
+  'project manager': ['agile', 'scrum', 'jira', 'confluence', 'roadmapping'],
+  'аналитик': ['sql', 'python', 'pandas', 'power bi', 'excel', 'tableau'],
+};
 
 function localGapFrom(profile) {
   const mine = new Set(normSkillsArray(profile?.skills));
@@ -118,6 +142,25 @@ function localGapFrom(profile) {
 
   // Базовые инженерные
   ['git', 'github actions', 'ci/cd'].forEach((s) => { const k = CANON(s); if (!mine.has(k)) suggestions.push(k); });
+
+  // Если навыков нет или suggestions пустые — подсказываем по позиции/роли
+  if (suggestions.length === 0 || mine.size === 0) {
+    const roleTxt = [
+      String(profile?.position || ''),
+      String(profile?.targetTitle || ''),
+      String(profile?.desiredRole || ''),
+    ].join(' ').toLowerCase();
+
+    for (const [key, skills] of Object.entries(ROLE_STARTER_SKILLS_BFF)) {
+      if (roleTxt.includes(key)) {
+        skills.forEach((s) => {
+          const k = CANON(s) || s;
+          if (!mine.has(k) && !suggestions.includes(k)) suggestions.push(k);
+        });
+        break;
+      }
+    }
+  }
 
   // Уникализация
   const out = [];
@@ -249,7 +292,7 @@ function normalizeRecPayload(payload, profile) {
     growSkills = localGrow.map((n) => ({ name: n, demand: 1, gap: true }));
   }
 
-  // курсы → нормализуем { name, duration, url }
+  // курсы → нормализуем { name, duration, url, provider, cover, description, learners, channel }
   let courses = Array.isArray(raw.courses) ? raw.courses
              : Array.isArray(raw.recommendedCourses) ? raw.recommendedCourses
              : Array.isArray(raw.courseRecommendations) ? raw.courseRecommendations
@@ -259,7 +302,15 @@ function normalizeRecPayload(payload, profile) {
     const name = [c?.provider, c?.title].filter(Boolean).join(' — ') || c?.name || '';
     const duration = c?.duration || '';
     const url = c?.url || c?.link || '';
-    return name ? { name, duration, url } : null;
+    return name ? {
+      name, duration, url,
+      provider: c?.provider || '',
+      cover: c?.cover || '',
+      description: c?.description || '',
+      learners: c?.learners || 0,
+      channel: c?.channel || '',
+      source: c?.source || '',
+    } : null;
   }).filter(Boolean);
 
   // если курсов нет — сгенерируем по GAP
@@ -268,6 +319,12 @@ function normalizeRecPayload(payload, profile) {
       name: [c.provider, c.title].filter(Boolean).join(' — '),
       duration: c.duration || '',
       url: c.url || '',
+      provider: c.provider || '',
+      cover: '',
+      description: '',
+      learners: 0,
+      channel: '',
+      source: 'local-fallback',
     }));
   }
 
